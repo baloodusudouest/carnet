@@ -1,0 +1,48 @@
+BEGIN:VCARD
+VERSION:3.0
+PRODID:-//Apple Inc.//iCloud Web Address Book 2617B6//EN
+N:Martin;Claire;;;
+FN:Claire Martin
+ORG:Boulangerie du Port;
+item1.EMAIL;type=INTERNET;type=pref:claire.martin@exemple.fr
+item1.X-ABLabel:_$!<Home>!$_
+TEL;type=CELL;type=VOICE;type=pref:06 12 34 56 78
+item2.TEL:05 53 00 00 01
+item2.X-ABLabel:bureau
+item3.ADR;type=HOME;type=pref:;;12 rue des Lilas;Agen;;47000;France
+item3.X-ABADR:fr
+BDAY;value=date:1985-03-14
+item4.X-ABRELATEDNAMES;type=pref:Paul Martin
+item4.X-ABLabel:_$!<Spouse>!$_
+NOTE:Cliente fidèle\, aime les croissants
+PHOTO;ENCODING=b;TYPE=JPEG:/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJ
+UID:AAAA-1111
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+PRODID:-//Apple Inc.//iCloud Web Address Book 2617B6//EN
+N:DUBOIS;jean-pierre;;;
+FN:jean-pierre DUBOIS
+TEL;type=HOME;type=VOICE:+33 5 53 11 22 33
+BDAY;X-APPLE-OMIT-YEAR=1604;value=date:1604-07-02
+UID:BBBB-2222
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+PRODID:-//Apple Inc.//iCloud Web Address Book 2617B6//EN
+N:;;;;
+FN:Plomberie Garonne
+ORG:Plomberie Garonne;
+X-ABShowAs:COMPANY
+TEL;type=WORK;type=VOICE:0553445566
+UID:CCCC-3333
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+PRODID:-//Apple Inc.//iCloud Web Address Book 2617B6//EN
+N:Urgence;;;;
+FN:Urgence
+X-ADDRESSBOOKSERVER-KIND:group
+X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:AAAA-1111
+UID:GGGG-0001
+END:VCARD

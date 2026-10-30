@@ -1,0 +1,69 @@
+@import "tailwindcss";
+
+/* Carnet d'adresses en cuir sombre : fond brun chaud, papier pour le texte,
+   ocre des onglets alphabétiques comme seule couleur d'accent. */
+@theme {
+  --color-cuir: #1c1715;        /* fond */
+  --color-reliure: #241e1b;     /* surfaces */
+  --color-couture: #3a302b;     /* filets, bordures */
+  --color-tranche: #4d413a;     /* bordures actives */
+  --color-papier: #efe6d8;      /* texte principal */
+  --color-mine: #a99b8b;        /* texte secondaire */
+  --color-onglet: #d9a441;      /* accent : onglets, sélection */
+  --color-onglet-sombre: #3b2f17;
+  --color-valide: #8fbf8f;      /* vérifié */
+  --color-alerte: #e57373;      /* erreur */
+
+  --font-sans: "Instrument Sans Variable", system-ui, sans-serif;
+  --font-livre: "Spectral", Georgia, serif;
+}
+
+@layer base {
+  html { color-scheme: dark; }
+  body {
+    background: var(--color-cuir);
+    color: var(--color-papier);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible { outline: 2px solid var(--color-onglet); outline-offset: 2px; }
+  input, select, textarea {
+    background: var(--color-cuir);
+    border: 1px solid var(--color-couture);
+    border-radius: 6px;
+    padding: 0.35rem 0.55rem;
+    color: var(--color-papier);
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--color-onglet); outline: none; }
+  kbd {
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    padding: 0 0.35rem;
+    border: 1px solid var(--color-tranche);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    color: var(--color-mine);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+  }
+}
+
+@layer components {
+  .bouton {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.45rem 0.9rem; border-radius: 6px;
+    border: 1px solid var(--color-tranche);
+    color: var(--color-papier); font-weight: 500;
+  }
+  .bouton:hover { border-color: var(--color-mine); }
+  .bouton:disabled { opacity: 0.45; cursor: not-allowed; }
+  .bouton-principal {
+    background: var(--color-onglet); border-color: var(--color-onglet);
+    color: #23190a; font-weight: 600;
+  }
+  .bouton-principal:hover { background: #e6b354; border-color: #e6b354; }
+  .titre { font-family: var(--font-livre); font-weight: 600; letter-spacing: -0.01em; }
+}
