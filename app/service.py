@@ -1093,6 +1093,12 @@ class Carnet:
                     bilan["conflits"].append(a["nom"])
                 except ErreurICloud as exc:
                     bilan["erreurs"].append(f"{a['nom']} : {exc}")
+                    if a.get("texte"):
+                        # Carte refusée gardée pour le diagnostic (dossier archives/icloud-refus)
+                        refus = self.cfg.archives / "icloud-refus"
+                        refus.mkdir(exist_ok=True)
+                        nom_f = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in a["nom"])[:60]
+                        (refus / f"{quand:%Y-%m-%d_%H%M%S}_{nom_f}.vcf").write_text(a["texte"], encoding="utf-8")
                     if "refuse la connexion" in str(exc):
                         break
                 self._tache["fait"] += 1
