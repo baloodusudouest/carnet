@@ -207,11 +207,19 @@
     })
   }
 
+  // Famille, Amis, Jardin secret : un portable français (+33 6, +33 7) est toujours « mobile »
+  const PROCHES = ['Famille', 'Amis', 'Jardin secret']
+  function regleProches() {
+    if (!fiche.groupes.some((g) => PROCHES.includes(g))) return
+    for (const t of fiche.telephones) if (/^\+33[67]/.test(t.valeur) && t.type !== 'mobile') t.type = 'mobile'
+  }
+
   function basculerGroupe(groupe) {
     const g = fiche.groupes
     const i = g.indexOf(groupe)
     if (i >= 0) g.splice(i, 1)
     else g.push(groupe)
+    regleProches()
   }
 
   async function editer(i = actif) {

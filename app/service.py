@@ -18,7 +18,7 @@ from .config import Config
 from .db import Base
 from .modele import (GROUPE_A_CLASSER, GROUPE_URGENCE, GROUPES_TRAVAIL, LIBELLES_SOURCES,
                      completer, nom_affiche)
-from .normalisation import (ValeurInvalide, cle_texte, domaine_pro, type_pro_attendu, nettoyer, normaliser_fiche,
+from .normalisation import (ValeurInvalide, cle_texte, domaine_pro, regle_proches, type_pro_attendu, nettoyer, normaliser_fiche,
                             societe_depuis_domaine)
 from .sources import detecter_source, lire_texte, linkedin, outlook, vcard
 
@@ -291,7 +291,7 @@ class Carnet:
         """Ce que l'utilisateur voit : brouillon en cours, sinon fiche validée, sinon proposition."""
         for colonne in ("brouillon", "fiche"):
             if ligne[colonne]:
-                return completer(json.loads(ligne[colonne]))
+                return regle_proches(completer(json.loads(ligne[colonne])))
         return fusion.proposer(sources)
 
     def dossier(self, pid: str) -> dict:
@@ -457,7 +457,7 @@ class Carnet:
                     "courriel": f["courriels"][0]["valeur"] if f["courriels"] else "", **extra}
 
         confirmes = set(self.base.etat("telephones_confirmes", []))
-        sections = {k: [] for k in ("anniversaires", "portables_proches", "bureau_travail", "societes",
+        sections = {k: [] for k in ("anniversaires", "bureau_travail", "societes",
                                     "travail_a_classer",
                                     "urgence_sans_mobile",
                                     "sans_groupe", "numeros_non_reconnus", "injoignables")}
@@ -465,12 +465,6 @@ class Carnet:
             groupes = set(f["groupes"])
             if groupes & {"Famille", "Amis"} and not f["anniversaire"]:
                 sections["anniversaires"].append(resume(pid, f))
-            if groupes & {"Famille", "Amis"}:
-                # Portables (+33 6 / +33 7) d'un proche : son mobile perso ou celui du travail ?
-                for t in f["telephones"]:
-                    if t["valeur"].startswith(("+336", "+337")) and f"{pid}|{t['valeur']}" not in confirmes:
-                        sections["portables_proches"].append(
-                            resume(pid, f, numero=t["valeur"], affichage=t.get("affichage"), type=t["type"]))
             if groupes & set(GROUPES_TRAVAIL + [GROUPE_A_CLASSER]) and not f["societe"]:
                 proposition, origine = self._proposer_societe(f, par_domaine)
                 sections["societes"].append(resume(pid, f, proposition=proposition, origine=origine))
@@ -622,7 +616,7 @@ class Carnet:
     def _verifiees(self, groupe: str | None = None) -> list[tuple[str, dict, list[dict]]]:
         res = []
         for p in self.base.lire("SELECT * FROM personnes WHERE statut = 'verifie' AND fiche IS NOT NULL"):
-            fiche = completer(json.loads(p["fiche"]))
+            fiche = regle_proches(completer(json.loads(p["fiche"])))
             if groupe and groupe not in fiche["groupes"]:
                 continue
             res.append((p["id"], fiche, self._sources_de(p["id"])))
