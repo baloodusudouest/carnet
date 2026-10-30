@@ -260,6 +260,39 @@
     }
   }
 
+  // Mettre de côté : le contact quitte la file, l'export et le kit ; un nouvel import ne le ramène pas
+  async function ecarter() {
+    if (occupe || !dossier) return
+    occupe = true
+    clearTimeout(minuteur)
+    try {
+      await enVol
+      const nom = [fiche.prenom, fiche.nom].filter(Boolean).join(' ') || fiche.societe || 'Ce contact'
+      await api.post(`/api/personnes/${dossier.id}/ecarter`)
+      chargeLe = JSON.stringify(fiche)
+      const pos = position
+      await chargerFile()
+      annoncer(`${nom} est mis de côté. Tu le retrouves dans Contacts, filtre « Mis de côté ».`)
+      const suivant = file[Math.max(0, Math.min(pos < 0 ? 0 : pos, file.length - 1))]
+      if (suivant) aller('revision', suivant.id)
+      else { dossier = null; aller('revision') }
+    } catch (e) {
+      annoncer(e.message, true)
+    } finally {
+      occupe = false
+    }
+  }
+
+  async function restaurer() {
+    try {
+      dossier = await api.post(`/api/personnes/${dossier.id}/restaurer`)
+      await chargerFile()
+      annoncer('Contact remis en révision.')
+    } catch (e) {
+      annoncer(e.message, true)
+    }
+  }
+
   function deplacer(sens) {
     if (!file.length) return
     const pos = position < 0 ? (sens > 0 ? -1 : 0) : position
@@ -334,6 +367,7 @@
     else if (k === 'e') editer()
     else if (k === '?') aideOuverte = !aideOuverte
     else if (k === 'm') fusionOuverte = true
+    else if (k === 'x') ecarter()
     else if (k in RACCOURCIS_GROUPES) basculerGroupe(RACCOURCIS_GROUPES[k])
     else if (/^[1-9]$/.test(k) && ligne) {
       const c = Number(k) - 1
@@ -394,6 +428,9 @@
       {#if dossier.statut === 'verifie'}
         <span class="text-sm rounded-full border border-valide/50 text-valide px-2.5 py-0.5">Vérifié le {dateCourte(dossier.verifie_le)}</span>
       {/if}
+      {#if dossier.statut === 'ecarte'}
+        <span class="text-sm rounded-full border border-alerte/60 text-alerte px-2.5 py-0.5">Mis de côté : ni exporté, ni renvoyé</span>
+      {/if}
       {#if dossier.statut === 'verifie' && dossier.brouillon}
         <span class="text-sm rounded-full border border-onglet/60 text-onglet px-2.5 py-0.5">Modifications pas encore validées : l'export garde l'ancienne version</span>
       {/if}
@@ -407,6 +444,12 @@
     <div class="ml-auto flex gap-2">
       <button class="bouton" onclick={() => deplacer(-1)} title="Précédent (←)">Précédent</button>
       <button class="bouton" onclick={() => deplacer(1)} title="Passer (→)">Passer</button>
+      {#if dossier.statut === 'ecarte'}
+        <button class="bouton" onclick={restaurer}>Remettre en révision</button>
+      {:else}
+        <button class="bouton hover:!border-alerte hover:text-alerte" onclick={ecarter} disabled={occupe}
+          title="Le contact ne sera ni exporté ni renvoyé, même après un nouvel import (X)">Mettre de côté</button>
+      {/if}
       <button class="bouton bouton-principal" onclick={valider} disabled={occupe} title="Valider (Entrée)">
         Valider la fiche
       </button>

@@ -477,3 +477,22 @@ def test_deux_portables_des_proches(client):
     assert c.get("/api/revue").json()["deux_portables"] == []
     types = {t["valeur"]: t["type"] for t in c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["telephones"]}
     assert types["+33781234567"] == "travail" and types["+33612345678"] == "mobile"
+
+
+def test_mettre_de_cote(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    plombier = _personne(c, "Plomberie")
+    d = c.post(f"/api/personnes/{plombier['id']}/ecarter").json()
+    assert d["statut"] == "ecarte"
+    assert plombier["id"] not in [p["id"] for p in c.get("/api/file").json()]
+    st = c.get("/status").json()
+    assert st["total"] == 2 and st["ecartes"] == 1
+    # un nouvel export contenant la même fiche ne le ramène pas
+    nouveau = (DONNEES / "icloud.vcf").read_text().replace("0553445566", "05 53 44 55 67")
+    r = c.post("/api/depot", files=[("fichiers", ("icloud-2.vcf", nouveau.encode()))]).json()
+    c.post("/api/importer", json={"nom": r[0]["nom"], "source": "icloud"})
+    assert c.get(f"/api/personnes/{plombier['id']}").json()["statut"] == "ecarte"
+    d = c.post(f"/api/personnes/{plombier['id']}/restaurer").json()
+    assert d["statut"] == "a_reviser"

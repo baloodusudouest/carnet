@@ -199,6 +199,16 @@ def enregistrer(pid: str, corps: Enregistrement):
     return carnet().enregistrer(pid, corps.fiche, corps.valider)
 
 
+@app.post("/api/personnes/{pid}/ecarter")
+def ecarter(pid: str):
+    return carnet().ecarter(pid)
+
+
+@app.post("/api/personnes/{pid}/restaurer")
+def restaurer(pid: str):
+    return carnet().restaurer(pid)
+
+
 @app.post("/api/personnes/{pid}/rouvrir")
 def rouvrir(pid: str):
     return carnet().rouvrir(pid)
