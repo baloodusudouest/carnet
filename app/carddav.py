@@ -12,7 +12,11 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
 
+import logging
+
 import httpx
+
+log = logging.getLogger("carnet")
 
 D, C = "DAV:", "urn:ietf:params:xml:ns:carddav"
 PAQUET = 100
@@ -65,7 +69,11 @@ class CardDAV:
         if r.status_code == 412:
             raise Conflit("Carte modifiée dans iCloud depuis la lecture.")
         if r.status_code >= 400:
-            raise ErreurICloud(f"iCloud a répondu {r.status_code} à {methode} {urlsplit(url).path}.")
+            # Le motif donné par iCloud (souvent un XML court) est gardé pour le diagnostic
+            motif = " ".join(r.text.split())[:300] if r.text else ""
+            log.warning("iCloud %s %s → %s %s", methode, urlsplit(url).path, r.status_code, motif)
+            raise ErreurICloud(f"iCloud a répondu {r.status_code} à {methode} {urlsplit(url).path}"
+                               + (f" ({motif})" if motif else "") + ".")
         return r
 
     def _propfind(self, url: str, props: str, profondeur: int) -> list[tuple[str, ET.Element]]:
