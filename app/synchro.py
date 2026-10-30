@@ -18,6 +18,8 @@ from .export import echapper, plier
 # Propriétés écrites par carnet : remplacées à chaque écriture
 GEREES = {"N", "FN", "NICKNAME", "ORG", "TITLE", "BDAY", "TEL", "EMAIL", "ADR", "URL", "X-SOCIALPROFILE",
           "X-ABRELATEDNAMES", "NOTE", "CATEGORIES", "PHOTO", "IMPP", "X-ABSHOWAS"}
+# Repères qu'iCloud ajoute à côté de la photo (elle n'est alors pas incluse dans la carte)
+PHOTO_ANNEXES = {"X-IMAGETYPE", "X-IMAGEHASH"}
 # Propriétés d'enveloppe : réécrites
 ENVELOPPE = {"BEGIN", "END", "VERSION", "PRODID", "UID", "REV"}
 GROUPE_MEMBRE = "X-ADDRESSBOOKSERVER-MEMBER"
@@ -76,15 +78,23 @@ def analyser(href: str, etag: str, texte: str) -> Carte:
     return c
 
 
+def _apple(nom: str, valeur: str) -> bool:
+    """Profil iMessage / FaceTime (x-apple:) : carnet ne le lit pas, il porte le nom et la photo
+    partagés par le contact. Il est toujours gardé."""
+    return nom in ("X-SOCIALPROFILE", "IMPP") and "x-apple:" in valeur.lower()
+
+
 def _conservees(distante: str, gerees: set[str] = GEREES) -> list[str]:
     """Lignes de la carte iCloud que carnet ne gère pas. Un groupe « itemN. » est gardé en
     entier ou retiré en entier (une étiquette X-ABLabel suit sa propriété)."""
     lignes = deplier(distante)
-    retires = {g for g, nom, _ in map(_decouper, lignes) if g and nom in gerees}
+    retires = {g for g, nom, v in map(_decouper, lignes) if g and nom in gerees and not _apple(nom, v)}
     gardees = []
     for ligne in lignes:
-        g, nom, _ = _decouper(ligne)
-        if g:
+        g, nom, valeur = _decouper(ligne)
+        if _apple(nom, valeur):
+            gardees.append(ligne)
+        elif g:
             if g not in retires:
                 gardees.append(ligne)
         elif nom not in gerees and nom not in ENVELOPPE:
@@ -111,7 +121,10 @@ def assembler(nouvelle: str, distante: str | None) -> str:
     Sans photo dans carnet, celle d'iCloud est gardée (jamais de photo perdue en silence)."""
     lignes = [l for l in deplier(nouvelle) if _decouper(l)[1] not in ("CATEGORIES", "END")]
     if distante:
-        gerees = GEREES if any(_decouper(l)[1] == "PHOTO" for l in lignes) else GEREES - {"PHOTO"}
+        # Avec une photo écrite par carnet, les repères de l'ancienne image (X-IMAGEHASH…) sont
+        # retirés : iCloud les recalcule. Sans photo, tout ce qui concerne celle d'iCloud reste.
+        gerees = GEREES | PHOTO_ANNEXES if any(_decouper(l)[1] == "PHOTO" for l in lignes) \
+            else GEREES - {"PHOTO"}
         items = [int(m) for l in lignes if (m := (re.match(r"item(\d+)\.", l) or [None, None])[1])]
         lignes += _renumeroter(_conservees(distante, gerees), max(items, default=0) + 1)
     lignes.append("END:VCARD")
@@ -172,3 +185,8 @@ def photo(texte: str) -> tuple[str, object] | None:
             return None
         return ("image", (donnees, type_image(donnees))) if donnees else None
     return None
+
+
+def a_une_photo(texte: str | None) -> bool:
+    """La carte iCloud a une photo, incluse ou seulement signalée (X-IMAGEHASH)."""
+    return bool(texte) and any(_decouper(l)[1] in ({"PHOTO"} | PHOTO_ANNEXES) for l in deplier(texte))
