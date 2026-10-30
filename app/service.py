@@ -868,14 +868,24 @@ class Carnet:
             connus.add(l["uid"])
             if l["personne_id"]:
                 uids_de[l["personne_id"]].append(l["uid"])
+        # Fiches iCloud dont l'UID n'est pas celui des exports importés (export fait depuis l'iPhone
+        # ou le Mac, sans UID ou avec un autre) : reconnues par leur contenu
+        orphelines = [c for c in contacts.values() if c.uid not in connus and not c.uid.startswith("carnet-")]
+        reconnues = self._reconnaitre(orphelines)
+        par_contenu: dict[str, list[str]] = defaultdict(list)
+        for u, (pid_r, exacte) in reconnues.items():
+            par_contenu[pid_r].append(u)
+            connus.add(u)
 
         actions, essai, cibles = [], None, {}
         membres: dict[str, set[str]] = defaultdict(set)
         a_supprimer: dict[str, dict] = {}
         for pid, fiche, sources in self._verifiees():
-            candidats = list(dict.fromkeys(([suivi[pid]["uid"]] if pid in suivi else []) + uids_de[pid]))
+            # Fiche d'origine d'abord : une fiche « carnet-… » en double est retirée au profit de l'originale
+            candidats = list(dict.fromkeys(uids_de[pid] + par_contenu[pid]
+                                           + ([suivi[pid]["uid"]] if pid in suivi else []) + [f"carnet-{pid}"]))
             presents = [u for u in candidats if u in contacts]
-            uid = presents[0] if presents else (candidats[0] if candidats else f"carnet-{pid}")
+            uid = presents[0] if presents else (uids_de[pid][0] if uids_de[pid] else f"carnet-{pid}")
             cibles[pid] = uid
             distante = contacts.get(uid)
             image = self.photo(fiche["photo"]) if fiche.get("photo") else self._photo_icloud(uid, distante, dav)
@@ -907,12 +917,14 @@ class Carnet:
                 d = contacts[u]
                 a_supprimer[u] = {"cible": "contact", "action": "supprimer", "pid": pid, "uid": u,
                                   "nom": d.nom or nom, "href": d.href, "etag": d.etag,
-                                  "motif": f"doublon, fusionné dans {nom}"}
+                                  "motif": "doublon créé par carnet, la fiche d'origine est gardée"
+                                  if u.startswith("carnet-") else f"doublon, fusionné dans {nom}"}
             for g in fiche["groupes"]:
                 membres[g].add(uid)
         gardes = set(cibles.values())
         for p in self.base.lire("SELECT id FROM personnes WHERE statut = 'ecarte'"):
-            for u in uids_de[p["id"]] + ([suivi[p["id"]]["uid"]] if p["id"] in suivi else []):
+            exactes = [u for u in par_contenu[p["id"]] if reconnues[u][1]]  # jamais sur une ressemblance
+            for u in uids_de[p["id"]] + exactes + ([suivi[p["id"]]["uid"]] if p["id"] in suivi else []):
                 if u in contacts and u not in gardes:
                     d = contacts[u]
                     a_supprimer[u] = {"cible": "contact", "action": "supprimer", "pid": p["id"], "uid": u,
@@ -964,12 +976,48 @@ class Carnet:
             "inconnus": [c.nom or "(sans nom)" for c in inconnus], "groupes_non_geres": sorted(non_geres),
             "identiques": len(cibles) - len(noms("creer")) - len(noms("modifier")),
             "essai": essai["nom"] if essai else None,
+            "reconnues": len(reconnues),
         }
+        nb_creer, nb_verifies = len(resume["creer"]), len(cibles)
+        if nb_creer > 10 and nb_creer > nb_verifies // 10:
+            resume["alerte"] = (f"{nb_creer} contacts seraient créés dans iCloud. Vérifie qu'ils n'y sont pas déjà : "
+                                "s'ils y sont, ils apparaîtraient en double.")
         essai_groupe = next((g for g in groupes if g["nom"] == GROUPE_MOI and g["action"] != "supprimer"), None)
         return {"instant": time.monotonic(), "actions": actions, "essai": essai, "essai_groupe": essai_groupe,
                 "inconnus": inconnus,
                 "sauvegarde": "".join(c.texte if c.texte.endswith("\n") else c.texte + "\r\n" for c in cartes),
                 "resume": resume}
+
+    def _reconnaitre(self, cartes: list[synchro.Carte]) -> dict[str, tuple[str, bool]]:
+        """UID iCloud → (contact carnet, reconnu à l'identique ?). Contenu identique à une fiche
+        importée (hors photo), sinon même mobile, même courriel ou même nom, avec un seul candidat."""
+        if not cartes:
+            return {}
+        par_empreinte: dict[str, set[str]] = defaultdict(set)
+        signatures = []
+        for l in self.base.lire("SELECT id, personne_id, donnees FROM sources "
+                                "WHERE personne_id IS NOT NULL AND enrichissement = 0"):
+            d = json.loads(l["donnees"])
+            par_empreinte[_empreinte(d, None)].add(l["personne_id"])
+            signatures.append((l["personne_id"], doublons.signature(l["id"], d)))
+        res: dict[str, tuple[str, bool]] = {}
+        for c in cartes:
+            try:
+                lues, _ = vcard.lire(c.texte, self.cfg.region)
+            except Exception:  # noqa: BLE001 — carte illisible : laissée de côté
+                continue
+            if not lues:
+                continue
+            fiche = lues[0].fiche
+            pids = par_empreinte.get(_empreinte(fiche, None), set())
+            if len(pids) == 1:
+                res[c.uid] = (next(iter(pids)), True)
+                continue
+            sig = doublons.signature(0, fiche)
+            proches = {pid for pid, s in signatures if doublons.comparer(sig, s)[0] >= 85}
+            if len(proches) == 1:
+                res[c.uid] = (next(iter(proches)), False)
+        return res
 
     def _photos_sauvegardees(self) -> dict[str, str]:
         """Dernière photo connue de chaque UID dans les sauvegardes iCloud (la plus récente gagne)."""
