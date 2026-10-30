@@ -26,6 +26,11 @@ GROUPE_MEMBRE = "X-ADDRESSBOOKSERVER-MEMBER"
 _NOM = re.compile(r"^(?:(?P<groupe>[A-Za-z0-9-]+)\.)?(?P<nom>[A-Za-z0-9-]+)")
 
 
+# iCloud colle parfois une propriété à la fin de la précédente, sans retour à la ligne
+# (« …x-apple:+3361234X-SHARED-PHOTO-DISPLAY-PREF:ALWAYS_ASK ») : elle est remise sur sa ligne
+_COLLEES = re.compile(r"(?<=\S)(?=(?:X-SHARED-PHOTO-DISPLAY-PREF|VND-\d+-[A-Z0-9-]+)[;:])")
+
+
 def deplier(texte: str) -> list[str]:
     lignes: list[str] = []
     for brute in texte.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
@@ -33,7 +38,10 @@ def deplier(texte: str) -> list[str]:
             lignes[-1] += brute[1:]
         elif brute.strip():
             lignes.append(brute)
-    return lignes
+    res: list[str] = []
+    for ligne in lignes:
+        res.extend(x for x in _COLLEES.split(ligne) if x)
+    return res
 
 
 def _decouper(ligne: str) -> tuple[str | None, str, str]:
