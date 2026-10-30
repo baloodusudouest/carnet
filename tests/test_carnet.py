@@ -613,3 +613,20 @@ def test_regles_tous_pays():
     g = n.normaliser_fiche({"prenom": "Lies", "groupes": ["Amis"],
                             "telephones": [{"valeur": "+32 479 12 34 56", "type": "travail"}]})
     assert g["telephones"][0]["type"] == "mobile"
+
+
+def test_revue_numeros_internationaux(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    claire = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    f["groupes"] = ["Collègues"]
+    f["telephones"] += [{"valeur": "+1 202 555 0123", "type": "autre"}, {"valeur": "+32 479 12 34 56", "type": "autre"}]
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})
+    r = {x["numero"]: x["detectee"] for x in c.get("/api/revue").json()["numeros_internationaux"]}
+    assert r == {"+12025550123": None, "+32479123456": "mobile"}
+    c.post(f"/api/personnes/{claire['id']}/retoucher", json={"natures": {"+12025550123": "mobile", "+32479123456": "mobile"}})
+    assert c.get("/api/revue").json()["numeros_internationaux"] == []
+    types = {t["valeur"]: t["type"] for t in c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["telephones"]}
+    assert types["+12025550123"] == "travail"          # collègue + mobile confirmé → travail
