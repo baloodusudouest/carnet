@@ -59,9 +59,11 @@
   async function importerLinkedin(parCode = false) {
     enCours = 'linkedin'
     try {
-      const r = parCode
-        ? await api.post('/api/linkedin/code', { adresse: adresseRetour })
-        : await api.post('/api/linkedin', { jeton: jetonLinkedin })
+      const r = parCode === 'reessayer'
+        ? await api.post('/api/linkedin/reessayer')
+        : parCode
+          ? await api.post('/api/linkedin/code', { adresse: adresseRetour })
+          : await api.post('/api/linkedin', { jeton: jetonLinkedin })
       adresseRetour = ''
       bilan = { nom: 'Relations LinkedIn (API)', ...r }
       jetonLinkedin = ''
@@ -70,6 +72,7 @@
       annoncer(e.message, true)
     } finally {
       enCours = null
+      linkedin = await api.get('/api/linkedin/etat')
     }
   }
 
@@ -103,6 +106,12 @@
 
     <details class="mt-4 rounded-xl border border-couture bg-reliure px-5 py-3">
       <summary class="cursor-pointer text-sm">LinkedIn sans archive : relations lues par l'API de portabilité</summary>
+      {#if linkedin.en_attente}
+        <p class="text-sm mt-2 rounded-md border border-onglet/60 px-3 py-2">Connexion LinkedIn faite : les données
+          sont en préparation chez LinkedIn (environ 30 minutes après la première autorisation).
+          <button class="bouton !py-1 ml-2" disabled={enCours !== null} onclick={() => importerLinkedin('reessayer')}>
+            {enCours === 'linkedin' ? 'Lecture…' : 'Réessayer'}</button></p>
+      {/if}
       {#if linkedin.oauth}
         <ol class="text-sm text-mine mt-2 list-decimal pl-5 space-y-2">
           <li><button class="bouton !py-1" onclick={connecterLinkedin}>Se connecter à LinkedIn</button>
