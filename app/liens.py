@@ -78,27 +78,49 @@ class Immich:
 
 
 class Treemich:
+    """Une seule session, réutilisée : Treemich limite fortement le nombre de connexions."""
+
     def __init__(self, url: str, courriel: str, mot_de_passe: str, transport: httpx.BaseTransport | None = None):
         if not url or not courriel or not mot_de_passe:
             raise ErreurLien("Treemich n'est pas configuré : renseigne CARNET_TREEMICH_EMAIL et "
                              "CARNET_TREEMICH_PASSWORD dans la stack.")
         self.api = url.rstrip("/")
+        self._identifiants = {"email": courriel, "password": mot_de_passe}
         self.client = _client(transport)
+        self.connecte = False
+
+    def _connecter(self) -> None:
         try:
-            r = self.client.post(self.api + "/auth/login", json={"email": courriel, "password": mot_de_passe})
+            r = self.client.post(self.api + "/auth/login", json=self._identifiants)
         except httpx.HTTPError as exc:
             raise ErreurLien(f"Treemich injoignable ({exc.__class__.__name__}).") from exc
+        if r.status_code == 429:
+            raise ErreurLien("Treemich limite le nombre de connexions : réessaie dans quelques minutes.")
         if r.status_code >= 400:
             raise ErreurLien("Treemich refuse la connexion : vérifie le courriel et le mot de passe.")
+        self.connecte = True
 
     def fermer(self) -> None:
-        self.client.close()
+        """Rien : la session reste ouverte pour les appels suivants."""
+
+    def _appel(self, methode: str, chemin: str, **kw) -> httpx.Response:
+        for essai in range(2):
+            if not self.connecte:
+                self._connecter()
+            try:
+                r = self.client.request(methode, self.api + chemin, **kw)
+            except httpx.HTTPError as exc:
+                raise ErreurLien(f"Treemich injoignable ({exc.__class__.__name__}).") from exc
+            if r.status_code == 401 and essai == 0:  # session expirée : une reconnexion
+                self.connecte = False
+                continue
+            if r.status_code == 429:
+                raise ErreurLien("Treemich limite le nombre de requêtes : réessaie dans quelques minutes.")
+            return r
+        return r
 
     def _get(self, chemin: str, **params) -> dict:
-        try:
-            r = self.client.get(self.api + chemin, params=params or None)
-        except httpx.HTTPError as exc:
-            raise ErreurLien(f"Treemich injoignable ({exc.__class__.__name__}).") from exc
+        r = self._appel("GET", chemin, params=params or None)
         if r.status_code >= 400:
             raise ErreurLien(f"Treemich a répondu {r.status_code} à {chemin}.")
         return r.json()
@@ -131,18 +153,12 @@ class Treemich:
     def renommer(self, pid: str, prenom: str, nom: str) -> None:
         corps = {"givenName": prenom or None, "surname": nom or None,
                  "displayNameOverride": " ".join(x for x in (prenom, nom) if x) or None}
-        try:
-            r = self.client.patch(f"{self.api}/people/{pid}", json=corps)
-        except httpx.HTTPError as exc:
-            raise ErreurLien(f"Treemich injoignable ({exc.__class__.__name__}).") from exc
+        r = self._appel("PATCH", f"/people/{pid}", json=corps)
         if r.status_code >= 400:
             raise ErreurLien(f"Treemich a refusé le nouveau nom ({r.status_code}).")
 
     def maj_naissance(self, pid: str, date: str) -> None:
-        try:
-            r = self.client.patch(f"{self.api}/people/{pid}", json={"birthDate": date})
-        except httpx.HTTPError as exc:
-            raise ErreurLien(f"Treemich injoignable ({exc.__class__.__name__}).") from exc
+        r = self._appel("PATCH", f"/people/{pid}", json={"birthDate": date})
         if r.status_code >= 400:
             raise ErreurLien(f"Treemich a refusé la date de naissance ({r.status_code}).")
 

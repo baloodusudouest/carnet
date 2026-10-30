@@ -18,6 +18,8 @@ from .auth import COOKIE, Sessions
 from .db import Base
 from .normalisation import configurer_emojis
 from .modele import GROUPE_VERIFIES, LIBELLES_SOURCES, TYPES, groupes_tous, regles_groupes
+from .carddav import ErreurICloud
+from .liens import ErreurLien
 from .service import Carnet, ErreurCarnet
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -100,6 +102,16 @@ async def garde(request: Request, call_next):
 
 @app.exception_handler(ErreurCarnet)
 async def erreur_carnet(_: Request, exc: ErreurCarnet):
+    return JSONResponse({"detail": str(exc)}, status_code=400)
+
+
+@app.exception_handler(ErreurLien)
+async def erreur_lien(_: Request, exc: ErreurLien):
+    return JSONResponse({"detail": str(exc)}, status_code=400)
+
+
+@app.exception_handler(ErreurICloud)
+async def erreur_icloud(_: Request, exc: ErreurICloud):
     return JSONResponse({"detail": str(exc)}, status_code=400)
 
 

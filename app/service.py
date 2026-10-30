@@ -1494,8 +1494,14 @@ class Carnet:
         return Immich(self.cfg.immich_url, self.cfg.immich_cle, transport=getattr(self, "transport_immich", None))
 
     def _treemich(self) -> Treemich:
-        return Treemich(self.cfg.treemich_url, self.cfg.treemich_email, self.cfg.treemich_password,
-                        transport=getattr(self, "transport_treemich", None))
+        """Session Treemich gardée entre les appels (connexions limitées par Treemich)."""
+        cle = (self.cfg.treemich_url, self.cfg.treemich_email, self.cfg.treemich_password,
+               id(getattr(self, "transport_treemich", None)))
+        if getattr(self, "_session_treemich", (None, None))[0] != cle:
+            self._session_treemich = (cle, Treemich(self.cfg.treemich_url, self.cfg.treemich_email,
+                                                    self.cfg.treemich_password,
+                                                    transport=getattr(self, "transport_treemich", None)))
+        return self._session_treemich[1]
 
     def _donnees_liens(self, rafraichir: bool = False) -> dict:
         """Personnes Immich et Treemich (gardées 10 minutes en mémoire)."""
