@@ -985,7 +985,8 @@ class Carnet:
         essai_groupe = next((g for g in groupes if g["nom"] == GROUPE_MOI and g["action"] != "supprimer"), None)
         return {"instant": time.monotonic(), "actions": actions, "essai": essai, "essai_groupe": essai_groupe,
                 "inconnus": inconnus,
-                "sauvegarde": "".join(c.texte if c.texte.endswith("\n") else c.texte + "\r\n" for c in cartes),
+                "sauvegarde": "".join((c.brut or c.texte) if (c.brut or c.texte).endswith("\n")
+                                      else (c.brut or c.texte) + "\r\n" for c in cartes),
                 "resume": resume}
 
     def _reconnaitre(self, cartes: list[synchro.Carte]) -> dict[str, tuple[str, bool]]:

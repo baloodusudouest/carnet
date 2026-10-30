@@ -868,3 +868,21 @@ def test_icloud_uid_differents(client, monkeypatch, tmp_path):
     _attendre(c)
     assert serveur.texte(f"carnet-{claire['id']}") is None and serveur.texte("CCCC-3333") is None
     assert "NOTE:vu à Agen" not in serveur.texte("BBBB-2222")      # mise à jour de l'original
+
+
+def test_icloud_cartes_abimees():
+    """iCloud colle des propriétés et renvoie du JSON sur plusieurs lignes : la carte est remise
+    en forme (UID propre, données Siri retirées) avant d'être réécrite."""
+    from app import synchro
+    brut = ("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Aurore\r\n"
+            "UID:17A05E05-5B40-4C87-A7D9-8C5E72723A57X-ADDRESSBOOKSERVER-PHONEME-DATA:{\r\n"
+            '  "nameChecksum" : 1816191416,\r\n"ttsData" : "o R O \r\n R"\r\n}\r\n],\r\n}\r\n'
+            "item2.X-ADDRESSING-GRAMMAR:abc\r\n"
+            "X-SOCIALPROFILE;x-user=+1:x-apple:+1X-SHARED-PHOTO-DISPLAY-PREF:ALWAYS_ASK\r\nEND:VCARD\r\n")
+    c = synchro.analyser("h", "e", brut)
+    assert c.uid == "17A05E05-5B40-4C87-A7D9-8C5E72723A57" and c.brut == brut
+    ecrite = synchro.assembler("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Aurore G\r\nUID:17A05E05-5B40-4C87-A7D9-8C5E72723A57\r\nEND:VCARD\r\n", c.texte)
+    assert "PHONEME" not in ecrite and "ttsData" not in ecrite and "}" not in ecrite
+    assert "item1.X-ADDRESSING-GRAMMAR:abc" in ecrite and "X-SHARED-PHOTO-DISPLAY-PREF:ALWAYS_ASK" in ecrite
+    groupe = synchro.carte_groupe("Amis", "g1", [c.uid])
+    assert "X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:17A05E05-5B40-4C87-A7D9-8C5E72723A57\r\n" in groupe
