@@ -459,3 +459,21 @@ def test_revue_bureau_travail(client):
     c.post(f"/api/personnes/{claire['id']}/retoucher", json={"telephone": "+33612345678", "type_telephone": "travail"})
     c.post(f"/api/personnes/{claire['id']}/retoucher", json={"telephone": "+33553000001", "type_telephone": "travail"})
     assert c.get("/api/revue").json()["bureau_travail"] == []   # le second est gardé tel quel
+
+
+def test_deux_portables_des_proches(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    claire = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    f["groupes"] = ["Amis"]
+    f["telephones"].append({"valeur": "07 81 23 45 67", "type": "autre"})
+    d = c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True}).json()
+    r = c.get("/api/revue").json()["deux_portables"]
+    assert [sorted(x["valeur"] for x in g["numeros"]) for g in r] == [["+33612345678", "+33781234567"]]
+    c.post(f"/api/personnes/{claire['id']}/retoucher",
+           json={"types": {"+33612345678": "mobile", "+33781234567": "travail"}})
+    assert c.get("/api/revue").json()["deux_portables"] == []
+    types = {t["valeur"]: t["type"] for t in c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["telephones"]}
+    assert types["+33781234567"] == "travail" and types["+33612345678"] == "mobile"

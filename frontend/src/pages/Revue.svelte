@@ -8,6 +8,8 @@
   const SECTIONS = [
     { cle: 'anniversaires', titre: 'Famille et amis sans anniversaire',
       aide: 'Saisis la date : 15/03/1985, 15 mars 1985, ou 15 mars si l’année est inconnue.' },
+    { cle: 'deux_portables', titre: 'Proches avec deux portables',
+      aide: 'Lequel est le portable du travail ? L’autre restera le mobile personnel.' },
     { cle: 'bureau_travail', titre: 'Bureau ou travail à corriger',
       aide: 'Règle : un fixe (+33 1 à 5, 8, 9) est « bureau », un portable (+33 6, +33 7) est « travail ».' },
     { cle: 'societes', titre: 'Collègues et clients sans société',
@@ -154,6 +156,21 @@
                       onkeydown={(e) => touche(e, () => retoucher(p, { anniversaire: annifs[p.id] ?? '' }, `Anniversaire de ${p.nom} enregistré.`))} />
                     <button class="bouton !py-1" disabled={!annifs[p.id] || occupe === p.id}
                       onclick={() => retoucher(p, { anniversaire: annifs[p.id] }, `Anniversaire de ${p.nom} enregistré.`)}>Enregistrer</button>
+
+                  {:else if s.cle === 'deux_portables'}
+                    <span class="flex flex-wrap gap-2 ml-auto">
+                      {#each p.numeros as num}
+                        <button class="bouton !py-1" disabled={occupe === p.id}
+                          title="Ce numéro devient « travail », les autres « mobile »"
+                          onclick={() => retoucher(p, { types: Object.fromEntries(p.numeros.map((x) => [x.valeur, x.valeur === num.valeur ? 'travail' : 'mobile'])) },
+                            `${num.affichage} : travail de ${p.nom}, l'autre en mobile.`)}>
+                          Travail : <span class="tabular-nums">{num.affichage}</span>
+                        </button>
+                      {/each}
+                      <button class="bouton !py-1" disabled={occupe === p.id}
+                        onclick={() => retoucher(p, { types: Object.fromEntries(p.numeros.map((x) => [x.valeur, 'mobile'])) },
+                          `Les portables de ${p.nom} sont tous personnels.`)}>Tous personnels</button>
+                    </span>
 
                   {:else if s.cle === 'bureau_travail'}
                     <span class="tabular-nums">{p.affichage}</span>
