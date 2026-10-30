@@ -141,7 +141,8 @@ class CardDAV:
         if self.nom_carnet:
             # Jamais de choix par défaut quand un nom est demandé : écrire dans un carnet partagé
             # (« Contacts de l'équipe ») effacerait les contacts des autres
-            choisi = next((u for n, u in carnets if n.casefold() == self.nom_carnet.casefold()), None)
+            voulus = [v.strip().casefold() for v in self.nom_carnet.split("|") if v.strip()]
+            choisi = next((u for v in voulus for n, u in carnets if n.casefold() == v), None)
             if not choisi:
                 raise ErreurICloud(f"Carnet d'adresses « {self.nom_carnet} » introuvable. Carnets du compte : "
                                    + ", ".join(f"« {n or '(sans nom)'} »" for n, _ in carnets) + ".")

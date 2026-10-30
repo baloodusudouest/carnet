@@ -20,7 +20,7 @@ services:
       - CARNET_LINKEDIN_CLIENT_SECRET=${CARNET_LINKEDIN_CLIENT_SECRET:-}   # secret de l'app LinkedIn
       - CARNET_SYNOLOGY_URL=${CARNET_SYNOLOGY_URL:-}             # CardDAV de Synology Contacts (copie de nuit)
       - CARNET_SYNOLOGY_PASSWORD=${CARNET_SYNOLOGY_PASSWORD:-}   # mot de passe du compte DSM « carnet »
-      - CARNET_SYNOLOGY_CARNET=${CARNET_SYNOLOGY_CARNET:-Mes contacts}   # carnet personnel, jamais celui de l'équipe
+      - CARNET_SYNOLOGY_CARNET=${CARNET_SYNOLOGY_CARNET:-My Contacts}   # carnet personnel, jamais celui de l'équipe
       - CARNET_SYNOLOGY_VERIFIER_TLS=${CARNET_SYNOLOGY_VERIFIER_TLS:-oui}   # « non » : HTTPS sur l'IP du NAS (réseau local)
       - LOG_LEVEL=INFO
     volumes:
