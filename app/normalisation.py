@@ -91,8 +91,9 @@ def telephone(brut: str, type_: str | None, region: str = "FR") -> dict | None:
             valeur += f";ext={num.extension}"
         affichage = phonenumbers.format_number(num, PhoneNumberFormat.INTERNATIONAL)
         if num.extension:
-            # Format compris par l'iPhone : la virgule est une pause de 2 s, puis le poste est composé
-            affichage = affichage.split(" ext.")[0] + f",{num.extension}"
+            # Format de l'iPhone : le point-virgule est une « attente » ; pendant l'appel, un bouton
+            # « Composer 123 » affiche le poste (utile si une opératrice répond)
+            affichage = affichage.split(" ext.")[0] + f";{num.extension}"
         return {
             "valeur": valeur,
             "type": type_ or ("mobile" if mobile else "autre"),
