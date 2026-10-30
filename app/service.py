@@ -1451,6 +1451,148 @@ class Carnet:
                 + (f", {entree['importes']} remis en révision." if entree["revision"] else " (mode journal)."))
             )
 
+    # ================================================================ sauvegarde de nuit (V3)
+
+    SEUIL_COUPE_CIRCUIT = 0.05   # au-delà de 5 % de fiches supprimées ou changées d'un coup : arrêt
+
+    def nuit(self) -> dict:
+        """Tâche de 3 h : veille iCloud, puis sauvegarde (export daté + copie Synology)."""
+        def travail():
+            if self.cfg.icloud_user and self.cfg.icloud_password:
+                self._veiller()
+            self._sauvegarder()
+        return self._lancer("veille", travail)
+
+    def sauvegarder(self) -> dict:
+        return self._lancer("sauvegarde", self._sauvegarder)
+
+    def _sauvegarder(self) -> None:
+        quand = maintenant()
+        entree = {"le": _iso(quand), "vcf": None, "contacts": 0, "synology": None, "erreur": None}
+        try:
+            personnes = self._verifiees()
+            entree["contacts"] = len(personnes)
+            # 1. Export daté, sans photos (léger) ; gardé CARNET_SAUVEGARDE_JOURS jours
+            dossier = self.cfg.archives / "sauvegardes"
+            dossier.mkdir(exist_ok=True)
+            nom = f"carnet-{quand:%Y-%m-%d}.vcf"
+            export.ecrire_atomique(dossier / nom, "".join(
+                export.vcard(f, f"carnet-{pid}", None) for pid, f, _ in personnes))
+            entree["vcf"] = nom
+            limite = (quand - timedelta(days=self.cfg.sauvegarde_jours)).timestamp()
+            for f in dossier.glob("carnet-*.vcf"):
+                if f.stat().st_mtime < limite:
+                    f.unlink(missing_ok=True)
+            # 2. Copie dans Synology Contacts
+            if self.cfg.synology_url:
+                self._tache["message"] = "Sauvegarde : copie dans Synology Contacts…"
+                entree["synology"] = self._copier_synology(personnes)
+        except (ErreurICloud, ErreurCarnet) as exc:
+            entree["erreur"] = str(exc)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Sauvegarde de nuit")
+            entree["erreur"] = f"Erreur inattendue : {exc}"
+        journal = [entree] + self.base.etat("sauvegarde_journal", [])
+        self.base.ecrire_etat("sauvegarde_journal", journal[:30])
+        syno = entree["synology"] or {}
+        if entree["erreur"]:
+            self._tache.update(etat="erreur", message=f"Sauvegarde : {entree['erreur']}")
+        else:
+            self._tache.update(etat="termine", message=(
+                f"Sauvegarde : {entree['contacts']} contacts dans {entree['vcf']}"
+                + (f" ; Synology : {syno['crees']} créé(s), {syno['modifies']} mis à jour, {syno['supprimes']} supprimé(s)."
+                   if syno else ".")))
+
+    def _copier_synology(self, personnes: list) -> dict:
+        """Synology Contacts à l'identique des fiches vérifiées et de leurs groupes. Arrêt sans
+        rien écrire si plus de 5 % des fiches déjà copiées seraient supprimées ou modifiées."""
+        dav = CardDAV(self.cfg.synology_url, self.cfg.synology_user, self.cfg.synology_password,
+                      transport=getattr(self, "transport_synology", None))
+        bilan = {"crees": 0, "modifies": 0, "supprimes": 0, "groupes": 0, "erreurs": []}
+        try:
+            distantes = {c.uid: c for c in (synchro.analyser(b.href, b.etag, b.texte) for b in dav.lister())}
+            voulues: dict[str, tuple[str, str]] = {}   # uid → (nom, texte)
+            membres: dict[str, list[str]] = defaultdict(list)
+            for pid, fiche, _ in personnes:
+                uid = f"carnet-{pid}"
+                image = self.photo(fiche["photo"]) if fiche.get("photo") else None
+                voulues[uid] = (nom_affiche(fiche), export.vcard(fiche, uid, image))
+                for g in fiche["groupes"]:
+                    membres[g].append(uid)
+            for g, uids in membres.items():
+                uid = f"carnet-groupe-{uuid.uuid5(uuid.NAMESPACE_URL, 'carnet:' + g)}"
+                voulues[uid] = (g, synchro.carte_groupe(g, uid, uids))
+            suivi = self.base.etat("synology_suivi", {})
+            actions = []
+            for uid, (nom, texte) in voulues.items():
+                d = distantes.get(uid)
+                emp = synchro.empreinte(texte)
+                if d is None:
+                    actions.append(("creer", uid, nom, texte, None, dav.href_nouveau(uid)))
+                elif not (suivi.get(uid, {}).get("etag") == d.etag and suivi[uid].get("empreinte") == emp) \
+                        and synchro.empreinte(d.texte) != emp:
+                    actions.append(("modifier", uid, nom, texte, d.etag, d.href))
+            for uid, d in distantes.items():
+                if uid not in voulues:
+                    actions.append(("supprimer", uid, d.nom, None, d.etag, d.href))
+            touches = sum(1 for a in actions if a[0] != "creer")
+            if distantes and touches > max(5, self.SEUIL_COUPE_CIRCUIT * len(distantes)):
+                raise ErreurCarnet(f"copie Synology bloquée : {touches} fiches sur {len(distantes)} seraient "
+                                   "modifiées ou supprimées d'un coup (plus de 5 %). Vérifie carnet, puis lance "
+                                   "« Forcer la copie » si c'est voulu.")
+            self._ecrire_synology(dav, actions, suivi, bilan)
+        finally:
+            dav.fermer()
+        return bilan
+
+    def forcer_synology(self) -> dict:
+        """Copie Synology sans coupe-circuit (après vérification par l'utilisateur)."""
+        def travail():
+            ancien, self.SEUIL_COUPE_CIRCUIT = self.SEUIL_COUPE_CIRCUIT, 10**9
+            try:
+                self._sauvegarder()
+            finally:
+                self.SEUIL_COUPE_CIRCUIT = ancien
+        return self._lancer("sauvegarde", travail)
+
+    def _ecrire_synology(self, dav: CardDAV, actions: list, suivi: dict, bilan: dict) -> None:
+        self._tache.update(total=len(actions), fait=0)
+        for action, uid, nom, texte, etag, href in actions:
+            try:
+                if action == "supprimer":
+                    dav.supprimer(href, etag)
+                    suivi.pop(uid, None)
+                    bilan["supprimes"] += 1
+                else:
+                    nouvel_etag = dav.ecrire(href, texte, etag)
+                    suivi[uid] = {"etag": nouvel_etag, "empreinte": synchro.empreinte(texte)}
+                    if uid.startswith("carnet-groupe-"):
+                        bilan["groupes"] += 1
+                    else:
+                        bilan["crees" if action == "creer" else "modifies"] += 1
+            except ErreurICloud as exc:
+                bilan["erreurs"].append(f"{nom} : {exc}")
+                if "refuse la connexion" in str(exc):
+                    break
+            self._tache["fait"] = self._tache.get("fait", 0) + 1
+        self.base.ecrire_etat("synology_suivi", suivi)
+
+    def sauvegardes(self) -> dict:
+        dossier = self.cfg.archives / "sauvegardes"
+        fichiers = sorted(dossier.glob("carnet-*.vcf"), reverse=True) if dossier.is_dir() else []
+        return {"synology": bool(self.cfg.synology_url), "jours": self.cfg.sauvegarde_jours,
+                "fichiers": [{"nom": f.name, "taille": f.stat().st_size} for f in fichiers],
+                "journal": self.base.etat("sauvegarde_journal", [])[:30]}
+
+    def _resume_sauvegarde(self) -> dict | None:
+        journal = self.base.etat("sauvegarde_journal", [])
+        if not journal:
+            return None
+        s = journal[0]
+        syno = s.get("synology") or {}
+        return {"le": s["le"], "ok": not s["erreur"] and not syno.get("erreurs"), "erreur": s["erreur"],
+                "contacts": s["contacts"], "synology": bool(syno)}
+
     # ================================================================ archives
 
     def archives(self) -> list[dict]:
@@ -1524,6 +1666,7 @@ class Carnet:
             "dernier_export": self.base.etat("dernier_export"),
             "dernier_envoi_kit": self.base.etat("dernier_envoi_kit"),
             "veille": self._resume_veille(),
+            "sauvegarde": self._resume_sauvegarde(),
             "derniere_ecriture_icloud": {k: v for k, v in (self.base.etat("derniere_ecriture_icloud") or {}).items()
                                          if k in ("le", "essai", "crees", "modifies", "supprimes", "groupes")} or None,
         }

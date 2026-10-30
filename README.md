@@ -33,6 +33,10 @@ LinkedIn complète des contacts existants (société, poste, profil) mais n'en c
    - les contacts créés dans iCloud sans carnet sont importés pour révision ;
    - les contacts encore à réviser ne sont pas touchés.
 
+### Sauvegarde de nuit (V3)
+
+Après la veille, carnet écrit `archives/sauvegardes/carnet-AAAA-MM-JJ.vcf` (contacts vérifiés, sans photos, gardé 30 jours) puis recopie à l'identique les contacts vérifiés et leurs groupes dans Synology Contacts. Si plus de 5 % des fiches déjà copiées devaient être supprimées ou modifiées d'un coup, la copie s'arrête sans rien écrire (bouton « Forcer la copie » dans l'onglet Export et kit) et Home Assistant alerte.
+
 ### Veille de l'iPhone (V3)
 
 Chaque nuit (`CARNET_VEILLE_HEURE`, 03:00 par défaut), carnet relit iCloud et compare chaque fiche à la version validée. Les différences de forme (réécritures d'iCloud, données Siri, photo, types recalculés) sont ignorées ; restent les contacts modifiés, créés ou supprimés sur l'iPhone. En **mode journal** (par défaut) ils sont seulement listés dans l'onglet iCloud ; en **mode révision** les fiches modifiées ou nouvelles sont importées et repassent « à réviser ». `/status` expose le résultat (compteurs seulement) et le paquet Home Assistant alerte si la veille échoue ou ne tourne plus.
@@ -87,6 +91,9 @@ Copie `homeassistant/carnet.yaml` dans `/config/packages/`, ajoute `carnet_statu
 | `CARNET_ICLOUD_PASSWORD` | vide | mot de passe d'application Apple (V2) |
 | `CARNET_LINKEDIN_CLIENT_ID` / `_SECRET` | vide | app LinkedIn (portabilité des données) pour le bouton « Se connecter à LinkedIn » |
 | `CARNET_LINKEDIN_REDIRECT` | `https://localhost/carnet-linkedin` | adresse de retour déclarée dans l'onglet Auth de l'app |
+| `CARNET_SYNOLOGY_URL` | vide | CardDAV de Synology Contacts, ex. `http://192.168.1.90:5000/carddav/carnet/` (copie de nuit) |
+| `CARNET_SYNOLOGY_USER` / `_PASSWORD` | `carnet` / vide | compte DSM dédié, limité à l'application Contacts |
+| `CARNET_SAUVEGARDE_JOURS` | `30` | exports .vcf datés gardés dans `archives/sauvegardes` |
 | `CARNET_VEILLE_HEURE` | `03:00` | heure de la veille iCloud quotidienne (vide : désactivée) |
 | `KIT_URL` | `http://kit-urgence:8095` | API du kit d'urgence |
 | `KIT_API_TOKEN` | vide | jeton du kit ; sans lui, le kit se régénère à sa prochaine synchronisation |

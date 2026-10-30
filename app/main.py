@@ -50,10 +50,8 @@ def _veille_nocturne(carnet: Carnet, cfg, arret: threading.Event) -> None:
             prochaine += timedelta(days=1)
         if arret.wait((prochaine - maintenant).total_seconds()):
             return
-        if not (cfg.icloud_user and cfg.icloud_password):
-            continue
         try:
-            carnet.veiller()
+            carnet.nuit()
         except Exception:  # noqa: BLE001 — opération déjà en cours : la veille attend la nuit suivante
             log.exception("Veille iCloud non lancée")
 
@@ -399,6 +397,29 @@ def icloud_etat():
 @app.post("/api/icloud/simulation")
 def icloud_simuler():
     return carnet().icloud_simuler()
+
+
+@app.get("/api/sauvegardes")
+def sauvegardes():
+    return carnet().sauvegardes()
+
+
+@app.post("/api/sauvegardes")
+def sauvegarder():
+    return carnet().sauvegarder()
+
+
+@app.post("/api/sauvegardes/forcer")
+def forcer_sauvegarde():
+    return carnet().forcer_synology()
+
+
+@app.get("/api/sauvegardes/{nom}")
+def telecharger_sauvegarde(nom: str):
+    chemin = etat["cfg"].archives / "sauvegardes" / Path(nom).name
+    if not chemin.is_file():
+        raise HTTPException(404, "Sauvegarde introuvable.")
+    return FileResponse(chemin, media_type="text/vcard", filename=chemin.name)
 
 
 @app.post("/api/icloud/veille")
