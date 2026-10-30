@@ -155,16 +155,6 @@
                     <button class="bouton !py-1" disabled={!annifs[p.id] || occupe === p.id}
                       onclick={() => retoucher(p, { anniversaire: annifs[p.id] }, `Anniversaire de ${p.nom} enregistré.`)}>Enregistrer</button>
 
-                  {:else if s.cle === 'portables_proches'}
-                    <span class="tabular-nums">{p.affichage}</span>
-                    <span class="text-xs text-mine">actuellement : {p.type}</span>
-                    <span class="ml-auto flex gap-2">
-                      <button class="bouton !py-1" disabled={occupe === p.id}
-                        onclick={() => retoucher(p, { telephone: p.numero, type_telephone: 'mobile' }, `${p.affichage} : mobile de ${p.nom}.`)}>Mobile</button>
-                      <button class="bouton !py-1" disabled={occupe === p.id}
-                        onclick={() => retoucher(p, { telephone: p.numero, type_telephone: 'travail' }, `${p.affichage} : travail de ${p.nom}.`)}>Travail</button>
-                    </span>
-
                   {:else if s.cle === 'bureau_travail'}
                     <span class="tabular-nums">{p.affichage}</span>
                     <span class="text-xs text-mine">noté {p.type}</span>
