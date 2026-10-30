@@ -204,6 +204,14 @@ DOMAINES_RESEAUX = {
 }
 
 
+MESSAGERIES = {"telegram", "whatsapp", "signal"}
+
+
+def reseau_detecte(url: str) -> str | None:
+    """Réseau ou messagerie reconnu d'après l'adresse (t.me → telegram…), sinon None."""
+    return _reseau(url)
+
+
 def _reseau(url: str) -> str | None:
     hote = urlparse(url if "://" in url else f"https://{url}").hostname or ""
     for domaine, reseau in DOMAINES_RESEAUX.items():

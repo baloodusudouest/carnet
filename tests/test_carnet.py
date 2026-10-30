@@ -496,3 +496,26 @@ def test_mettre_de_cote(client):
     assert c.get(f"/api/personnes/{plombier['id']}").json()["statut"] == "ecarte"
     d = c.post(f"/api/personnes/{plombier['id']}/restaurer").json()
     assert d["statut"] == "a_reviser"
+
+
+def test_messageries_dans_la_revue(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    _importer(c, "outlook.csv", "outlook")
+    marc = _personne(c, "Marc")                       # ni téléphone ni courriel
+    f = c.get(f"/api/personnes/{marc['id']}").json()["fiche"]
+    c.put(f"/api/personnes/{marc['id']}", json={"fiche": f, "valider": True})
+    assert [x["nom"] for x in c.get("/api/revue").json()["injoignables"]] == ["Marc PETIT"]
+    f["sites"] = [{"valeur": "https://t.me/marc", "type": "telegram"}]
+    c.put(f"/api/personnes/{marc['id']}", json={"fiche": f, "valider": True})
+    assert c.get("/api/revue").json()["injoignables"] == []
+    # une étiquette fausse, mise à la main dans une fiche validée
+    claire = _personne(c, "Claire")
+    g = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    g["sites"] = [{"valeur": "https://wa.me/33612345678", "type": "linkedin"}]
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": g, "valider": True})
+    r = c.get("/api/revue").json()["sites_mal_etiquetes"]
+    assert r[0]["sites"] == [{"valeur": "https://wa.me/33612345678", "type": "linkedin", "attendu": "whatsapp"}]
+    c.post(f"/api/personnes/{claire['id']}/retoucher", json={"types_sites": {"https://wa.me/33612345678": "whatsapp"}})
+    assert c.get("/api/revue").json()["sites_mal_etiquetes"] == []
