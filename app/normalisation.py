@@ -115,8 +115,13 @@ GROUPES_PROCHES = {"Famille", "Amis", "Jardin secret"}
 
 
 def regle_proches(fiche: dict) -> dict:
-    """Famille, Amis, Jardin secret : un portable français (+33 6, +33 7) est « mobile ».
+    """Artisans et services : portable français → « travail », fixe français → « bureau ».
+    Famille, Amis, Jardin secret (prioritaires) : un portable français (+33 6, +33 7) est « mobile ».
     Avec deux portables ou plus, rien n'est forcé : la Revue demande lequel est celui du travail."""
+    if "Artisans et services" in fiche.get("groupes", []):
+        for t in fiche.get("telephones", []):
+            if str(t.get("valeur", "")).startswith("+33"):
+                t["type"] = "travail" if portable_fr(t["valeur"]) else "bureau"
     if GROUPES_PROCHES & set(fiche.get("groupes", [])):
         portables = [t for t in fiche.get("telephones", []) if portable_fr(t.get("valeur", ""))]
         if len(portables) == 1:
@@ -306,6 +311,25 @@ def configurer_emojis(texte: str) -> None:
         emoji, _, groupe = regle.partition(":")
         if emoji.strip() and groupe.strip():
             EMOJI_GROUPES[emoji.strip()] = groupe.strip()
+
+
+CHAMPS_LISIBLES = {"prenom": "prénom", "nom": "nom", "surnom": "surnom", "societe": "société",
+                   "fonction": "fonction", "notes": "notes", "telephones": "téléphones",
+                   "courriels": "courriels", "adresses": "adresses", "sites": "sites",
+                   "noms_associes": "noms associés"}
+
+
+def emojis_sans_groupe(fiche: dict) -> list[dict]:
+    """Émojis configurés présents dans la fiche alors qu'elle n'est pas dans le groupe associé."""
+    manques = []
+    for emoji, groupe in EMOJI_GROUPES.items():
+        if groupe in fiche.get("groupes", []):
+            continue
+        champs = [CHAMPS_LISIBLES.get(k, k) for k, v in fiche.items()
+                  if k != "groupes" and emoji in json.dumps(v, ensure_ascii=False)]
+        if champs:
+            manques.append({"emoji": emoji, "groupe": groupe, "champs": champs})
+    return manques
 
 
 def groupes_par_emoji(fiche: dict) -> dict:

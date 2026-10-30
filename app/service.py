@@ -19,7 +19,7 @@ from .db import Base
 from .modele import (GROUPE_A_CLASSER, GROUPE_URGENCE, GROUPES_TRAVAIL, LIBELLES_SOURCES,
                      completer, nom_affiche)
 from .normalisation import (MESSAGERIES, ValeurInvalide, cle_texte, domaine_pro, regle_proches,
-                            reseau_detecte, type_pro_attendu, nettoyer, normaliser_fiche,
+                            emojis_sans_groupe, reseau_detecte, type_pro_attendu, nettoyer, normaliser_fiche,
                             societe_depuis_domaine)
 from .sources import detecter_source, lire_texte, linkedin, outlook, vcard
 
@@ -479,7 +479,7 @@ class Carnet:
                                     "travail_a_classer",
                                     "urgence_sans_mobile",
                                     "sans_groupe", "numeros_non_reconnus", "injoignables",
-                                    "sites_mal_etiquetes")}
+                                    "sites_mal_etiquetes", "emoji_sans_groupe")}
         for pid, f in sorted(personnes, key=lambda x: nom_affiche(x[1]).lower()):
             groupes = set(f["groupes"])
             if groupes & {"Famille", "Amis"} and not f["anniversaire"]:
@@ -509,6 +509,8 @@ class Carnet:
                            or reseau_detecte(s["valeur"]) in MESSAGERIES]
             if not f["telephones"] and not f["courriels"] and not messageries:
                 sections["injoignables"].append(resume(pid, f))
+            for manque in emojis_sans_groupe(f):
+                sections["emoji_sans_groupe"].append(resume(pid, f, **manque))
             # Lien d'un réseau ou d'une messagerie reconnu (t.me, wa.me…) qui n'a pas la bonne étiquette
             a_corriger = {s["valeur"]: reseau_detecte(s["valeur"]) for s in f["sites"]
                           if reseau_detecte(s["valeur"]) and reseau_detecte(s["valeur"]) != s.get("type")}
