@@ -28,8 +28,53 @@ rest:
         json_attributes:
           - contacts_archives_bientot
           - prochaine_suppression
+      - name: Carnet veille iCloud
+        unique_id: carnet_veille_icloud
+        icon: mdi:cellphone-sound
+        # Nombre de contacts modifiés sur l'iPhone lors de la dernière veille (3 h)
+        value_template: "{{ value_json.veille.modifies if value_json.veille else 'unknown' }}"
+        json_attributes_path: "$.veille"
+        json_attributes:
+          - le
+          - ok
+          - erreur
+          - revision
+          - nouveaux
+          - supprimes
+
+template:
+  - binary_sensor:
+      - name: Carnet veille en échec
+        unique_id: carnet_veille_en_echec
+        device_class: problem
+        # Problème si la dernière veille a échoué, ou si aucune veille depuis plus de 36 h
+        state: >-
+          {% set le = state_attr('sensor.carnet_veille_icloud', 'le') %}
+          {{ state_attr('sensor.carnet_veille_icloud', 'ok') == false
+             or le is none
+             or (now() - as_datetime(le)).total_seconds() > 36 * 3600 }}
+        attributes:
+          erreur: "{{ state_attr('sensor.carnet_veille_icloud', 'erreur') }}"
 
 automation:
+  - id: carnet_veille_en_echec
+    alias: "Carnet – veille iCloud en échec"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.carnet_veille_en_echec
+        to: "on"
+        for: "00:30:00"
+    actions:
+      - action: persistent_notification.create
+        data:
+          notification_id: carnet_veille
+          title: "Carnet : veille iCloud en échec"
+          message: >-
+            {{ state_attr('binary_sensor.carnet_veille_en_echec', 'erreur')
+               or "Aucune veille depuis plus de 36 h : carnet est-il démarré ?" }}
+            Vérifie le mot de passe d'application iCloud (variables de la stack) puis lance
+            « Vérifier maintenant » dans l'onglet iCloud de carnet.
+
   - id: carnet_archives_bientot
     alias: "Carnet – archives bientôt supprimées"
     triggers:
