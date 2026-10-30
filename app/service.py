@@ -18,7 +18,7 @@ from .config import Config
 from .db import Base
 from .modele import (GROUPE_A_CLASSER, GROUPE_URGENCE, GROUPES_TRAVAIL, LIBELLES_SOURCES,
                      completer, nom_affiche)
-from .normalisation import (ValeurInvalide, cle_texte, domaine_pro, nettoyer, normaliser_fiche,
+from .normalisation import (ValeurInvalide, cle_texte, domaine_pro, type_pro_attendu, nettoyer, normaliser_fiche,
                             societe_depuis_domaine)
 from .sources import detecter_source, lire_texte, linkedin, outlook, vcard
 
@@ -457,7 +457,8 @@ class Carnet:
                     "courriel": f["courriels"][0]["valeur"] if f["courriels"] else "", **extra}
 
         confirmes = set(self.base.etat("telephones_confirmes", []))
-        sections = {k: [] for k in ("anniversaires", "portables_proches", "societes", "travail_a_classer",
+        sections = {k: [] for k in ("anniversaires", "portables_proches", "bureau_travail", "societes",
+                                    "travail_a_classer",
                                     "urgence_sans_mobile",
                                     "sans_groupe", "numeros_non_reconnus", "injoignables")}
         for pid, f in sorted(personnes, key=lambda x: nom_affiche(x[1]).lower()):
@@ -473,6 +474,11 @@ class Carnet:
             if groupes & set(GROUPES_TRAVAIL + [GROUPE_A_CLASSER]) and not f["societe"]:
                 proposition, origine = self._proposer_societe(f, par_domaine)
                 sections["societes"].append(resume(pid, f, proposition=proposition, origine=origine))
+            for t in f["telephones"]:
+                attendu = type_pro_attendu(t)
+                if attendu and attendu != t["type"] and f"{pid}|{t['valeur']}" not in confirmes:
+                    sections["bureau_travail"].append(resume(pid, f, numero=t["valeur"], affichage=t.get("affichage"),
+                                                             type=t["type"], attendu=attendu))
             if GROUPE_A_CLASSER in groupes:
                 sections["travail_a_classer"].append(resume(pid, f, societe=f["societe"]))
             if GROUPE_URGENCE in groupes and not any(t.get("mobile") for t in f["telephones"]):

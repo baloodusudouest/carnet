@@ -98,11 +98,27 @@ def telephone(brut: str, type_: str | None, region: str = "FR") -> dict | None:
             "mobile": False}
 
 
+def portable_fr(valeur: str) -> bool:
+    return str(valeur).startswith(("+336", "+337"))
+
+
+def type_pro_attendu(t: dict) -> str | None:
+    """Règle bureau / travail pour un numéro français professionnel : un portable (+33 6, +33 7)
+    est « travail », un fixe (+33 1 à 5, 8, 9) est « bureau ». None si la règle ne s'applique pas."""
+    v = str(t.get("valeur", ""))
+    if t.get("type") not in ("bureau", "travail") or not v.startswith("+33"):
+        return None
+    return "travail" if portable_fr(v) else "bureau"
+
+
 def type_telephone_propose(t: dict) -> dict:
-    """Un portable français (+33 6, +33 7) noté « domicile » ou « autre » est proposé en « mobile »
-    (un portable noté « travail » le reste)."""
-    if t.get("type") in ("domicile", "autre") and str(t.get("valeur", "")).startswith(("+336", "+337")):
+    """Propositions de type : un portable français noté « domicile » ou « autre » devient « mobile » ;
+    entre « bureau » et « travail », la règle de type_pro_attendu s'applique."""
+    if t.get("type") in ("domicile", "autre") and portable_fr(t.get("valeur", "")):
         return {**t, "type": "mobile"}
+    attendu = type_pro_attendu(t)
+    if attendu and attendu != t.get("type"):
+        return {**t, "type": attendu}
     return t
 
 

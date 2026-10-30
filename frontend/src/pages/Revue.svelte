@@ -10,6 +10,8 @@
       aide: 'Saisis la date : 15/03/1985, 15 mars 1985, ou 15 mars si l’année est inconnue.' },
     { cle: 'portables_proches', titre: 'Portables des proches à confirmer',
       aide: 'Numéros en +33 6 ou +33 7 de la famille et des amis : mobile personnel ou téléphone de travail ?' },
+    { cle: 'bureau_travail', titre: 'Bureau ou travail à corriger',
+      aide: 'Règle : un fixe (+33 1 à 5, 8, 9) est « bureau », un portable (+33 6, +33 7) est « travail ».' },
     { cle: 'societes', titre: 'Collègues et clients sans société',
       aide: 'Rajoute le nom de la société. Une proposition est faite d’après l’adresse e-mail professionnelle.' },
     { cle: 'societes_a_uniformiser', titre: 'Noms de société à uniformiser',
@@ -163,6 +165,16 @@
                         onclick={() => retoucher(p, { telephone: p.numero, type_telephone: 'mobile' }, `${p.affichage} : mobile de ${p.nom}.`)}>Mobile</button>
                       <button class="bouton !py-1" disabled={occupe === p.id}
                         onclick={() => retoucher(p, { telephone: p.numero, type_telephone: 'travail' }, `${p.affichage} : travail de ${p.nom}.`)}>Travail</button>
+                    </span>
+
+                  {:else if s.cle === 'bureau_travail'}
+                    <span class="tabular-nums">{p.affichage}</span>
+                    <span class="text-xs text-mine">noté {p.type}</span>
+                    <span class="ml-auto flex gap-2">
+                      <button class="bouton bouton-principal !py-1" disabled={occupe === p.id}
+                        onclick={() => retoucher(p, { telephone: p.numero, type_telephone: p.attendu }, `${p.affichage} passé en ${p.attendu}.`)}>Passer en {p.attendu}</button>
+                      <button class="bouton !py-1" disabled={occupe === p.id}
+                        onclick={() => retoucher(p, { telephone: p.numero, type_telephone: p.type }, `${p.affichage} gardé en ${p.type}.`)}>Garder {p.type}</button>
                     </span>
 
                   {:else if s.cle === 'societes'}

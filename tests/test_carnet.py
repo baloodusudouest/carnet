@@ -438,3 +438,26 @@ def test_portables_des_proches(client):
     assert c.get("/api/revue").json()["portables_proches"] == []
     tel = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["telephones"][0]
     assert tel["type"] == "travail"
+
+
+def test_bureau_ou_travail():
+    f = n.nettoyer({"telephones": [n.telephone("06 12 34 56 78", "bureau"), n.telephone("05 53 11 22 33", "travail"),
+                                   n.telephone("06 98 76 54 32", "travail"), n.telephone("01 23 45 67 89", "bureau")]})
+    assert [t["type"] for t in f["telephones"]] == ["travail", "bureau", "travail", "bureau"]
+    assert n.type_pro_attendu(n.telephone("+32 2 123 45 67", "bureau")) is None   # étranger : pas de règle
+
+
+def test_revue_bureau_travail(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    claire = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    for t in f["telephones"]:
+        t["type"] = "bureau" if t["mobile"] else "travail"     # l'inverse de la règle
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})
+    r = c.get("/api/revue").json()["bureau_travail"]
+    assert sorted((x["numero"], x["attendu"]) for x in r) == [("+33553000001", "bureau"), ("+33612345678", "travail")]
+    c.post(f"/api/personnes/{claire['id']}/retoucher", json={"telephone": "+33612345678", "type_telephone": "travail"})
+    c.post(f"/api/personnes/{claire['id']}/retoucher", json={"telephone": "+33553000001", "type_telephone": "travail"})
+    assert c.get("/api/revue").json()["bureau_travail"] == []   # le second est gardé tel quel
