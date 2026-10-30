@@ -28,7 +28,8 @@ LinkedIn complète des contacts existants (société, poste, profil) mais n'en c
    - chaque contact vérifié met à jour sa fiche iCloud (UID conservé) ou est créé s'il venait de Gmail ou Outlook ;
    - seules les propriétés gérées par carnet sont remplacées : les champs qu'il ne connaît pas (dates personnalisées, etc.) sont gardés, et la photo iCloud reste si carnet n'en a pas ;
    - les autres fiches iCloud d'une personne fusionnée et les contacts mis de côté sont supprimés ;
-   - les groupes de carnet sont créés ou mis à jour dans iCloud ; les membres que carnet ne gère pas (contacts à réviser, groupes inconnus) restent ; le groupe « Travail » vidé est supprimé ;
+   - les groupes de carnet sont créés ou mis à jour dans iCloud ; les membres que carnet ne gère pas (contacts à réviser) restent ;
+   - les groupes iCloud vides, en double ou absents de carnet sont supprimés (leurs contacts restent) ;
    - les contacts créés dans iCloud sans carnet sont importés pour révision ;
    - les contacts encore à réviser ne sont pas touchés.
 

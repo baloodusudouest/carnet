@@ -103,7 +103,6 @@ CARNET_ICLOUD_PASSWORD=xxxx-xxxx-xxxx-xxxx</pre>
             ['À supprimer', plan.supprimer, (x) => `${x.nom} (${x.motif})`],
             ['Groupes', plan.groupes, (x) => `${x.nom} : ${resumeGroupe(x)}`],
             ['Nouveaux dans iCloud, importés pour révision', plan.inconnus.map((nom) => ({ nom })), (x) => x.nom],
-            ['Groupes iCloud non gérés (laissés tels quels)', plan.groupes_non_geres.map((nom) => ({ nom })), (x) => x.nom],
           ] as [titre, liste, libelle]}
             <details class="rounded-xl border border-couture bg-reliure px-4 py-3" open={liste.length > 0 && liste.length <= 8}>
               <summary class="cursor-pointer flex items-baseline gap-2">

@@ -712,8 +712,8 @@ def test_synchro_icloud(client, monkeypatch):
     assert serveur.ecritures == []                                  # la simulation n'écrit rien
     assert {x["nom"] for x in plan["modifier"]} == {"Claire MARTIN", "Jean-Pierre DUBOIS"}
     assert [(x["nom"], x["motif"]) for x in plan["supprimer"]] == [("Plomberie Garonne", "mis de côté")]
-    assert {(g["nom"], g["action"]) for g in plan["groupes"]} == {("Famille", "creer"), ("Moi", "creer"), ("Boulot", "modifier")}
-    assert plan["inconnus"] == ["Nadia Neuf"] and plan["groupes_non_geres"] == ["Boulot"]
+    assert {(g["nom"], g["action"]) for g in plan["groupes"]} == {("Famille", "creer"), ("Moi", "creer"), ("Boulot", "supprimer")}
+    assert plan["inconnus"] == ["Nadia Neuf"] and plan["groupes_non_geres"] == []
     assert plan["essai"] == "Claire MARTIN"
 
     # Essai : seule la fiche « Moi » est écrite
@@ -741,8 +741,8 @@ def test_synchro_icloud(client, monkeypatch):
     assert bilan["groupes"] == 2 and bilan["importes"] == 1         # Famille et Boulot (Moi : fait à l'essai)
     famille = next(t for t in serveur.cartes.values() if "FN:Famille" in t[1])[1]
     assert "X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:AAAA-1111" in famille
-    boulot = serveur.texte("GGGG-0002")
-    assert "CCCC-3333" not in boulot and "DDDD-4444" in boulot
+    assert serveur.texte("GGGG-0002") is None                       # groupe absent de carnet : supprimé
+    assert serveur.texte("DDDD-4444") is not None                   # … mais pas ses contacts
     nadia = _personne(c, "Nadia")
     assert nadia["statut"] == "a_reviser"
 

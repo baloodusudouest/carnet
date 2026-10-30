@@ -933,17 +933,27 @@ class Carnet:
 
         # Groupes : carnet décide pour les contacts qu'il écrit ; les autres membres restent
         geres = gardes | supprimes
-        par_nom = {cle_texte(g.nom): g for g in groupes_icloud}
+        # Un seul groupe iCloud par nom : les autres exemplaires sont des doublons
+        par_nom: dict[str, synchro.Carte] = {}
+        en_double = []
+        for g in sorted(groupes_icloud, key=lambda g: (-len(g.membres), g.uid)):
+            if cle_texte(g.nom) in par_nom:
+                en_double.append(g)
+            else:
+                par_nom[cle_texte(g.nom)] = g
         groupes, non_geres = [], []
+
+        def supprimer_groupe(d: synchro.Carte, motif: str) -> None:
+            groupes.append({"cible": "groupe", "action": "supprimer", "nom": d.nom or "(sans nom)", "href": d.href,
+                            "etag": d.etag, "motif": motif})
         for nom in GROUPES_RECONNUS:
             d = par_nom.pop(cle_texte(nom), None)
             voulus = membres.get(nom, set())
             if d:
                 cible = voulus | {m for m in d.membres if m not in geres}
                 avant = set(d.membres)
-                if nom == GROUPE_A_CLASSER and not cible:
-                    groupes.append({"cible": "groupe", "action": "supprimer", "nom": nom, "href": d.href,
-                                    "etag": d.etag, "motif": "remplacé par Collègues et Clients"})
+                if not cible:
+                    supprimer_groupe(d, "remplacé par Collègues et Clients" if nom == GROUPE_A_CLASSER else "vide")
                 elif cible != avant:
                     groupes.append({"cible": "groupe", "action": "modifier", "nom": nom, "href": d.href,
                                     "etag": d.etag, "ajoutes": len(cible - avant), "retires": len(avant - cible),
@@ -953,13 +963,12 @@ class Carnet:
                 groupes.append({"cible": "groupe", "action": "creer", "nom": nom, "href": dav.href_nouveau(uid),
                                 "etag": None, "ajoutes": len(voulus), "retires": 0,
                                 "texte": synchro.carte_groupe(nom, uid, sorted(voulus))})
-        for d in par_nom.values():  # groupes iCloud inconnus de carnet : seuls les contacts supprimés en sortent
-            non_geres.append(d.nom)
-            if set(d.membres) & supprimes:
-                restants = [m for m in d.membres if m not in supprimes]
-                groupes.append({"cible": "groupe", "action": "modifier", "nom": d.nom, "href": d.href,
-                                "etag": d.etag, "ajoutes": 0, "retires": len(d.membres) - len(restants),
-                                "texte": synchro.carte_groupe(d.nom, d.uid, restants, d.texte)})
+        # Groupes iCloud absents de carnet, et doublons : supprimés (leurs contacts restent)
+        for d in par_nom.values():
+            supprimer_groupe(d, "vide" if not d.membres else
+                             f"absent de carnet, {len(d.membres)} contact(s) gardé(s) hors groupe")
+        for d in en_double:
+            supprimer_groupe(d, "groupe en double")
 
         inconnus = sorted((c for c in contacts.values() if c.uid not in connus and not c.uid.startswith("carnet-")),
                           key=lambda c: c.nom.lower())
