@@ -77,6 +77,8 @@ def telephone(brut: str, type_: str | None, region: str = "FR") -> dict | None:
         return None
     if texte.startswith("00"):
         texte = "+" + texte[2:]
+    # Numéro de poste : « poste 123 », « p123 », « #123 », « ,123 », « ;123 », « ext. 123 »
+    texte = re.sub(r"\s*(?:poste|p\.?|#|,|;)\s*(\d{1,6})\s*$", r" ext. \1", texte, flags=re.I)
     try:
         num = phonenumbers.parse(texte, region)
     except phonenumbers.NumberParseException:
@@ -87,10 +89,14 @@ def telephone(brut: str, type_: str | None, region: str = "FR") -> dict | None:
         valeur = phonenumbers.format_number(num, PhoneNumberFormat.E164)
         if num.extension:
             valeur += f";ext={num.extension}"
+        affichage = phonenumbers.format_number(num, PhoneNumberFormat.INTERNATIONAL)
+        if num.extension:
+            # Format compris par l'iPhone : la virgule est une pause de 2 s, puis le poste est composé
+            affichage = affichage.split(" ext.")[0] + f",{num.extension}"
         return {
             "valeur": valeur,
             "type": type_ or ("mobile" if mobile else "autre"),
-            "affichage": phonenumbers.format_number(num, PhoneNumberFormat.INTERNATIONAL),
+            "affichage": affichage,
             "valide": True,
             "mobile": mobile,
         }

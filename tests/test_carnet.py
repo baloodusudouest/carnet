@@ -190,7 +190,7 @@ def test_sites_et_extensions():
     assert n.site("https://x.com/exemple")["type"] == "x"
     assert n.site("https://fr.linkedin.com/in/exemple")["type"] == "linkedin"
     t = n.telephone("+33 1 23 45 67 89 ext. 12", "travail")
-    assert t["valeur"] == "+33123456789;ext=12"
+    assert t["valeur"] == "+33123456789;ext=12" and t["affichage"] == "+33 1 23 45 67 89,12"
     assert n.normaliser_fiche({"telephones": [t]})["telephones"][0]["valeur"] == "+33123456789;ext=12"
     assert n.telephone("05 53 11 22 33", None)["type"] == "autre"
 
@@ -555,3 +555,20 @@ def test_fiche_entreprise_principal():
     g = n.normaliser_fiche({"prenom": "Paul", "societe": "Plomberie Garonne", "groupes": ["Clients"],
                             "telephones": [{"valeur": "05 53 44 55 66", "type": "bureau"}]})
     assert g["telephones"][0]["type"] == "bureau"        # une personne : la règle ne s'applique pas
+
+
+def test_numeros_de_poste():
+    for saisie in ("05 53 00 00 00 poste 123", "05 53 00 00 00 p123", "05 53 00 00 00 #123",
+                   "05 53 00 00 00,123", "05 53 00 00 00;123", "+33 5 53 00 00 00 ext. 123"):
+        t = n.telephone(saisie, "principal")
+        assert (t["valeur"], t["affichage"]) == ("+33553000000;ext=123", "+33 5 53 00 00 00,123"), saisie
+    from app.export import vcard
+    assert "TEL;type=MAIN;type=pref:+33 5 53 00 00 00,123" in vcard(
+        {"telephones": [n.telephone("05 53 00 00 00 poste 123", "principal")]}, "u")
+
+
+def test_poste_relu_depuis_vcard():
+    from app.export import vcard
+    texte = vcard({"telephones": [n.telephone("05 53 00 00 00 poste 123", "principal")]}, "u")
+    relu, _ = lecteur_vcf.lire(texte)
+    assert relu[0].fiche["telephones"][0]["valeur"] == "+33553000000;ext=123"
