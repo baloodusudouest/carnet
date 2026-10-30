@@ -8,6 +8,7 @@
   import Export from './pages/Export.svelte'
   import Archives from './pages/Archives.svelte'
   import Revue from './pages/Revue.svelte'
+  import ICloud from './pages/ICloud.svelte'
 
   const PAGES = [
     { cle: 'accueil', nom: 'Accueil' },
@@ -15,6 +16,7 @@
     { cle: 'contacts', nom: 'Contacts' },
     { cle: 'revue', nom: 'Revue' },
     { cle: 'export', nom: 'Export et kit' },
+    { cle: 'icloud', nom: 'iCloud' },
     { cle: 'archives', nom: 'Archives' },
   ]
 
@@ -100,6 +102,8 @@
         <Revue />
       {:else if route.page === 'export'}
         <Export />
+      {:else if route.page === 'icloud'}
+        <ICloud />
       {:else if route.page === 'archives'}
         <Archives />
       {:else}

@@ -6,18 +6,22 @@ from collections import Counter
 import json
 import logging
 import shutil
+import threading
+import time
 import uuid
+from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
 from rapidfuzz import fuzz
 
-from . import doublons, export, fusion
+from . import doublons, export, fusion, synchro
+from .carddav import CardDAV, Conflit, ErreurICloud
 from .config import Config
 from .db import Base
-from .modele import (GROUPE_A_CLASSER, GROUPE_MOI, GROUPE_URGENCE, GROUPES_TRAVAIL, LIBELLES_SOURCES,
-                     completer, nom_affiche)
+from .modele import (GROUPE_A_CLASSER, GROUPE_MOI, GROUPE_URGENCE, GROUPES_RECONNUS, GROUPES_TRAVAIL,
+                     LIBELLES_SOURCES, completer, nom_affiche)
 from .normalisation import (MESSAGERIES, ValeurInvalide, cle_texte, domaine_pro, regle_proches,
                             emojis_sans_groupe, nature, reseau_detecte, type_pro_attendu, nettoyer, normaliser_fiche,
                             societe_depuis_domaine)
@@ -58,6 +62,11 @@ class Carnet:
         self.cfg, self.base = cfg, base
         for dossier in (cfg.depot, cfg.archives, cfg.export):
             dossier.mkdir(parents=True, exist_ok=True)
+        # iCloud (V2) : une seule opération à la fois, exécutée en arrière-plan
+        self.transport_icloud = None          # remplacé par un faux serveur dans les tests
+        self._tache: dict = {"etat": "repos"}
+        self._plan: dict | None = None
+        self._verrou_icloud = threading.Lock()
 
     # ================================================================ dépôt et import
 
@@ -789,6 +798,236 @@ class Carnet:
         self.base.ecrire_etat("dernier_envoi_kit", {"le": _iso(maintenant()), **resultat})
         return resultat
 
+    # ================================================================ iCloud (V2)
+
+    PLAN_VALIDE = 30 * 60   # une simulation plus ancienne doit être refaite avant d'écrire
+
+    def icloud_etat(self) -> dict:
+        plan = self._plan
+        if plan and time.monotonic() - plan["instant"] > self.PLAN_VALIDE:
+            plan = self._plan = None
+        utilisateur = self.cfg.icloud_user
+        masque = (utilisateur[:2] + "…" + utilisateur[utilisateur.find("@"):]) if "@" in utilisateur else utilisateur
+        return {"configure": bool(self.cfg.icloud_user and self.cfg.icloud_password), "compte": masque,
+                "tache": dict(self._tache), "plan": plan["resume"] if plan else None,
+                "journal": self.base.etat("journal_icloud", [])}
+
+    def _lancer(self, nom: str, travail) -> dict:
+        with self._verrou_icloud:
+            if self._tache.get("etat") in ("lecture", "ecriture"):
+                raise ErreurCarnet("Une opération iCloud est déjà en cours.")
+            self._tache = {"etat": "lecture" if nom == "simulation" else "ecriture", "operation": nom,
+                           "fait": 0, "total": 0, "message": "Connexion à iCloud…"}
+
+        def executer():
+            try:
+                travail()
+            except (ErreurICloud, ErreurCarnet) as exc:
+                self._tache.update(etat="erreur", message=str(exc))
+            except Exception as exc:  # noqa: BLE001 — affiché, et détaillé dans le journal du conteneur
+                log.exception("Opération iCloud %s", nom)
+                self._tache.update(etat="erreur", message=f"Erreur inattendue : {exc}")
+        threading.Thread(target=executer, daemon=True, name=f"icloud-{nom}").start()
+        return {"ok": True}
+
+    def _dav(self) -> CardDAV:
+        return CardDAV(self.cfg.icloud_url, self.cfg.icloud_user, self.cfg.icloud_password,
+                       transport=self.transport_icloud)
+
+    def icloud_simuler(self) -> dict:
+        return self._lancer("simulation", self._simuler)
+
+    def _simuler(self) -> None:
+        dav = self._dav()
+        try:
+            dav.decouvrir()
+            self._tache["message"] = "Lecture des contacts iCloud…"
+            brutes = dav.lister()
+            self._tache["message"] = "Comparaison avec carnet…"
+            cartes = [synchro.analyser(b.href, b.etag, b.texte) for b in brutes]
+            self._plan = self._preparer(cartes, dav)
+        finally:
+            dav.fermer()
+        n = len(self._plan["actions"])
+        self._tache.update(etat="termine", message=f"Simulation terminée : {n} écriture(s) prévue(s), rien n'a été modifié.")
+
+    def _preparer(self, cartes: list[synchro.Carte], dav: CardDAV) -> dict:
+        """Calcule ce qu'il faut écrire dans iCloud, sans rien écrire."""
+        contacts = {c.uid: c for c in cartes if not c.groupe}
+        groupes_icloud = [c for c in cartes if c.groupe]
+        suivi = self.base.etat("icloud_suivi", {})
+        uids_de: dict[str, list[str]] = defaultdict(list)
+        connus = {v["uid"] for v in suivi.values()}
+        for l in self.base.lire("SELECT personne_id, uid FROM sources WHERE source = 'icloud' "
+                                "AND uid IS NOT NULL ORDER BY id"):
+            connus.add(l["uid"])
+            if l["personne_id"]:
+                uids_de[l["personne_id"]].append(l["uid"])
+
+        actions, essai, cibles = [], None, {}
+        membres: dict[str, set[str]] = defaultdict(set)
+        a_supprimer: dict[str, dict] = {}
+        for pid, fiche, _ in self._verifiees():
+            candidats = list(dict.fromkeys(([suivi[pid]["uid"]] if pid in suivi else []) + uids_de[pid]))
+            presents = [u for u in candidats if u in contacts]
+            uid = presents[0] if presents else (candidats[0] if candidats else f"carnet-{pid}")
+            cibles[pid] = uid
+            nouvelle = export.vcard(fiche, uid, self.photo(fiche["photo"]) if fiche.get("photo") else None)
+            distante = contacts.get(uid)
+            texte = synchro.assembler(nouvelle, distante.texte if distante else None)
+            nom = nom_affiche(fiche)
+            base = {"cible": "contact", "pid": pid, "nom": nom, "uid": uid, "texte": texte,
+                    "empreinte_carnet": synchro.empreinte(nouvelle)}
+            if distante:
+                action = {**base, "action": "modifier", "href": distante.href, "etag": distante.etag}
+                s = suivi.get(pid, {})
+                inchange = (s.get("etag") == distante.etag and s.get("empreinte_carnet") == base["empreinte_carnet"]) \
+                    or synchro.empreinte(texte) == synchro.empreinte(distante.texte)
+                if not inchange:
+                    actions.append(action)
+            else:
+                action = {**base, "action": "creer", "href": dav.href_nouveau(uid), "etag": None,
+                          "motif": "supprimé d'iCloud depuis l'import" if candidats else "venu de Gmail ou Outlook"}
+                actions.append(action)
+            if GROUPE_MOI in fiche["groupes"]:
+                essai = action
+            for u in presents[1:]:
+                d = contacts[u]
+                a_supprimer[u] = {"cible": "contact", "action": "supprimer", "pid": pid, "uid": u,
+                                  "nom": d.nom or nom, "href": d.href, "etag": d.etag,
+                                  "motif": f"doublon, fusionné dans {nom}"}
+            for g in fiche["groupes"]:
+                membres[g].add(uid)
+        gardes = set(cibles.values())
+        for p in self.base.lire("SELECT id FROM personnes WHERE statut = 'ecarte'"):
+            for u in uids_de[p["id"]] + ([suivi[p["id"]]["uid"]] if p["id"] in suivi else []):
+                if u in contacts and u not in gardes:
+                    d = contacts[u]
+                    a_supprimer[u] = {"cible": "contact", "action": "supprimer", "pid": p["id"], "uid": u,
+                                      "nom": d.nom, "href": d.href, "etag": d.etag, "motif": "mis de côté"}
+        supprimes = set(a_supprimer)
+
+        # Groupes : carnet décide pour les contacts qu'il écrit ; les autres membres restent
+        geres = gardes | supprimes
+        par_nom = {cle_texte(g.nom): g for g in groupes_icloud}
+        groupes, non_geres = [], []
+        for nom in GROUPES_RECONNUS:
+            d = par_nom.pop(cle_texte(nom), None)
+            voulus = membres.get(nom, set())
+            if d:
+                cible = voulus | {m for m in d.membres if m not in geres}
+                avant = set(d.membres)
+                if nom == GROUPE_A_CLASSER and not cible:
+                    groupes.append({"cible": "groupe", "action": "supprimer", "nom": nom, "href": d.href,
+                                    "etag": d.etag, "motif": "remplacé par Collègues et Clients"})
+                elif cible != avant:
+                    groupes.append({"cible": "groupe", "action": "modifier", "nom": nom, "href": d.href,
+                                    "etag": d.etag, "ajoutes": len(cible - avant), "retires": len(avant - cible),
+                                    "texte": synchro.carte_groupe(nom, d.uid, sorted(cible), d.texte)})
+            elif voulus:
+                uid = f"carnet-groupe-{uuid.uuid5(uuid.NAMESPACE_URL, 'carnet:' + nom)}"
+                groupes.append({"cible": "groupe", "action": "creer", "nom": nom, "href": dav.href_nouveau(uid),
+                                "etag": None, "ajoutes": len(voulus), "retires": 0,
+                                "texte": synchro.carte_groupe(nom, uid, sorted(voulus))})
+        for d in par_nom.values():  # groupes iCloud inconnus de carnet : seuls les contacts supprimés en sortent
+            non_geres.append(d.nom)
+            if set(d.membres) & supprimes:
+                restants = [m for m in d.membres if m not in supprimes]
+                groupes.append({"cible": "groupe", "action": "modifier", "nom": d.nom, "href": d.href,
+                                "etag": d.etag, "ajoutes": 0, "retires": len(d.membres) - len(restants),
+                                "texte": synchro.carte_groupe(d.nom, d.uid, restants, d.texte)})
+
+        inconnus = sorted((c for c in contacts.values() if c.uid not in connus and not c.uid.startswith("carnet-")),
+                          key=lambda c: c.nom.lower())
+        actions = (sorted(actions, key=lambda a: a["nom"].lower()) + groupes
+                   + sorted(a_supprimer.values(), key=lambda a: a["nom"].lower()))
+
+        def noms(action: str, cible: str = "contact") -> list:
+            return [{k: a.get(k) for k in ("nom", "motif", "pid", "ajoutes", "retires")}
+                    for a in actions if a["action"] == action and a["cible"] == cible]
+        resume = {
+            "le": _iso(maintenant()), "icloud": len(contacts), "groupes_icloud": len(groupes_icloud),
+            "creer": noms("creer"), "modifier": noms("modifier"), "supprimer": noms("supprimer"),
+            "groupes": [{k: a.get(k) for k in ("nom", "action", "ajoutes", "retires", "motif")} for a in groupes],
+            "inconnus": [c.nom or "(sans nom)" for c in inconnus], "groupes_non_geres": sorted(non_geres),
+            "identiques": len(cibles) - len(noms("creer")) - len(noms("modifier")),
+            "essai": essai["nom"] if essai else None,
+        }
+        return {"instant": time.monotonic(), "actions": actions, "essai": essai, "inconnus": inconnus,
+                "sauvegarde": "".join(c.texte if c.texte.endswith("\n") else c.texte + "\r\n" for c in cartes),
+                "resume": resume}
+
+    def icloud_ecrire(self, essai: bool) -> dict:
+        plan = self._plan
+        if not plan or time.monotonic() - plan["instant"] > self.PLAN_VALIDE:
+            raise ErreurCarnet("Lance d'abord une simulation (elle reste valable 30 minutes).")
+        if essai and not plan["essai"]:
+            raise ErreurCarnet("Aucune fiche vérifiée dans le groupe Moi : l'essai écrit ta propre fiche.")
+        if not essai and not plan["actions"] and not plan["inconnus"]:
+            raise ErreurCarnet("iCloud est déjà à jour : rien à écrire.")
+        return self._lancer("essai" if essai else "ecriture", lambda: self._ecrire(plan, essai))
+
+    def _ecrire(self, plan: dict, essai: bool) -> None:
+        quand = maintenant()
+        # Sauvegarde complète d'iCloud tel qu'il a été lu, avant la moindre écriture
+        sauvegarde = f"{quand:%Y-%m-%d_%H%M%S}_icloud-sauvegarde.vcf"
+        export.ecrire_atomique(self.cfg.archives / sauvegarde, plan["sauvegarde"])
+        actions = [plan["essai"]] if essai else plan["actions"]
+        self._plan = None  # les ETag lus ne valent plus après écriture
+        bilan = {"le": _iso(quand), "essai": essai, "sauvegarde": sauvegarde, "crees": 0, "modifies": 0,
+                 "supprimes": 0, "groupes": 0, "conflits": [], "erreurs": [], "importes": 0}
+        suivi = self.base.etat("icloud_suivi", {})
+        self._tache.update(total=len(actions), fait=0, message="Écriture dans iCloud…")
+        dav = self._dav()
+        try:
+            for a in actions:
+                try:
+                    if a["action"] == "supprimer":
+                        dav.supprimer(a["href"], a["etag"])
+                        if a["cible"] == "contact":
+                            bilan["supprimes"] += 1
+                            if suivi.get(a.get("pid"), {}).get("uid") == a["uid"]:
+                                suivi.pop(a["pid"], None)
+                        else:
+                            bilan["groupes"] += 1
+                    else:
+                        etag = dav.ecrire(a["href"], a["texte"], a["etag"])
+                        if a["cible"] == "contact":
+                            bilan["crees" if a["action"] == "creer" else "modifies"] += 1
+                            suivi[a["pid"]] = {"uid": a["uid"], "href": a["href"], "etag": etag,
+                                               "empreinte_carnet": a["empreinte_carnet"]}
+                        else:
+                            bilan["groupes"] += 1
+                except Conflit:
+                    bilan["conflits"].append(a["nom"])
+                except ErreurICloud as exc:
+                    bilan["erreurs"].append(f"{a['nom']} : {exc}")
+                    if "refuse la connexion" in str(exc):
+                        break
+                self._tache["fait"] += 1
+        finally:
+            dav.fermer()
+            self.base.ecrire_etat("icloud_suivi", suivi)
+        if not essai and plan["inconnus"]:
+            # Contacts créés dans iCloud sans carnet : importés pour être révisés
+            self._tache["message"] = "Import des contacts ajoutés dans iCloud…"
+            nom = f"icloud-nouveaux-{quand:%Y-%m-%d_%H%M%S}.vcf"
+            (self.cfg.depot / nom).write_text("".join(
+                c.texte if c.texte.endswith("\n") else c.texte + "\r\n" for c in plan["inconnus"]), encoding="utf-8")
+            try:
+                bilan["importes"] = self.importer(nom, "icloud")["ajoutes"]
+            except ErreurCarnet as exc:
+                bilan["erreurs"].append(f"Import des nouveaux contacts : {exc}")
+        journal = [bilan] + self.base.etat("journal_icloud", [])
+        self.base.ecrire_etat("journal_icloud", journal[:50])
+        self.base.ecrire_etat("derniere_ecriture_icloud", bilan)
+        ecrits = bilan["crees"] + bilan["modifies"] + bilan["supprimes"] + bilan["groupes"]
+        etat = "erreur" if bilan["erreurs"] else "termine"
+        self._tache.update(etat=etat, message=(f"{'Essai' if essai else 'Écriture'} terminé : {ecrits} écriture(s)"
+                                               + (f", {len(bilan['conflits'])} conflit(s)" if bilan["conflits"] else "")
+                                               + (f", {len(bilan['erreurs'])} erreur(s)" if bilan["erreurs"] else "")
+                                               + "."))
+
     # ================================================================ archives
 
     def archives(self) -> list[dict]:
@@ -823,6 +1062,11 @@ class Carnet:
                            (_iso(quand), imp["id"]))
                 cx.execute("UPDATE sources SET brut = NULL WHERE import_id = ?", (imp["id"],))
             log.info("Archive %s supprimée (durée de conservation atteinte)", imp["archive"])
+        limite = (quand - timedelta(days=self.cfg.archive_jours)).timestamp()
+        for f in self.cfg.archives.glob("*_icloud-sauvegarde.vcf"):
+            if f.stat().st_mtime < limite:
+                f.unlink(missing_ok=True)
+                log.info("Sauvegarde iCloud %s supprimée (durée de conservation atteinte)", f.name)
         return len(echues)
 
     # ================================================================ état (Home Assistant)
@@ -847,4 +1091,6 @@ class Carnet:
             "prochaine_suppression": prochaine,
             "dernier_export": self.base.etat("dernier_export"),
             "dernier_envoi_kit": self.base.etat("dernier_envoi_kit"),
+            "derniere_ecriture_icloud": {k: v for k, v in (self.base.etat("derniere_ecriture_icloud") or {}).items()
+                                         if k in ("le", "essai", "crees", "modifies", "supprimes", "groupes")} or None,
         }

@@ -659,3 +659,108 @@ def test_revue_doublons_possibles(client):
     assert len(doublons) == 1 and doublons[0]["base"]["id"] == claire["id"]
     assert c.post("/api/doublons/ignorer", json={"a": claire["id"], "b": plombier["id"]}).status_code == 200
     assert c.get("/api/revue").json()["doublons_possibles"] == []
+
+
+# ------------------------------------------------------------------ V2 : écriture iCloud
+
+def _attendre(c):
+    import time
+    for _ in range(400):
+        t = c.get("/api/icloud").json()
+        if t["tache"]["etat"] in ("termine", "erreur"):
+            return t
+        time.sleep(0.025)
+    raise AssertionError("tâche iCloud jamais terminée")
+
+
+def test_synchro_icloud(client, monkeypatch):
+    from app.main import etat
+    from tests.faux_icloud import FauxICloud
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    # iCloud aujourd'hui : les fiches importées + un champ que carnet ignore, un contact ajouté
+    # sur l'iPhone depuis, et un groupe que carnet ne connaît pas
+    origine = (DONNEES / "icloud.vcf").read_text()
+    origine = origine.replace("UID:AAAA-1111", "item9.X-ABDATE:2010-06-12\r\nitem9.X-ABLabel:_$!<Anniversary>!$_\r\nUID:AAAA-1111")
+    origine += ("BEGIN:VCARD\r\nVERSION:3.0\r\nN:Neuf;Nadia;;;\r\nFN:Nadia Neuf\r\nTEL;type=CELL:06 99 88 77 66\r\n"
+                "UID:DDDD-4444\r\nEND:VCARD\r\n"
+                "BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Boulot\r\nX-ADDRESSBOOKSERVER-KIND:group\r\n"
+                "X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:CCCC-3333\r\nX-ADDRESSBOOKSERVER-MEMBER:urn:uuid:DDDD-4444\r\n"
+                "UID:GGGG-0002\r\nEND:VCARD\r\n")
+    serveur = FauxICloud(origine)
+    cn = etat["carnet"]
+    monkeypatch.setattr(cn, "transport_icloud", serveur.transport())
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "icloud_user": "moi@icloud.com",
+                                                        "icloud_password": "abcd-efgh-ijkl-mnop"}))
+
+    claire, dubois, plombier = _personne(c, "Claire"), _personne(c, "Jean-Pierre"), _personne(c, "Plomberie")
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    f["groupes"] = ["Moi", "Urgence", "Famille"]
+    f["fonction"] = "Boulangère"
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})
+    f = c.get(f"/api/personnes/{dubois['id']}").json()["fiche"]
+    c.put(f"/api/personnes/{dubois['id']}", json={"fiche": f, "valider": True})
+    c.post(f"/api/personnes/{plombier['id']}/ecarter")
+
+    # Écrire sans simulation : refusé
+    assert c.post("/api/icloud/ecriture", json={"confirme": True}).status_code == 400
+    c.post("/api/icloud/simulation")
+    t = _attendre(c)
+    assert t["tache"]["etat"] == "termine", t["tache"]
+    plan = t["plan"]
+    assert serveur.ecritures == []                                  # la simulation n'écrit rien
+    assert {x["nom"] for x in plan["modifier"]} == {"Claire MARTIN", "Jean-Pierre DUBOIS"}
+    assert [(x["nom"], x["motif"]) for x in plan["supprimer"]] == [("Plomberie Garonne", "mis de côté")]
+    assert {(g["nom"], g["action"]) for g in plan["groupes"]} == {("Famille", "creer"), ("Moi", "creer"), ("Boulot", "modifier")}
+    assert plan["inconnus"] == ["Nadia Neuf"] and plan["groupes_non_geres"] == ["Boulot"]
+    assert plan["essai"] == "Claire MARTIN"
+
+    # Essai : seule la fiche « Moi » est écrite
+    assert c.post("/api/icloud/ecriture", json={"essai": True}).status_code == 200
+    t = _attendre(c)
+    assert t["tache"]["etat"] == "termine" and serveur.ecritures == [("PUT", "/1234/carddavhome/card/AAAA-1111.vcf")]
+    carte = serveur.texte("AAAA-1111")
+    assert "TITLE:Boulangère" in carte and "X-ABDATE:2010-06-12" in carte      # champ inconnu gardé
+    assert "CATEGORIES" not in carte and carte.count("BEGIN:VCARD") == 1
+    assert (Path(etat["cfg"].archives).glob("*_icloud-sauvegarde.vcf").__next__().read_text().count("BEGIN:VCARD") == 6)
+
+    # Écriture complète, avec un contact modifié sur l'iPhone entre-temps : conflit, pas écrasé
+    c.post("/api/icloud/simulation")
+    plan = _attendre(c)["plan"]
+    assert {x["nom"] for x in plan["modifier"]} == {"Jean-Pierre DUBOIS"}         # Claire est déjà à jour
+    assert c.post("/api/icloud/ecriture", json={}).status_code == 400              # confirmation obligatoire
+    iphone = serveur.texte("BBBB-2222").replace("FN:jean-pierre DUBOIS", "FN:JP")
+    serveur.modifier_sur_iphone("BBBB-2222", iphone)
+    c.post("/api/icloud/ecriture", json={"confirme": True})
+    t = _attendre(c)
+    bilan = t["journal"][0]
+    assert bilan["conflits"] == ["Jean-Pierre DUBOIS"] and serveur.texte("BBBB-2222") == iphone
+    assert serveur.texte("CCCC-3333") is None and bilan["supprimes"] == 1
+    assert bilan["groupes"] == 3 and bilan["importes"] == 1
+    famille = next(t for t in serveur.cartes.values() if "FN:Famille" in t[1])[1]
+    assert "X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:AAAA-1111" in famille
+    boulot = serveur.texte("GGGG-0002")
+    assert "CCCC-3333" not in boulot and "DDDD-4444" in boulot
+    nadia = _personne(c, "Nadia")
+    assert nadia["statut"] == "a_reviser"
+
+    # Nouvelle simulation : seul le conflit reste à écrire, Nadia n'est plus inconnue
+    c.post("/api/icloud/simulation")
+    plan = _attendre(c)["plan"]
+    assert [x["nom"] for x in plan["modifier"]] == ["Jean-Pierre DUBOIS"]
+    assert plan["creer"] == plan["supprimer"] == plan["groupes"] == plan["inconnus"] == []
+
+
+def test_icloud_mauvais_mot_de_passe(client, monkeypatch):
+    from app.main import etat
+    from tests.faux_icloud import FauxICloud
+    c = client
+    _connecter(c)
+    cn = etat["carnet"]
+    monkeypatch.setattr(cn, "transport_icloud", FauxICloud("").transport())
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "icloud_user": "moi@icloud.com",
+                                                        "icloud_password": "faux"}))
+    c.post("/api/icloud/simulation")
+    t = _attendre(c)
+    assert t["tache"]["etat"] == "erreur" and "mot de passe d'application" in t["tache"]["message"]

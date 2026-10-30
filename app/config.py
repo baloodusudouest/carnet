@@ -26,6 +26,9 @@ class Config:
     kit_token: str          # jeton des appels POST du kit
     static: Path            # interface compilée
     emoji_groupes: str      # règles « émoji:groupe;… » (facultatif)
+    icloud_url: str = "https://contacts.icloud.com"
+    icloud_user: str = ""       # identifiant Apple (V2 : écriture dans iCloud)
+    icloud_password: str = ""   # mot de passe d'application Apple, pas celui du compte
 
     @property
     def depot(self) -> Path:
@@ -68,4 +71,7 @@ def charger() -> Config:
         kit_token=os.environ.get("KIT_API_TOKEN", "").strip(),
         static=Path(os.environ.get("CARNET_STATIC", str(Path(__file__).parent / "static"))),
         emoji_groupes=os.environ.get("CARNET_EMOJI_GROUPES", ""),
+        icloud_url=os.environ.get("CARNET_ICLOUD_URL", "https://contacts.icloud.com").strip(),
+        icloud_user=os.environ.get("CARNET_ICLOUD_USER", "").strip(),
+        icloud_password=os.environ.get("CARNET_ICLOUD_PASSWORD", "").strip(),
     )
