@@ -44,13 +44,17 @@ def _corps_propfind(props: str) -> str:
 
 class CardDAV:
     def __init__(self, url: str, utilisateur: str, mot_de_passe: str,
-                 transport: httpx.BaseTransport | None = None, nom_carnet: str | None = None):
+                 transport: httpx.BaseTransport | None = None, nom_carnet: str | None = None,
+                 verifier_tls: bool = True, service: str = "iCloud"):
+        self.service = service
         if not utilisateur or not mot_de_passe:
+            if service != "iCloud":
+                raise ErreurICloud(f"Identifiant {service} absent : renseigne-le dans les variables de la stack.")
             raise ErreurICloud("Identifiant iCloud absent : renseigne CARNET_ICLOUD_USER et "
                                "CARNET_ICLOUD_PASSWORD dans les variables de la stack.")
         self.base = url.rstrip("/") + "/"
         self.client = httpx.Client(auth=(utilisateur, mot_de_passe), timeout=60, follow_redirects=True,
-                                   transport=transport, headers={"User-Agent": "carnet (CardDAV)"})
+                                   transport=transport, verify=verifier_tls, headers={"User-Agent": "carnet (CardDAV)"})
         self.carnet: str | None = None
         self.nom_carnet = nom_carnet   # carnet d'adresses voulu (nom affiché) ; None : le premier
 
@@ -63,7 +67,12 @@ class CardDAV:
         try:
             r = self.client.request(methode, url, **kw)
         except httpx.HTTPError as exc:
-            raise ErreurICloud(f"iCloud injoignable ({exc.__class__.__name__}).") from exc
+            if "CERTIFICATE" in str(exc).upper():
+                raise ErreurICloud(f"{self.service} : certificat HTTPS refusé (adresse IP ou certificat auto-signé). "
+                                   "En réseau local, mets CARNET_SYNOLOGY_VERIFIER_TLS=non.") from exc
+            raise ErreurICloud(f"{self.service} injoignable ({exc.__class__.__name__}).") from exc
+        if r.status_code == 401 and self.service != "iCloud":
+            raise ErreurICloud(f"{self.service} refuse la connexion : vérifie l'utilisateur et le mot de passe.")
         if r.status_code == 401:
             raise ErreurICloud("iCloud refuse la connexion : vérifie l'identifiant Apple et le "
                                "mot de passe d'application (pas le mot de passe du compte).")
@@ -72,8 +81,8 @@ class CardDAV:
         if r.status_code >= 400:
             # Le motif donné par iCloud (souvent un XML court) est gardé pour le diagnostic
             motif = " ".join(r.text.split())[:300] if r.text else ""
-            log.warning("iCloud %s %s → %s %s", methode, urlsplit(url).path, r.status_code, motif)
-            raise ErreurICloud(f"iCloud a répondu {r.status_code} à {methode} {urlsplit(url).path}"
+            log.warning("%s %s %s → %s %s", self.service, methode, urlsplit(url).path, r.status_code, motif)
+            raise ErreurICloud(f"{self.service} a répondu {r.status_code} à {methode} {urlsplit(url).path}"
                                + (f" ({motif})" if motif else "") + ".")
         return r
 
@@ -106,6 +115,12 @@ class CardDAV:
     def decouvrir(self) -> str:
         if self.carnet:
             return self.carnet
+        # Adresse d'un carnet d'adresses précis (…/carddav/<compte>/<identifiant>/) : utilisée telle quelle
+        for _, prop in self._propfind(self.base, "<d:resourcetype/>", 0):
+            rt = prop.find(f"{{{D}}}resourcetype")
+            if rt is not None and rt.find(f"{{{C}}}addressbook") is not None:
+                self.carnet = self.base
+                return self.carnet
         reps = self._propfind(self.base, "<d:current-user-principal/>", 0)
         principal = next((p.findtext(f"{{{D}}}current-user-principal/{{{D}}}href") for _, p in reps), None)
         if not principal:
