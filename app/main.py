@@ -429,6 +429,26 @@ def refuser_liaison(corps: Refus):
     return carnet().refuser_liaison(corps.pid, corps.immich)
 
 
+class CorrectionNom(BaseModel):
+    pid: str
+    garder: str
+
+
+@app.post("/api/liaisons/nom")
+def corriger_nom(corps: CorrectionNom):
+    return carnet().corriger_nom(corps.pid, corps.garder)
+
+
+class RenommageImmich(BaseModel):
+    id: str
+    nom: str
+
+
+@app.post("/api/immich/renommer")
+def renommer_immich(corps: RenommageImmich):
+    return carnet().renommer_immich(corps.id, corps.nom)
+
+
 class Deliaison(BaseModel):
     pid: str
 
