@@ -42,8 +42,29 @@ rest:
           - nouveaux
           - supprimes
 
+      - name: Carnet sauvegarde
+        unique_id: carnet_sauvegarde
+        icon: mdi:content-save-check
+        value_template: "{{ value_json.sauvegarde.contacts if value_json.sauvegarde else 'unknown' }}"
+        json_attributes_path: "$.sauvegarde"
+        json_attributes:
+          - le
+          - ok
+          - erreur
+          - synology
+
 template:
   - binary_sensor:
+      - name: Carnet sauvegarde en échec
+        unique_id: carnet_sauvegarde_en_echec
+        device_class: problem
+        state: >-
+          {% set le = state_attr('sensor.carnet_sauvegarde', 'le') %}
+          {{ state_attr('sensor.carnet_sauvegarde', 'ok') == false
+             or le is none
+             or (now() - as_datetime(le)).total_seconds() > 36 * 3600 }}
+        attributes:
+          erreur: "{{ state_attr('sensor.carnet_sauvegarde', 'erreur') }}"
       - name: Carnet veille en échec
         unique_id: carnet_veille_en_echec
         device_class: problem
@@ -57,6 +78,23 @@ template:
           erreur: "{{ state_attr('sensor.carnet_veille_icloud', 'erreur') }}"
 
 automation:
+  - id: carnet_sauvegarde_en_echec
+    alias: "Carnet – sauvegarde de nuit en échec"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.carnet_sauvegarde_en_echec
+        to: "on"
+        for: "00:30:00"
+    actions:
+      - action: persistent_notification.create
+        data:
+          notification_id: carnet_sauvegarde
+          title: "Carnet : sauvegarde de nuit en échec"
+          message: >-
+            {{ state_attr('binary_sensor.carnet_sauvegarde_en_echec', 'erreur')
+               or "Aucune sauvegarde depuis plus de 36 h : carnet est-il démarré ?" }}
+            Détail dans l'onglet « Export et kit » de carnet.
+
   - id: carnet_veille_en_echec
     alias: "Carnet – veille iCloud en échec"
     triggers:

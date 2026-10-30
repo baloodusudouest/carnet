@@ -18,6 +18,8 @@ services:
       - CARNET_ICLOUD_PASSWORD=${CARNET_ICLOUD_PASSWORD:-}  # mot de passe d'application Apple
       - CARNET_LINKEDIN_CLIENT_ID=${CARNET_LINKEDIN_CLIENT_ID:-}           # app LinkedIn (onglet Auth)
       - CARNET_LINKEDIN_CLIENT_SECRET=${CARNET_LINKEDIN_CLIENT_SECRET:-}   # secret de l'app LinkedIn
+      - CARNET_SYNOLOGY_URL=${CARNET_SYNOLOGY_URL:-}             # CardDAV de Synology Contacts (copie de nuit)
+      - CARNET_SYNOLOGY_PASSWORD=${CARNET_SYNOLOGY_PASSWORD:-}   # mot de passe du compte DSM « carnet »
       - LOG_LEVEL=INFO
     volumes:
       # Dépôt des exports, archives, export propre : visibles depuis le PC

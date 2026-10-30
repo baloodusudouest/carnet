@@ -1024,3 +1024,55 @@ def test_linkedin_oauth_par_carnet(client, monkeypatch):
     assert r.status_code == 200, r.text
     assert r.json()["enrichies"] == 1
     assert c.post("/api/linkedin/code", json={"adresse": retour}).status_code == 400   # usage unique
+
+
+def test_sauvegarde_synology(client, monkeypatch, tmp_path):
+    """Sauvegarde de nuit : export daté + copie Synology à l'identique, bloquée si trop de
+    fiches disparaîtraient d'un coup."""
+    from app.main import etat
+    from tests.faux_icloud import FauxICloud
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    syno = FauxICloud("", utilisateur="carnet", mot_de_passe="pw")
+    cn = etat["carnet"]
+    monkeypatch.setattr(cn, "transport_synology", syno.transport(), raising=False)
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "synology_url": "http://nas:5000/carddav/carnet/",
+                                                        "synology_user": "carnet", "synology_password": "pw"}))
+    ids = []
+    for debut in ("Claire", "Jean-Pierre", "Plomberie"):
+        p = _personne(c, debut)
+        ids.append(p["id"])
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        f["groupes"] = ["Amis"]
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/sauvegardes")
+    _attendre(c)
+    s = c.get("/api/sauvegardes").json()
+    assert s["journal"][0]["erreur"] is None and s["journal"][0]["synology"]["crees"] == 3
+    assert s["journal"][0]["synology"]["groupes"] == 1
+    assert len(s["fichiers"]) == 1 and c.get(f"/api/sauvegardes/{s['fichiers'][0]['nom']}").text.count("BEGIN:VCARD") == 3
+    assert len(syno.cartes) == 4 and c.get("/status").json()["sauvegarde"]["ok"]
+
+    # Rien n'a changé : aucune écriture
+    avant = len(syno.ecritures)
+    c.post("/api/sauvegardes")
+    _attendre(c)
+    assert len(syno.ecritures) == avant
+
+    # Un seul contact mis de côté : supprimé de Synology (sous le seuil de 5 fiches)
+    c.post(f"/api/personnes/{ids[2]}/ecarter")
+    c.post("/api/sauvegardes")
+    _attendre(c)
+    assert c.get("/api/sauvegardes").json()["journal"][0]["synology"]["supprimes"] == 1
+
+    # Base vidée par erreur (simulée) avec beaucoup de fiches en face : copie bloquée
+    for i in range(20):
+        syno.modifier_sur_iphone(f"carnet-x{i}", f"BEGIN:VCARD\r\nVERSION:3.0\r\nFN:X{i}\r\nUID:carnet-x{i}\r\nEND:VCARD\r\n")
+    c.post("/api/sauvegardes")
+    t = _attendre(c)
+    assert t["tache"]["etat"] == "erreur" and "bloquée" in t["tache"]["message"]
+    assert syno.texte("carnet-x0") is not None
+    c.post("/api/sauvegardes/forcer")
+    _attendre(c)
+    assert syno.texte("carnet-x0") is None

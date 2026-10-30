@@ -55,7 +55,7 @@ class FauxICloud:
         if r.method == "GET" and chemin in self.photos:
             return httpx.Response(200, content=self.photos[chemin], headers={"Content-Type": "image/jpeg"})
         if r.method == "PROPFIND":
-            if chemin == "/":
+            if chemin not in (PRINCIPAL, MAISON, CARNET):  # racine (ou /carddav/<compte>/ chez Synology)
                 return _multistatus([_reponse("/", f"<d:current-user-principal><d:href>{PRINCIPAL}</d:href></d:current-user-principal>")])
             if chemin == PRINCIPAL:
                 # iCloud renvoie une adresse absolue, sur un autre serveur

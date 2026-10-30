@@ -4,6 +4,24 @@
   import { dateCourte, pluriel } from '../lib/cles.js'
 
   let exports = $state([])
+  let sauvegardes = $state(null)
+  let tache = $state(null)
+
+  async function chargerSauvegardes() {
+    sauvegardes = await api.get('/api/sauvegardes')
+    tache = (await api.get('/api/icloud')).tache
+    if (['lecture', 'ecriture'].includes(tache?.etat)) setTimeout(chargerSauvegardes, 1000)
+  }
+  chargerSauvegardes()
+
+  async function sauvegarder(forcer = false) {
+    try {
+      await api.post(forcer ? '/api/sauvegardes/forcer' : '/api/sauvegardes')
+      await chargerSauvegardes()
+    } catch (e) {
+      annoncer(e.message, true)
+    }
+  }
   let kit = $state(null)
   let occupe = $state('')
 
@@ -97,4 +115,47 @@
       {/if}
     {/if}
   </section>
+
+  {#if sauvegardes}
+    <section class="lg:col-span-2">
+      <div class="flex flex-wrap items-end gap-4 mb-2">
+        <div>
+          <h2 class="titre text-3xl">Sauvegarde de nuit</h2>
+          <p class="text-mine text-sm max-w-3xl">Chaque nuit, après la veille iCloud : un fichier .vcf daté (sans photos, gardé
+            {sauvegardes.jours} jours) {sauvegardes.synology ? 'et une copie à l\'identique dans Synology Contacts, bloquée si plus de 5 % des fiches changent d\'un coup' : '— copie Synology non configurée (CARNET_SYNOLOGY_URL)'}.</p>
+        </div>
+        <button class="bouton ml-auto" disabled={['lecture', 'ecriture'].includes(tache?.etat)} onclick={() => sauvegarder()}>Sauvegarder maintenant</button>
+      </div>
+      {#if tache && tache.etat !== 'repos' && ['sauvegarde', 'veille'].includes(tache.operation)}
+        <p class="text-sm mb-3 {tache.etat === 'erreur' ? 'text-alerte' : 'text-mine'}">{tache.message}
+          {#if tache.etat === 'erreur' && tache.message.includes('bloquée')}
+            <button class="bouton !py-1 ml-2 !border-alerte !text-alerte" onclick={() => sauvegarder(true)}>Forcer la copie</button>
+          {/if}
+        </p>
+      {/if}
+      <div class="grid gap-6 lg:grid-cols-2">
+        <ul class="divide-y divide-couture border-y border-couture text-sm">
+          {#each sauvegardes.journal as j}
+            <li class="py-2 flex flex-wrap gap-x-3">
+              <span class="text-papier">{dateCourte(j.le)}</span>
+              {#if j.erreur}<span class="text-alerte">{j.erreur}</span>
+              {:else}
+                <span class="text-mine">{pluriel(j.contacts, 'contact', 'contacts')}{j.synology ? ` ; Synology : ${j.synology.crees} créé(s), ${j.synology.modifies} mis à jour, ${j.synology.supprimes} supprimé(s)` : ''}</span>
+                {#if j.synology?.erreurs?.length}<span class="text-alerte text-xs basis-full">{j.synology.erreurs.join(' · ')}</span>{/if}
+              {/if}
+            </li>
+          {:else}
+            <li class="py-2 text-mine">Aucune sauvegarde pour l'instant.</li>
+          {/each}
+        </ul>
+        <ul class="divide-y divide-couture border-y border-couture text-sm">
+          {#each sauvegardes.fichiers as f}
+            <li class="py-2 flex"><span class="flex-1">{f.nom}</span>
+              <span class="text-mine mr-4">{Math.max(1, Math.round(f.taille / 1024))} Ko</span>
+              <a class="underline underline-offset-2 hover:text-onglet" href={`/api/sauvegardes/${f.nom}`} download>Télécharger</a></li>
+          {/each}
+        </ul>
+      </div>
+    </section>
+  {/if}
 </div>
