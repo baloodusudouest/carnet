@@ -32,7 +32,7 @@ class FauxICloud:
             uid = re.search(r"^UID:(.+)$", bloc, flags=re.M).group(1).strip()
             self.cartes[f"{CARNET}{uid}.vcf"] = [self._etag(), bloc]
         self.ecritures: list[tuple[str, str]] = []
-        self.nom_carnet = "Mes contacts"
+        self.nom_carnet = "My Contacts"
         self.autres_carnets: list[tuple[str, str]] = []   # (nom, chemin) listés AVANT le carnet principal
         self.photos: dict[str, bytes] = {}       # chemin → image servie par lien (comme iCloud)
 

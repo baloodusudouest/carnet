@@ -93,7 +93,7 @@ Copie `homeassistant/carnet.yaml` dans `/config/packages/`, ajoute `carnet_statu
 | `CARNET_LINKEDIN_REDIRECT` | `https://localhost/carnet-linkedin` | adresse de retour déclarée dans l'onglet Auth de l'app |
 | `CARNET_SYNOLOGY_URL` | vide | CardDAV de Synology Contacts, ex. `http://192.168.1.90:5000/carddav/carnet/` (copie de nuit) |
 | `CARNET_SYNOLOGY_USER` / `_PASSWORD` | `carnet` / vide | compte DSM dédié, limité à l'application Contacts |
-| `CARNET_SYNOLOGY_CARNET` | `Mes contacts` | carnet d'adresses visé ; jamais un carnet partagé (« Contacts de l'équipe ») |
+| `CARNET_SYNOLOGY_CARNET` | `My Contacts\|Mes contacts` | carnet d'adresses visé (nom CardDAV, souvent en anglais ; plusieurs noms séparés par `\|`) ; jamais un carnet partagé (« Contacts de l'équipe ») |
 | `CARNET_SYNOLOGY_VERIFIER_TLS` | `oui` | `non` pour accepter le certificat du NAS joint par son adresse IP (réseau local) |
 | `CARNET_SAUVEGARDE_JOURS` | `30` | exports .vcf datés gardés dans `archives/sauvegardes` |
 | `CARNET_VEILLE_HEURE` | `03:00` | heure de la veille iCloud quotidienne (vide : désactivée) |

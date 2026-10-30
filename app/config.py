@@ -34,7 +34,7 @@ class Config:
     synology_user: str = ""
     synology_password: str = ""
     synology_verifier_tls: bool = True      # False : certificat du NAS non vérifié (adresse IP en réseau local)
-    synology_carnet: str = "Mes contacts"   # carnet d'adresses personnel (jamais celui de l'équipe)
+    synology_carnet: str = "My Contacts|Mes contacts"   # carnet d'adresses personnel (jamais celui de l'équipe)
     sauvegarde_jours: int = 30       # exports .vcf datés gardés
     linkedin_client_id: str = ""      # app LinkedIn Developers (portabilité des données)
     linkedin_client_secret: str = ""
@@ -90,7 +90,7 @@ def charger() -> Config:
         synology_password=os.environ.get("CARNET_SYNOLOGY_PASSWORD", "").strip(),
         synology_verifier_tls=os.environ.get("CARNET_SYNOLOGY_VERIFIER_TLS", "oui").strip().lower()
         not in ("non", "false", "0", "no"),
-        synology_carnet=os.environ.get("CARNET_SYNOLOGY_CARNET", "Mes contacts").strip(),
+        synology_carnet=os.environ.get("CARNET_SYNOLOGY_CARNET", "My Contacts|Mes contacts").strip(),
         sauvegarde_jours=int(os.environ.get("CARNET_SAUVEGARDE_JOURS", "30")),
         linkedin_client_id=os.environ.get("CARNET_LINKEDIN_CLIENT_ID", "").strip(),
         linkedin_client_secret=os.environ.get("CARNET_LINKEDIN_CLIENT_SECRET", "").strip(),
