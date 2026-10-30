@@ -216,11 +216,22 @@
     if (portables.length === 1) portables[0].type = 'mobile'
   }
 
+  // Collègues ou Clients ajouté sur une fiche à un seul téléphone : un portable (+33 6, +33 7)
+  // devient « travail », un fixe « bureau » (même règle que la Revue)
+  function regleUnSeulTelephonePro() {
+    if (fiche.telephones.length !== 1) return
+    const t = fiche.telephones[0]
+    t.type = /^\+33[67]/.test(t.valeur) || (!t.valeur.startsWith('+33') && t.mobile) ? 'travail' : 'bureau'
+  }
+
   function basculerGroupe(groupe) {
     const g = fiche.groupes
     const i = g.indexOf(groupe)
     if (i >= 0) g.splice(i, 1)
-    else g.push(groupe)
+    else {
+      g.push(groupe)
+      if (groupe === 'Collègues' || groupe === 'Clients') regleUnSeulTelephonePro()
+    }
     regleProches()
   }
 
