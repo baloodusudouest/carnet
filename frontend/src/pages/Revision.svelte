@@ -207,12 +207,13 @@
     })
   }
 
-  // Famille, Amis, Jardin secret : un portable (nature « mobile », tous pays) est « mobile »
-  const PROCHES = ['Famille', 'Amis', 'Jardin secret']
+  // Règles de type par groupe (intégrés et créés, voir ref.regles) :
+  // « travail » (Artisans, Collègues, Clients…) : portable → travail, fixe → bureau
+  // « proches » (Famille, Amis, Jardin secret…) : un seul portable → mobile (prioritaire)
+  const avecRegle = (regle) => fiche.groupes.some((g) => ref.regles?.[g] === regle)
   function regleProches() {
-    // Artisans et services, Collègues, Clients : portable → travail, fixe → bureau (tous pays)
-    // (les proches restent prioritaires)
-    if (fiche.groupes.some((g) => ['Artisans et services', 'Collègues', 'Clients'].includes(g))) {
+    const pros = avecRegle('travail')
+    if (pros) {
       for (const t of fiche.telephones) {
         if (t.nature) t.type = t.nature === 'mobile' ? 'travail' : 'bureau'
       }
@@ -220,14 +221,10 @@
     // Clients : les adresses sont celles du travail
     if (fiche.groupes.includes('Clients')) for (const a of fiche.adresses) a.type = 'travail'
     // Fiche d'entreprise (société sans prénom ni nom) : standard « principal », portable « travail »
-    const pros = ['Artisans et services', 'Clients', 'Collègues']
-    if (fiche.groupes.some((g) => pros.includes(g)) && fiche.societe && !fiche.prenom && !fiche.nom) {
-      for (const t of fiche.telephones) {
-        const portable = t.nature === 'mobile'
-        t.type = portable ? 'travail' : 'principal'
-      }
+    if (pros && fiche.societe && !fiche.prenom && !fiche.nom) {
+      for (const t of fiche.telephones) t.type = t.nature === 'mobile' ? 'travail' : 'principal'
     }
-    if (!fiche.groupes.some((g) => PROCHES.includes(g))) return
+    if (!avecRegle('proches')) return
     // un seul portable : mobile ; deux ou plus : la Revue demande lequel est celui du travail
     const portables = fiche.telephones.filter((t) => t.nature === 'mobile')
     if (portables.length === 1) portables[0].type = 'mobile'

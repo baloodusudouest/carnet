@@ -140,6 +140,18 @@ def type_pro_attendu(t: dict) -> str | None:
 
 
 GROUPES_PROCHES = {"Famille", "Amis", "Jardin secret"}
+GROUPES_PROS = {"Artisans et services", "Collègues", "Clients"}
+_BASE_PROCHES, _BASE_PROS = set(GROUPES_PROCHES), set(GROUPES_PROS)
+
+
+def configurer_groupes(perso: list[dict]) -> None:
+    """Groupes créés dans carnet : ils rejoignent les règles « proches » ou « travail » choisies."""
+    from . import modele
+    modele.GROUPES_PERSO[:] = [dict(g) for g in perso]
+    GROUPES_PROCHES.clear()
+    GROUPES_PROCHES.update(_BASE_PROCHES | {g["nom"] for g in perso if g.get("regle") == "proches"})
+    GROUPES_PROS.clear()
+    GROUPES_PROS.update(_BASE_PROS | {g["nom"] for g in perso if g.get("regle") == "travail"})
 
 
 def regle_proches(fiche: dict) -> dict:
@@ -156,7 +168,7 @@ def regle_proches(fiche: dict) -> dict:
     if "Clients" in groupes:  # l'adresse d'un client (personne ou société) est celle de son travail
         for a in fiche.get("adresses", []):
             a["type"] = "travail"
-    pros = groupes & {"Artisans et services", "Collègues", "Clients"}
+    pros = groupes & GROUPES_PROS
     if pros:
         for t in telephones:
             if t["nature"]:

@@ -17,7 +17,7 @@ from . import __version__, config
 from .auth import COOKIE, Sessions
 from .db import Base
 from .normalisation import configurer_emojis
-from .modele import GROUPES, GROUPE_VERIFIES, LIBELLES_SOURCES, TYPES
+from .modele import GROUPE_VERIFIES, LIBELLES_SOURCES, TYPES, groupes_tous, regles_groupes
 from .service import Carnet, ErreurCarnet
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
@@ -134,7 +134,7 @@ def deconnexion():
 
 @app.get("/api/config")
 def referentiel():
-    return {"groupes": GROUPES, "groupe_verifies": GROUPE_VERIFIES, "types": TYPES,
+    return {"groupes": groupes_tous(), "regles": regles_groupes(), "groupe_verifies": GROUPE_VERIFIES, "types": TYPES,
             "sources": LIBELLES_SOURCES, "version": __version__,
             "archive_jours": etat["cfg"].archive_jours, "alerte_jours": etat["cfg"].alerte_jours}
 
@@ -293,6 +293,44 @@ def ignorer_doublon(corps: Paire):
 def retoucher(pid: str, corps: Retouche):
     return carnet().retoucher(pid, corps.anniversaire, corps.societe, corps.ajouter, corps.retirer,
                               corps.telephone, corps.type_telephone, corps.types, corps.types_sites, corps.natures)
+
+
+# ------------------------------------------------------------------ groupes
+
+class Groupe(BaseModel):
+    nom: str
+    regle: str | None = None
+
+
+class ModifGroupe(BaseModel):
+    ancien: str
+    nom: str
+    regle: str | None = None
+
+
+class SuppressionGroupe(BaseModel):
+    nom: str
+    vers: str | None = None
+
+
+@app.get("/api/groupes")
+def groupes():
+    return carnet().groupes()
+
+
+@app.post("/api/groupes")
+def creer_groupe(corps: Groupe):
+    return carnet().creer_groupe(corps.nom, corps.regle)
+
+
+@app.post("/api/groupes/modifier")
+def modifier_groupe(corps: ModifGroupe):
+    return carnet().modifier_groupe(corps.ancien, corps.nom, corps.regle)
+
+
+@app.post("/api/groupes/supprimer")
+def supprimer_groupe(corps: SuppressionGroupe):
+    return carnet().supprimer_groupe(corps.nom, corps.vers)
 
 
 # ------------------------------------------------------------------ iCloud (V2)

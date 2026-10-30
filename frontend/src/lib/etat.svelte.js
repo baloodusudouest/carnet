@@ -1,6 +1,6 @@
 // État partagé de l'interface (runes Svelte 5).
 export const session = $state({ connecte: null })
-export const ref = $state({ groupes: [], types: {}, sources: {}, groupe_verifies: '✓ Vérifiés' })
+export const ref = $state({ groupes: [], regles: {}, types: {}, sources: {}, groupe_verifies: '✓ Vérifiés' })
 export const statut = $state({ total: 0, verifies: 0, a_reviser: 0 })
 export const message = $state({ texte: '', erreur: false, id: 0 })
 
