@@ -389,3 +389,8 @@ def test_emoji_vers_groupe():
         assert n.nettoyer({"prenom": "Léa"}).get("groupes", []) == []
     finally:
         n.configurer_emojis("")
+
+
+def test_telegram_deja_importe():
+    f = n.nettoyer({"sites": [{"valeur": "https://t.me/@id99", "type": "site"}]})
+    assert f["sites"][0]["type"] == "telegram"
