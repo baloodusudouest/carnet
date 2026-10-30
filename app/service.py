@@ -151,7 +151,7 @@ class Carnet:
                            "min(?, CASE WHEN a = ? THEN b ELSE a END), max(?, CASE WHEN a = ? THEN b ELSE a END) "
                            "FROM distinctes WHERE a = ? OR b = ?",
                            (nouvelle, ancienne["id"], nouvelle, ancienne["id"], ancienne["id"], ancienne["id"]))
-                cx.execute("UPDATE personnes SET statut = 'a_reviser', a_revoir = 'fiche mise à jour "
+                cx.execute("UPDATE personnes SET statut = CASE WHEN statut = 'ecarte' THEN 'ecarte' ELSE 'a_reviser' END, a_revoir = 'fiche mise à jour "
                            "dans ' || ?, modifie_le = ? WHERE id = ?",
                            (LIBELLES_SOURCES.get(source, source), _iso(quand), ancienne["personne_id"]))
                 mises_a_jour += 1
@@ -221,7 +221,7 @@ class Carnet:
                 ligne = cx.execute("SELECT raisons, statut FROM personnes WHERE id = ?", (pid,)).fetchone()
                 anciennes = json.loads(ligne["raisons"] or "[]")
                 motif = "nouvelle fiche importée" if ligne["statut"] == "verifie" else None
-                cx.execute("UPDATE personnes SET statut = 'a_reviser', raisons = ?, "
+                cx.execute("UPDATE personnes SET statut = CASE WHEN statut = 'ecarte' THEN 'ecarte' ELSE 'a_reviser' END, raisons = ?, "
                            "a_revoir = COALESCE(?, a_revoir), modifie_le = ? WHERE id = ?",
                            (json.dumps(anciennes + raisons, ensure_ascii=False), motif, quand, pid))
                 completees += 1
@@ -263,7 +263,7 @@ class Carnet:
                 {"a": autre, "b": l["id"], "score": score, "raisons": raisons}]
             motif = "complément LinkedIn" if ligne["statut"] == "verifie" else None
             cx.execute("UPDATE sources SET personne_id = ? WHERE id = ?", (pid, l["id"]))
-            cx.execute("UPDATE personnes SET statut = 'a_reviser', raisons = ?, "
+            cx.execute("UPDATE personnes SET statut = CASE WHEN statut = 'ecarte' THEN 'ecarte' ELSE 'a_reviser' END, raisons = ?, "
                        "a_revoir = COALESCE(?, a_revoir), modifie_le = ? WHERE id = ?",
                        (json.dumps(toutes, ensure_ascii=False), motif, quand, pid))
             enrichies += 1
@@ -369,6 +369,22 @@ class Carnet:
             else:
                 cx.execute("UPDATE personnes SET brouillon = ?, modifie_le = ? WHERE id = ?",
                            (texte, quand, pid))
+        return self.dossier(pid)
+
+    def ecarter(self, pid: str) -> dict:
+        """Met un contact de côté : il quitte la file, la Revue, l'export et le kit, et un nouvel
+        import ne le ramène pas. Ses fiches restent dans carnet : on peut le restaurer."""
+        self._personne(pid)
+        with self.base.transaction() as cx:
+            cx.execute("UPDATE personnes SET statut = 'ecarte', a_revoir = NULL, modifie_le = ? WHERE id = ?",
+                       (_iso(maintenant()), pid))
+        return self.dossier(pid)
+
+    def restaurer(self, pid: str) -> dict:
+        self._personne(pid)
+        with self.base.transaction() as cx:
+            cx.execute("UPDATE personnes SET statut = 'a_reviser', a_revoir = 'remis en révision', "
+                       "modifie_le = ? WHERE id = ? AND statut = 'ecarte'", (_iso(maintenant()), pid))
         return self.dossier(pid)
 
     def rouvrir(self, pid: str) -> dict:
@@ -658,7 +674,7 @@ class Carnet:
     def apercu_kit(self) -> dict:
         verifies = self._verifiees(GROUPE_URGENCE)
         a_reviser = [p for p in self.liste()
-                     if p["statut"] != "verifie" and GROUPE_URGENCE in p["groupes"]]
+                     if p["statut"] == "a_reviser" and GROUPE_URGENCE in p["groupes"]]
         return {"verifies": [nom_affiche(f) for _, f, _ in verifies],
                 "a_reviser": [p["nom"] for p in a_reviser],
                 "dernier_envoi": self.base.etat("dernier_envoi_kit")}
@@ -732,7 +748,8 @@ class Carnet:
         archives = [a for a in self.archives() if a["bientot"]]
         prochaine = min((a["expire_le"] for a in self.archives() if a["purge_le"] is None), default=None)
         return {
-            "total": sum(compte.values()),
+            "total": sum(n for st, n in compte.items() if st != "ecarte"),
+            "ecartes": compte.get("ecarte", 0),
             "verifies": compte.get("verifie", 0),
             "a_reviser": compte.get("a_reviser", 0),
             "doublons_a_reviser": sum(1 for p in liste if p["statut"] == "a_reviser" and p["doublon"]),

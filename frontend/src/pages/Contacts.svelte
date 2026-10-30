@@ -22,7 +22,7 @@
     return tous.filter((p) =>
       (!q || cleTexte(`${p.nom} ${p.societe} ${p.courriel} ${p.telephone}`).includes(q)) &&
       (!groupe || p.groupes.includes(groupe)) &&
-      (filtre === 'tous' || (filtre === 'verifie' ? p.statut === 'verifie' : p.statut !== 'verifie')))
+      (filtre === 'tous' ? p.statut !== 'ecarte' : p.statut === filtre))
   })
   const presentes = $derived(new Set(filtres.map((p) => initiale(p.nom))))
   const affiches = $derived(lettre ? filtres.filter((p) => initiale(p.nom) === lettre) : filtres)
@@ -43,6 +43,7 @@
     <option value="tous">Tous les statuts</option>
     <option value="verifie">Vérifiés</option>
     <option value="a_reviser">À relire</option>
+    <option value="ecarte">Mis de côté</option>
   </select>
 </div>
 
@@ -84,7 +85,8 @@
             <td class="px-4 py-2 text-sm text-mine">{p.groupes.join(', ')}</td>
             <td class="px-4 py-2 text-sm text-mine">{p.sources.map((s) => ref.sources[s]).join(', ')}</td>
             <td class="px-4 py-2 text-sm whitespace-nowrap">
-              {#if p.statut === 'verifie'}<span class="text-valide">Vérifié</span>{#if p.brouillon}<span class="block text-xs text-onglet">modifié, à valider</span>{/if}
+              {#if p.statut === 'ecarte'}<span class="text-alerte">Mis de côté</span>
+              {:else if p.statut === 'verifie'}<span class="text-valide">Vérifié</span>{#if p.brouillon}<span class="block text-xs text-onglet">modifié, à valider</span>{/if}
               {:else if p.doublon}<span class="text-onglet">Doublon à fusionner</span>
               {:else}<span class="text-mine">À relire</span>{/if}
             </td>

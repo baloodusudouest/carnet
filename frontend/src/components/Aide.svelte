@@ -11,6 +11,7 @@
     ['Entrée', 'Valider la fiche et passer à la suivante'],
     ['→ ←', 'Passer sans valider, revenir à la précédente'],
     ['M', 'Fusionner avec un autre contact'],
+    ['X', 'Mettre le contact de côté (ni exporté, ni renvoyé)'],
   ]
 </script>
 
