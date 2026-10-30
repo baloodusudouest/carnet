@@ -991,3 +991,36 @@ def test_linkedin_par_api(client, monkeypatch):
     assert r.json()["enrichies"] == 1 and len(vus) == 2
     claire = c.get(f"/api/personnes/{_personne(c, 'Claire')['id']}").json()
     assert any(s["source"] == "linkedin" for s in claire["sources"])
+
+
+def test_linkedin_oauth_par_carnet(client, monkeypatch):
+    import httpx
+    from urllib.parse import parse_qs, urlsplit
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    assert c.post("/api/linkedin/autorisation").status_code == 400          # pas encore configuré
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "linkedin_client_id": "id1",
+                                                        "linkedin_client_secret": "s3cr3t"}))
+
+    def repondre(r):
+        if r.url.path == "/oauth/v2/accessToken":
+            corps = parse_qs(r.content.decode())
+            assert corps["code"] == ["CODE1"] and corps["client_secret"] == ["s3cr3t"]
+            assert corps["redirect_uri"] == ["https://localhost/carnet-linkedin"]
+            return httpx.Response(200, json={"access_token": "abc", "expires_in": 5184000})
+        if int(r.url.params["start"]) == 0:
+            return httpx.Response(200, json={"elements": [{"snapshotDomain": "CONNECTIONS", "snapshotData": [
+                {"First Name": "Claire", "Last Name": "Martin", "Company": "Boulangerie du Port", "Position": "Gérante"}]}]})
+        return httpx.Response(404, text="No data found for this memberId")
+    monkeypatch.setattr(cn, "transport_linkedin", httpx.MockTransport(repondre), raising=False)
+    url = c.post("/api/linkedin/autorisation").json()["url"]
+    q = parse_qs(urlsplit(url).query)
+    assert q["scope"] == ["r_dma_portability_self_serve"] and q["client_id"] == ["id1"]
+    retour = f"https://localhost/carnet-linkedin?code=CODE1&state={q['state'][0]}"
+    r = c.post("/api/linkedin/code", json={"adresse": retour})
+    assert r.status_code == 200, r.text
+    assert r.json()["enrichies"] == 1
+    assert c.post("/api/linkedin/code", json={"adresse": retour}).status_code == 400   # usage unique

@@ -202,6 +202,26 @@ def linkedin_api(corps: JetonLinkedIn):
     return carnet().linkedin_api(corps.jeton)
 
 
+@app.get("/api/linkedin/etat")
+def linkedin_etat():
+    cfg = etat["cfg"]
+    return {"oauth": bool(cfg.linkedin_client_id and cfg.linkedin_client_secret), "retour": cfg.linkedin_redirect}
+
+
+@app.post("/api/linkedin/autorisation")
+def linkedin_autorisation():
+    return carnet().linkedin_autorisation()
+
+
+class RetourLinkedIn(BaseModel):
+    adresse: str
+
+
+@app.post("/api/linkedin/code")
+def linkedin_code(corps: RetourLinkedIn):
+    return carnet().linkedin_code(corps.adresse)
+
+
 # ------------------------------------------------------------------ contacts et révision
 
 @app.get("/api/contacts")
