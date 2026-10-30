@@ -84,7 +84,12 @@ def _photo(ligne) -> tuple[bytes | None, str | None]:
 
 def _lire_carte(brut: str, region: str) -> tuple[FicheLue | None, dict | None]:
     """Retourne (fiche, None) pour un contact, (None, groupe) pour une carte de groupe Apple."""
-    carte = vobject.readOne(brut, ignoreUnreadable=True)
+    # vobject coupe la valeur d'un TEL à la première virgule : la pause avant un numéro de poste
+    # (« +33 5 53 00 00 00,123 ») est réécrite en « poste » pour être conservée
+    protege = re.sub(r"^((?:item\d+\.)?TEL[^:\n]*:)([^\n]*)$",
+                     lambda m: m.group(1) + re.sub(r"\s*[,;]+\s*(?=\d)", " poste ", m.group(2)),
+                     brut, flags=re.M | re.I)
+    carte = vobject.readOne(protege, ignoreUnreadable=True)
     lignes = list(carte.getChildren())
     noms = {ligne.name.upper() for ligne in lignes}
 
