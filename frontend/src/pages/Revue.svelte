@@ -10,6 +10,8 @@
       aide: 'Saisis la date : 15/03/1985, 15 mars 1985, ou 15 mars si l’année est inconnue.' },
     { cle: 'societes', titre: 'Collègues et clients sans société',
       aide: 'Rajoute le nom de la société. Une proposition est faite d’après l’adresse e-mail professionnelle.' },
+    { cle: 'societes_a_uniformiser', titre: 'Noms de société à uniformiser',
+      aide: 'Ces noms désignent sans doute la même société. Choisis l’orthographe à garder pour tous ses contacts, ou ignore le groupe si ce sont bien des sociétés différentes.' },
     { cle: 'travail_a_classer', titre: 'Ancien groupe Travail à classer',
       aide: 'Le groupe Travail est remplacé par Collègues et Clients.' },
     { cle: 'urgence_sans_mobile', titre: 'Urgence sans mobile',
@@ -41,6 +43,33 @@
       await charger()
     } catch (e) {
       annoncer(e.message, true)
+    } finally {
+      occupe = null
+    }
+  }
+
+  let choix = $state({})   // orthographe choisie par groupe de sociétés
+
+  async function uniformiser(cle, variantes, nom) {
+    occupe = cle
+    try {
+      const r = await api.post('/api/societes/uniformiser', { variantes, nom })
+      annoncer(`${pluriel(r.modifies, 'contact mis', 'contacts mis')} à « ${nom} ».`)
+      delete choix[cle]
+      await charger()
+    } catch (e) {
+      annoncer(e.message, true)
+    } finally {
+      occupe = null
+    }
+  }
+
+  async function ignorer(cle, variantes) {
+    occupe = cle
+    try {
+      await api.post('/api/societes/ignorer', { variantes })
+      annoncer('Groupe ignoré : ces sociétés ne seront plus proposées ensemble.')
+      await charger()
     } finally {
       occupe = null
     }
@@ -81,6 +110,34 @@
           <h2 class="titre text-xl">{s.titre} <span class="text-mine text-base font-normal tabular-nums">({liste.length})</span></h2>
           <p class="text-sm text-mine mb-2">{liste.length ? s.aide : 'Rien à signaler.'}</p>
           {#if liste.length}
+            {#if s.cle === 'societes_a_uniformiser'}
+              <ul class="rounded-xl border border-couture divide-y divide-couture overflow-hidden">
+                {#each liste as g (g.variantes.map((v) => v.nom).join('|'))}
+                  {@const cle = g.variantes.map((v) => v.nom).join('|')}
+                  {@const noms = g.variantes.map((v) => v.nom)}
+                  <li class="px-4 py-3 {occupe === cle ? 'opacity-60' : ''}">
+                    <div class="flex flex-wrap gap-2 mb-2">
+                      {#each g.variantes as v}
+                        <button class="text-sm rounded-md px-2 py-0.5 border transition-colors
+                            {(choix[cle] ?? g.proposition) === v.nom ? 'border-onglet text-papier bg-onglet-sombre/40' : 'border-tranche text-mine hover:text-papier'}"
+                          onclick={() => (choix[cle] = v.nom)}>
+                          {v.nom} <span class="text-xs text-mine">({pluriel(v.nb, 'contact', 'contacts')})</span>
+                        </button>
+                      {/each}
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="text-sm text-mine">Garder :</span>
+                      <input class="w-72" value={choix[cle] ?? g.proposition}
+                        oninput={(e) => (choix[cle] = e.currentTarget.value)} aria-label="Nom de société à garder" />
+                      <button class="bouton !py-1" disabled={occupe === cle}
+                        onclick={() => uniformiser(cle, noms, choix[cle] ?? g.proposition)}>Uniformiser</button>
+                      <button class="text-sm text-mine underline underline-offset-2 hover:text-papier ml-2"
+                        disabled={occupe === cle} onclick={() => ignorer(cle, noms)}>Sociétés différentes</button>
+                    </div>
+                  </li>
+                {/each}
+              </ul>
+            {:else}
             <ul class="rounded-xl border border-couture divide-y divide-couture overflow-hidden">
               {#each liste as p (p.id)}
                 <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 {occupe === p.id ? 'opacity-60' : ''}">
@@ -129,6 +186,7 @@
                 </li>
               {/each}
             </ul>
+            {/if}
           {/if}
         </section>
       {/each}

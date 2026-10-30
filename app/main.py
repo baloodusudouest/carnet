@@ -249,6 +249,21 @@ class Retouche(BaseModel):
     retirer: list[str] = []
 
 
+class Societes(BaseModel):
+    variantes: list[str]
+    nom: str = ""
+
+
+@app.post("/api/societes/uniformiser")
+def uniformiser(corps: Societes):
+    return carnet().uniformiser_societes(corps.variantes, corps.nom)
+
+
+@app.post("/api/societes/ignorer")
+def ignorer(corps: Societes):
+    return carnet().ignorer_societes(corps.variantes)
+
+
 @app.post("/api/personnes/{pid}/retoucher")
 def retoucher(pid: str, corps: Retouche):
     return carnet().retoucher(pid, corps.anniversaire, corps.societe, corps.ajouter, corps.retirer)
