@@ -67,7 +67,7 @@ def vcard(fiche: dict, uid: str, photo: tuple[bytes, str] | None = None,
         l.append(f"BDAY;X-APPLE-OMIT-YEAR=1604;VALUE=date:1604-{annif[2:]}")
 
     for i, t in enumerate(fiche.get("telephones", [])):
-        # Numéro : pas d'échappement des virgules (pause avant le numéro de poste, comme l'iPhone)
+        # Numéro : pas d'échappement de « ; » ni « , » (attente / pause avant le poste, comme l'iPhone)
         valeur = str(t.get("affichage") or t["valeur"]).replace("\n", " ").replace("\\", "")
         pref = ";type=pref" if i == 0 else ""
         if t.get("type") in TEL:
