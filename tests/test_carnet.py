@@ -544,7 +544,7 @@ def test_artisans_travail_bureau():
                             "telephones": [{"valeur": "06 12 34 56 78", "type": "mobile"},
                                            {"valeur": "05 53 11 22 33", "type": "domicile"},
                                            {"valeur": "+32 470 12 34 56", "type": "mobile"}]})
-    assert [t["type"] for t in f["telephones"]] == ["travail", "bureau", "mobile"]
+    assert [t["type"] for t in f["telephones"]] == ["travail", "bureau", "travail"]   # +32 4… : mobile belge
 
 
 def test_fiche_entreprise_principal():
@@ -600,3 +600,16 @@ def test_collegues_et_clients_travail_bureau():
                                 "telephones": [{"valeur": "06 12 34 56 78", "type": "mobile"},
                                                {"valeur": "05 53 11 22 33", "type": "domicile"}]})
         assert [t["type"] for t in f["telephones"]] == ["travail", "bureau"], groupe
+
+
+def test_regles_tous_pays():
+    assert n.nature("+32479123456") == "mobile" and n.nature("+3222345678") == "fixe"
+    assert n.nature("+12025550123") is None            # États-Unis : impossible de trancher
+    f = n.normaliser_fiche({"prenom": "Jan", "groupes": ["Collègues"],
+                            "telephones": [{"valeur": "+32 479 12 34 56", "type": "mobile"},
+                                           {"valeur": "+32 2 234 56 78", "type": "domicile"},
+                                           {"valeur": "+1 202 555 0123", "type": "domicile"}]})
+    assert [t["type"] for t in f["telephones"]] == ["travail", "bureau", "domicile"]
+    g = n.normaliser_fiche({"prenom": "Lies", "groupes": ["Amis"],
+                            "telephones": [{"valeur": "+32 479 12 34 56", "type": "travail"}]})
+    assert g["telephones"][0]["type"] == "mobile"
