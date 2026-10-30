@@ -18,7 +18,8 @@ from .config import Config
 from .db import Base
 from .modele import (GROUPE_A_CLASSER, GROUPE_URGENCE, GROUPES_TRAVAIL, LIBELLES_SOURCES,
                      completer, nom_affiche)
-from .normalisation import (ValeurInvalide, cle_texte, domaine_pro, regle_proches, type_pro_attendu, nettoyer, normaliser_fiche,
+from .normalisation import (MESSAGERIES, ValeurInvalide, cle_texte, domaine_pro, regle_proches,
+                            reseau_detecte, type_pro_attendu, nettoyer, normaliser_fiche,
                             societe_depuis_domaine)
 from .sources import detecter_source, lire_texte, linkedin, outlook, vcard
 
@@ -477,7 +478,8 @@ class Carnet:
         sections = {k: [] for k in ("anniversaires", "deux_portables", "bureau_travail", "societes",
                                     "travail_a_classer",
                                     "urgence_sans_mobile",
-                                    "sans_groupe", "numeros_non_reconnus", "injoignables")}
+                                    "sans_groupe", "numeros_non_reconnus", "injoignables",
+                                    "sites_mal_etiquetes")}
         for pid, f in sorted(personnes, key=lambda x: nom_affiche(x[1]).lower()):
             groupes = set(f["groupes"])
             if groupes & {"Famille", "Amis"} and not f["anniversaire"]:
@@ -503,8 +505,17 @@ class Carnet:
             invalides = [t["valeur"] for t in f["telephones"] if not t.get("valide")]
             if invalides:
                 sections["numeros_non_reconnus"].append(resume(pid, f, numeros=invalides))
-            if not f["telephones"] and not f["courriels"]:
+            messageries = [s for s in f["sites"] if s.get("type") in MESSAGERIES
+                           or reseau_detecte(s["valeur"]) in MESSAGERIES]
+            if not f["telephones"] and not f["courriels"] and not messageries:
                 sections["injoignables"].append(resume(pid, f))
+            # Lien d'un réseau ou d'une messagerie reconnu (t.me, wa.me…) qui n'a pas la bonne étiquette
+            a_corriger = {s["valeur"]: reseau_detecte(s["valeur"]) for s in f["sites"]
+                          if reseau_detecte(s["valeur"]) and reseau_detecte(s["valeur"]) != s.get("type")}
+            if a_corriger:
+                sections["sites_mal_etiquetes"].append(resume(pid, f, sites=[
+                    {"valeur": v, "type": next(s["type"] for s in f["sites"] if s["valeur"] == v), "attendu": t}
+                    for v, t in a_corriger.items()]))
         sections["societes_a_uniformiser"] = self._societes_a_uniformiser(personnes)
         return sections
 
@@ -598,7 +609,7 @@ class Carnet:
     def retoucher(self, pid: str, anniversaire: str | None = None, societe: str | None = None,
                   ajouter: list[str] | None = None, retirer: list[str] | None = None,
                   telephone: str | None = None, type_telephone: str | None = None,
-                  types: dict[str, str] | None = None) -> dict:
+                  types: dict[str, str] | None = None, types_sites: dict[str, str] | None = None) -> dict:
         """Correction rapide depuis l'onglet Revue : appliquée à la fiche validée (et au brouillon
         s'il y en a un), sans repasser par la révision."""
         ligne = self._personne(pid)
@@ -619,6 +630,9 @@ class Carnet:
                 for t in f["telephones"]:
                     if t["valeur"] == telephone:
                         t["type"] = type_telephone
+            for s in f["sites"]:  # étiquettes des liens (telegram, whatsapp…)
+                if types_sites and s["valeur"] in types_sites:
+                    s["type"] = types_sites[s["valeur"]]
             for t in f["telephones"]:  # plusieurs numéros d'un coup (portables perso / travail)
                 if types and t["valeur"] in types:
                     t["type"] = types[t["valeur"]]

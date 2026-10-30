@@ -23,7 +23,10 @@
     { cle: 'sans_groupe', titre: 'Sans aucun groupe', aide: 'Clique sur les groupes à ajouter.' },
     { cle: 'numeros_non_reconnus', titre: 'Numéros non reconnus',
       aide: 'Numéros que carnet n’a pas pu mettre au format international : ouvre la fiche pour les corriger.' },
-    { cle: 'injoignables', titre: 'Sans téléphone ni courriel', aide: 'Ces fiches ne permettent de joindre personne.' },
+    { cle: 'injoignables', titre: 'Sans téléphone, courriel ni messagerie',
+      aide: 'Ni numéro, ni adresse e-mail, ni Telegram, WhatsApp ou Signal : ces fiches ne permettent de joindre personne.' },
+    { cle: 'sites_mal_etiquetes', titre: 'Messageries et réseaux mal étiquetés',
+      aide: 'Liens Telegram, WhatsApp, Signal, LinkedIn… rangés avec une autre étiquette (souvent « site »).' },
   ]
 
   let revue = $state(null)
@@ -171,6 +174,16 @@
                         onclick={() => retoucher(p, { types: Object.fromEntries(p.numeros.map((x) => [x.valeur, 'mobile'])) },
                           `Les portables de ${p.nom} sont tous personnels.`)}>Tous personnels</button>
                     </span>
+
+                  {:else if s.cle === 'sites_mal_etiquetes'}
+                    <span class="flex-1 min-w-0 text-sm">
+                      {#each p.sites as site}
+                        <span class="block truncate" title={site.valeur}>{site.valeur} <span class="text-xs text-mine">: {site.type} → <span class="text-onglet">{site.attendu}</span></span></span>
+                      {/each}
+                    </span>
+                    <button class="bouton bouton-principal !py-1" disabled={occupe === p.id}
+                      onclick={() => retoucher(p, { types_sites: Object.fromEntries(p.sites.map((x) => [x.valeur, x.attendu])) },
+                        `Étiquettes corrigées pour ${p.nom}.`)}>Corriger</button>
 
                   {:else if s.cle === 'bureau_travail'}
                     <span class="tabular-nums">{p.affichage}</span>
