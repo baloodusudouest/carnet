@@ -16,7 +16,7 @@ from rapidfuzz import fuzz
 from . import doublons, export, fusion
 from .config import Config
 from .db import Base
-from .modele import (GROUPE_A_CLASSER, GROUPE_URGENCE, GROUPES_TRAVAIL, LIBELLES_SOURCES,
+from .modele import (GROUPE_A_CLASSER, GROUPE_MOI, GROUPE_URGENCE, GROUPES_TRAVAIL, LIBELLES_SOURCES,
                      completer, nom_affiche)
 from .normalisation import (MESSAGERIES, ValeurInvalide, cle_texte, domaine_pro, regle_proches,
                             emojis_sans_groupe, reseau_detecte, type_pro_attendu, nettoyer, normaliser_fiche,
@@ -363,6 +363,8 @@ class Carnet:
         texte = json.dumps(propre, ensure_ascii=False)
         quand = _iso(maintenant())
         with self.base.transaction() as cx:
+            if GROUPE_MOI in propre["groupes"]:
+                self._retirer_moi_ailleurs(cx, pid)
             if valider:
                 cx.execute("UPDATE personnes SET fiche = ?, brouillon = NULL, statut = 'verifie', "
                            "a_revoir = NULL, verifie_le = ?, modifie_le = ? WHERE id = ?",
@@ -371,6 +373,15 @@ class Carnet:
                 cx.execute("UPDATE personnes SET brouillon = ?, modifie_le = ? WHERE id = ?",
                            (texte, quand, pid))
         return self.dossier(pid)
+
+    def _retirer_moi_ailleurs(self, cx, pid: str) -> None:
+        """Le groupe « Moi » ne désigne qu'une fiche : il est retiré des autres."""
+        for p in cx.execute("SELECT id, fiche, brouillon FROM personnes WHERE id != ?", (pid,)).fetchall():
+            for colonne in ("fiche", "brouillon"):
+                if p[colonne] and GROUPE_MOI in (f := json.loads(p[colonne])).get("groupes", []):
+                    f["groupes"] = [g for g in f["groupes"] if g != GROUPE_MOI]
+                    cx.execute(f"UPDATE personnes SET {colonne} = ? WHERE id = ?",
+                               (json.dumps(f, ensure_ascii=False), p["id"]))
 
     def ecarter(self, pid: str) -> dict:
         """Met un contact de côté : il quitte la file, la Revue, l'export et le kit, et un nouvel
@@ -644,6 +655,8 @@ class Carnet:
                 raise ErreurCarnet(str(exc)) from exc
             nouvelles[colonne] = json.dumps(propre, ensure_ascii=False)
         with self.base.transaction() as cx:
+            if GROUPE_MOI in (ajouter or []):
+                self._retirer_moi_ailleurs(cx, pid)
             cx.execute("UPDATE personnes SET fiche = ?, brouillon = ?, modifie_le = ? WHERE id = ?",
                        (nouvelles["fiche"], nouvelles.get("brouillon"), _iso(maintenant()), pid))
         if types:  # portables triés : la question n'est plus posée pour ce contact

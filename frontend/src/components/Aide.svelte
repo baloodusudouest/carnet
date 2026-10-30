@@ -7,7 +7,7 @@
     ['Espace', 'Garder ou retirer la valeur multiple'],
     ['Y', 'Changer le type (mobile, domicile…)'],
     ['E', 'Modifier la valeur retenue (Échap pour sortir)'],
-    ['U F A R O C J', 'Ajouter ou retirer un groupe (la lettre est sur chaque bouton : O pour Collègues, C pour Clients)'],
+    ['I U F A R O C J', 'Ajouter ou retirer un groupe (la lettre est sur chaque bouton : I pour Moi, O pour Collègues, C pour Clients)'],
     ['Entrée', 'Valider la fiche et passer à la suivante'],
     ['→ ←', 'Passer sans valider, revenir à la précédente'],
     ['M', 'Fusionner avec un autre contact'],

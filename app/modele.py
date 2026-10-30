@@ -17,7 +17,9 @@ from __future__ import annotations
 import copy
 
 GROUPE_VERIFIES = "✓ Vérifiés"
-GROUPES = ["Urgence", "Famille", "Amis", "Artisans et services", "Collègues", "Clients", "Jardin secret"]
+GROUPES = ["Moi", "Urgence", "Famille", "Amis", "Artisans et services", "Collègues", "Clients", "Jardin secret"]
+# Ta propre fiche : une seule à la fois
+GROUPE_MOI = "Moi"
 GROUPES_TRAVAIL = ["Collègues", "Clients"]
 # Ancien groupe, remplacé par Collègues / Clients : gardé à l'import, à classer dans l'onglet Revue
 GROUPE_A_CLASSER = "Travail"
