@@ -578,3 +578,17 @@ def test_adresse_client_en_travail():
     f = n.normaliser_fiche({"prenom": "Paul", "groupes": ["Clients"],
                             "adresses": [{"rue": "1 rue A", "ville": "Agen", "type": "domicile"}]})
     assert f["adresses"][0]["type"] == "travail"
+
+
+def test_groupe_moi_unique(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    claire, jp = _personne(c, "Claire"), _personne(c, "Jean")
+    for p in (claire, jp):
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        f["groupes"] = ["Moi"]
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    assert "Moi" not in c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["groupes"]
+    assert c.get(f"/api/personnes/{jp['id']}").json()["fiche"]["groupes"] == ["Moi"]
+    assert jp["id"] not in [x["id"] for x in c.get("/api/revue").json()["sans_groupe"]]

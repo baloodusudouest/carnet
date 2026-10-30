@@ -23,7 +23,7 @@
     { champ: 'sites', libelle: 'Sites et réseaux', unite: 'site' },
     { champ: 'noms_associes', libelle: 'Noms associés', unite: 'nom associé' },
   ]
-  const RACCOURCIS_GROUPES = { u: 'Urgence', f: 'Famille', a: 'Amis', r: 'Artisans et services', o: 'Collègues', c: 'Clients', j: 'Jardin secret' }
+  const RACCOURCIS_GROUPES = { i: 'Moi', u: 'Urgence', f: 'Famille', a: 'Amis', r: 'Artisans et services', o: 'Collègues', c: 'Clients', j: 'Jardin secret' }
   const LETTRE_GROUPE = Object.fromEntries(Object.entries(RACCOURCIS_GROUPES).map(([k, v]) => [v, k]))
   const ORDRE = ['icloud', 'gmail', 'outlook', 'linkedin']
 
