@@ -545,3 +545,13 @@ def test_artisans_travail_bureau():
                                            {"valeur": "05 53 11 22 33", "type": "domicile"},
                                            {"valeur": "+32 470 12 34 56", "type": "mobile"}]})
     assert [t["type"] for t in f["telephones"]] == ["travail", "bureau", "mobile"]
+
+
+def test_fiche_entreprise_principal():
+    f = n.normaliser_fiche({"societe": "Plomberie Garonne", "groupes": ["Artisans et services"],
+                            "telephones": [{"valeur": "05 53 44 55 66", "type": "bureau"},
+                                           {"valeur": "06 12 34 56 78", "type": "mobile"}]})
+    assert [t["type"] for t in f["telephones"]] == ["principal", "travail"]
+    g = n.normaliser_fiche({"prenom": "Paul", "societe": "Plomberie Garonne", "groupes": ["Clients"],
+                            "telephones": [{"valeur": "05 53 44 55 66", "type": "bureau"}]})
+    assert g["telephones"][0]["type"] == "bureau"        # une personne : la règle ne s'applique pas
