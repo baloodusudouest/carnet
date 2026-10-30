@@ -886,3 +886,32 @@ def test_icloud_cartes_abimees():
     assert "item1.X-ADDRESSING-GRAMMAR:abc" in ecrite and "X-SHARED-PHOTO-DISPLAY-PREF:ALWAYS_ASK" in ecrite
     groupe = synchro.carte_groupe("Amis", "g1", [c.uid])
     assert "X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:17A05E05-5B40-4C87-A7D9-8C5E72723A57\r\n" in groupe
+
+
+def test_groupes_personnalises(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    assert c.post("/api/groupes", json={"nom": "Famille"}).status_code == 400          # déjà pris
+    assert c.post("/api/groupes/modifier", json={"ancien": "Amis", "nom": "Potes"}).status_code == 400  # intégré
+    assert c.post("/api/groupes", json={"nom": "Rugby", "regle": "proches"}).status_code == 200
+    assert "Rugby" in c.get("/api/config").json()["groupes"]
+    assert c.get("/api/config").json()["regles"]["Rugby"] == "proches"
+    claire = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    f["groupes"] = ["Rugby"]
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})
+    fiche = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    assert [t["type"] for t in fiche["telephones"] if t["nature"] == "mobile"] == ["mobile"]   # règle proches
+    # Renommer : les fiches suivent
+    assert c.post("/api/groupes/modifier", json={"ancien": "Rugby", "nom": "Rugby club", "regle": "travail"}).json()["contacts"] == 1
+    fiche = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    assert fiche["groupes"] == ["Rugby club"]
+    assert [t["type"] for t in fiche["telephones"] if t["nature"] == "mobile"] == ["travail"]  # règle travail
+    nb = {g["nom"]: g["nb"] for g in c.get("/api/groupes").json()}
+    assert nb["Rugby club"] == 1
+    # Supprimer en déplaçant les contacts vers Amis
+    assert c.post("/api/groupes/supprimer", json={"nom": "Rugby club", "vers": "Amis"}).json()["contacts"] == 1
+    assert c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["groupes"] == ["Amis"]
+    assert "Rugby club" not in c.get("/api/config").json()["groupes"]
+    assert c.post("/api/groupes/supprimer", json={"nom": "Urgence"}).status_code == 400

@@ -8,7 +8,7 @@ import re
 import vobject
 
 from .. import normalisation as n
-from ..modele import GROUPES_RECONNUS, fiche_vide
+from ..modele import fiche_vide, groupes_reconnus
 from . import FicheLue
 
 log = logging.getLogger("carnet.vcard")
@@ -31,7 +31,11 @@ ETIQUETTES_APPLE = {
 TYPES_TEL = {"CELL": "mobile", "IPHONE": "mobile", "HOME": "domicile", "WORK": "travail",
              "MAIN": "principal", "OTHER": "autre", "FAX": "autre", "PAGER": "autre"}
 TYPES_LIEU = {"HOME": "domicile", "WORK": "travail", "OTHER": "autre"}
-CLES_GROUPES = {n.cle_texte(g): g for g in GROUPES_RECONNUS}
+
+
+def _groupe_connu(nom: str) -> str | None:
+    """Nom de groupe lu dans un export → groupe de carnet (intégré ou créé), sinon None."""
+    return {n.cle_texte(g): g for g in groupes_reconnus()}.get(n.cle_texte(nom))
 
 BLOC = re.compile(r"BEGIN:VCARD.*?END:VCARD", re.S | re.I)
 
@@ -184,7 +188,7 @@ def _lire_carte(brut: str, region: str) -> tuple[FicheLue | None, dict | None]:
             elif nom == "CATEGORIES":
                 valeurs = ligne.value if isinstance(ligne.value, list) else _texte(ligne.value).split(",")
                 for v in valeurs:
-                    groupe = CLES_GROUPES.get(n.cle_texte(str(v)))
+                    groupe = _groupe_connu(str(v))
                     if groupe:
                         f["groupes"].append(groupe)
             elif nom == "PHOTO" and lue.photo is None:
@@ -212,7 +216,7 @@ def lire(texte: str, region: str = "FR") -> tuple[list[FicheLue], list[str]]:
     # Appartenance aux groupes iCloud (cartes de groupe incluses dans l'export)
     par_uid = {f.uid: f for f in fiches if f.uid}
     for g in groupes:
-        groupe = CLES_GROUPES.get(n.cle_texte(g["nom"]))
+        groupe = _groupe_connu(g["nom"])
         if not groupe:
             continue
         for uid in g["membres"]:

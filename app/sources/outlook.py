@@ -10,7 +10,7 @@ import io
 import re
 
 from .. import normalisation as n
-from ..modele import GROUPES_RECONNUS, fiche_vide
+from ..modele import fiche_vide, groupes_reconnus
 from . import FicheLue
 
 TELEPHONES = [
@@ -23,7 +23,11 @@ TELEPHONES = [
 COURRIELS = [("E-mail Address", "domicile"), ("E-mail 2 Address", "domicile"),
              ("E-mail 3 Address", "domicile")]
 ADRESSES = [("Home", "domicile"), ("Business", "travail"), ("Other", "autre")]
-CLES_GROUPES = {n.cle_texte(g): g for g in GROUPES_RECONNUS}
+
+
+def _groupe_connu(nom: str) -> str | None:
+    """Nom de groupe lu dans un export → groupe de carnet (intégré ou créé), sinon None."""
+    return {n.cle_texte(g): g for g in groupes_reconnus()}.get(n.cle_texte(nom))
 
 
 def _ordre_des_dates(lignes: list[dict]) -> tuple[str, bool]:
@@ -90,7 +94,7 @@ def lire(texte: str, region: str = "FR") -> tuple[list[FicheLue], list[str]]:
         if v.get("Assistant's Name"):
             f["noms_associes"].append({"valeur": v["Assistant's Name"], "type": "assistant"})
         for categorie in re.split(r"[;,]", v.get("Categories", "")):
-            groupe = CLES_GROUPES.get(n.cle_texte(categorie))
+            groupe = _groupe_connu(categorie)
             if groupe and groupe not in f["groupes"]:
                 f["groupes"].append(groupe)
         n.dedoublonner(f)

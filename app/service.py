@@ -20,9 +20,9 @@ from . import doublons, export, fusion, synchro
 from .carddav import CardDAV, Conflit, ErreurICloud
 from .config import Config
 from .db import Base
-from .modele import (GROUPE_A_CLASSER, GROUPE_MOI, GROUPE_URGENCE, GROUPES_RECONNUS, GROUPES_TRAVAIL,
-                     LIBELLES_SOURCES, completer, nom_affiche)
-from .normalisation import (MESSAGERIES, ValeurInvalide, cle_texte, domaine_pro, regle_proches,
+from .modele import (GROUPE_A_CLASSER, GROUPE_MOI, GROUPE_URGENCE, GROUPE_VERIFIES, GROUPES, GROUPES_PERSO,
+                     GROUPES_TRAVAIL, LIBELLES_SOURCES, REGLES_GROUPES, completer, groupes_reconnus, nom_affiche)
+from .normalisation import (GROUPES_PROCHES, MESSAGERIES, configurer_groupes, ValeurInvalide, cle_texte, domaine_pro, regle_proches,
                             emojis_sans_groupe, nature, reseau_detecte, type_pro_attendu, nettoyer, normaliser_fiche,
                             societe_depuis_domaine)
 from .sources import detecter_source, lire_texte, linkedin, outlook, vcard
@@ -71,6 +71,7 @@ class Carnet:
         self._tache: dict = {"etat": "repos"}
         self._plan: dict | None = None
         self._verrou_icloud = threading.Lock()
+        configurer_groupes(self.base.etat("groupes_perso", []))
 
     # ================================================================ dépôt et import
 
@@ -482,6 +483,95 @@ class Carnet:
                         quand, pid))
         return self.dossier(pid)
 
+    # ================================================================ groupes
+
+    REGLES = {"proches", "travail"}
+
+    def groupes(self) -> list[dict]:
+        """Groupes intégrés (non modifiables) et groupes créés, avec leur nombre de contacts."""
+        compte: Counter = Counter()
+        for p in self.liste():
+            if p["statut"] != "ecarte":
+                compte.update(set(p["groupes"]))
+        res = [{"nom": g, "fixe": True, "regle": REGLES_GROUPES.get(g), "nb": compte[g]} for g in GROUPES]
+        res += [{"nom": g["nom"], "fixe": False, "regle": g.get("regle"), "nb": compte[g["nom"]]}
+                for g in GROUPES_PERSO]
+        return res
+
+    def _nom_groupe(self, nom: str, sauf: str | None = None) -> str:
+        nom = " ".join((nom or "").split())
+        if not nom:
+            raise ErreurCarnet("Donne un nom au groupe.")
+        if len(nom) > 40:
+            raise ErreurCarnet("Nom de groupe trop long (40 caractères au plus).")
+        if any(c in nom for c in ",;:"):
+            raise ErreurCarnet("Le nom d'un groupe ne peut pas contenir , ; ou :")
+        pris = {cle_texte(g) for g in groupes_reconnus() + [GROUPE_VERIFIES] if g != sauf}
+        if cle_texte(nom) in pris:
+            raise ErreurCarnet(f"Le groupe « {nom} » existe déjà.")
+        return nom
+
+    def _enregistrer_groupes(self, perso: list[dict]) -> None:
+        self.base.ecrire_etat("groupes_perso", perso)
+        configurer_groupes(perso)
+
+    def _perso(self, nom: str) -> dict:
+        g = next((g for g in GROUPES_PERSO if g["nom"] == nom), None)
+        if not g:
+            raise ErreurCarnet("Ce groupe est intégré à carnet : il ne peut être ni modifié ni supprimé."
+                               if nom in GROUPES else f"Groupe « {nom} » introuvable.")
+        return g
+
+    def creer_groupe(self, nom: str, regle: str | None) -> dict:
+        if regle not in self.REGLES | {None}:
+            raise ErreurCarnet("Règle inconnue.")
+        nom = self._nom_groupe(nom)
+        self._enregistrer_groupes([dict(g) for g in GROUPES_PERSO] + [{"nom": nom, "regle": regle}])
+        return {"nom": nom}
+
+    def modifier_groupe(self, ancien: str, nom: str, regle: str | None) -> dict:
+        self._perso(ancien)
+        if regle not in self.REGLES | {None}:
+            raise ErreurCarnet("Règle inconnue.")
+        nom = self._nom_groupe(nom, sauf=ancien)
+        perso = [({"nom": nom, "regle": regle} if g["nom"] == ancien else dict(g)) for g in GROUPES_PERSO]
+        self._enregistrer_groupes(perso)
+        n = self._remplacer_groupe(ancien, nom) if nom != ancien else 0
+        return {"nom": nom, "contacts": n}
+
+    def supprimer_groupe(self, nom: str, vers: str | None) -> dict:
+        self._perso(nom)
+        if vers and (vers == nom or vers not in groupes_reconnus()):
+            raise ErreurCarnet("Groupe de destination inconnu.")
+        n = self._remplacer_groupe(nom, vers or None)
+        self._enregistrer_groupes([dict(g) for g in GROUPES_PERSO if g["nom"] != nom])
+        return {"contacts": n}
+
+    def _remplacer_groupe(self, ancien: str, nouveau: str | None) -> int:
+        """Remplace (ou retire) un groupe dans toutes les fiches, validées et brouillons.
+        Les règles de téléphone du nouveau groupe s'appliquent aussitôt."""
+        touches = 0
+        with self.base.transaction() as cx:
+            for p in cx.execute("SELECT id, fiche, brouillon FROM personnes").fetchall():
+                maj = {}
+                for colonne in ("fiche", "brouillon"):
+                    if not p[colonne]:
+                        continue
+                    f = json.loads(p[colonne])
+                    if ancien not in f.get("groupes", []):
+                        continue
+                    groupes = [g for g in f["groupes"] if g != ancien]
+                    if nouveau and nouveau not in groupes:
+                        groupes.append(nouveau)
+                    f["groupes"] = sorted(groupes)
+                    maj[colonne] = json.dumps(regle_proches(completer(f)), ensure_ascii=False)
+                if maj:
+                    touches += 1
+                    for colonne, texte in maj.items():
+                        cx.execute(f"UPDATE personnes SET {colonne} = ?, modifie_le = ? WHERE id = ?",
+                                   (texte, _iso(maintenant()), p["id"]))
+        return touches
+
     # ================================================================ revue des contacts vérifiés
 
     def revue(self) -> dict:
@@ -510,7 +600,7 @@ class Carnet:
             if groupes & {"Famille", "Amis"} and not f["anniversaire"]:
                 sections["anniversaires"].append(resume(pid, f))
             portables = [t for t in f["telephones"] if nature(t["valeur"]) == "mobile"]
-            if groupes & {"Famille", "Amis", "Jardin secret"} and len(portables) >= 2 and pid not in tries:
+            if groupes & GROUPES_PROCHES and len(portables) >= 2 and pid not in tries:
                 sections["deux_portables"].append(resume(pid, f, numeros=[
                     {"valeur": t["valeur"], "affichage": t.get("affichage"), "type": t["type"]} for t in portables]))
             if groupes & set(GROUPES_TRAVAIL + [GROUPE_A_CLASSER]) and not f["societe"]:
@@ -946,7 +1036,7 @@ class Carnet:
         def supprimer_groupe(d: synchro.Carte, motif: str) -> None:
             groupes.append({"cible": "groupe", "action": "supprimer", "nom": d.nom or "(sans nom)", "href": d.href,
                             "etag": d.etag, "motif": motif})
-        for nom in GROUPES_RECONNUS:
+        for nom in groupes_reconnus():
             d = par_nom.pop(cle_texte(nom), None)
             voulus = membres.get(nom, set())
             if d:

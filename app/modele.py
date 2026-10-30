@@ -24,6 +24,24 @@ GROUPES_TRAVAIL = ["Collègues", "Clients"]
 # Ancien groupe, remplacé par Collègues / Clients : gardé à l'import, à classer dans l'onglet Revue
 GROUPE_A_CLASSER = "Travail"
 GROUPES_RECONNUS = GROUPES + [GROUPE_A_CLASSER]
+# Groupes créés dans l'onglet Groupes : [{"nom": …, "regle": "proches" | "travail" | None}],
+# enregistrés dans la base et chargés au démarrage (normalisation.configurer_groupes)
+GROUPES_PERSO: list[dict] = []
+# Règles des groupes intégrés (non modifiables)
+REGLES_GROUPES = {"Famille": "proches", "Amis": "proches", "Jardin secret": "proches",
+                  "Artisans et services": "travail", "Collègues": "travail", "Clients": "travail"}
+
+
+def groupes_tous() -> list[str]:
+    return GROUPES + [g["nom"] for g in GROUPES_PERSO]
+
+
+def groupes_reconnus() -> list[str]:
+    return groupes_tous() + [GROUPE_A_CLASSER]
+
+
+def regles_groupes() -> dict[str, str]:
+    return {**REGLES_GROUPES, **{g["nom"]: g["regle"] for g in GROUPES_PERSO if g.get("regle")}}
 GROUPE_URGENCE = "Urgence"
 
 CHAMPS_SIMPLES = ["prenom", "nom", "surnom", "societe", "fonction", "anniversaire", "notes"]
