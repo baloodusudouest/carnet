@@ -13,6 +13,7 @@ services:
       - CARNET_DB_KEY=${CARNET_DB_KEY}             # clé de chiffrement de la base (ne jamais la perdre)
       - KIT_API_TOKEN=${KIT_API_TOKEN}             # même jeton que le kit : régénération après envoi
       - KIT_URL=http://kit-urgence:8095            # nom du service du kit dans la même stack
+      - CARNET_EMOJI_GROUPES=${CARNET_EMOJI_GROUPES:-}  # règles émoji → groupe (facultatif)
       - LOG_LEVEL=INFO
     volumes:
       # Dépôt des exports, archives, export propre : visibles depuis le PC

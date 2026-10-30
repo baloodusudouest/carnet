@@ -25,6 +25,7 @@ class Config:
     kit_url: str            # URL interne du kit (réseau Docker de la stack)
     kit_token: str          # jeton des appels POST du kit
     static: Path            # interface compilée
+    emoji_groupes: str      # règles « émoji:groupe;… » (facultatif)
 
     @property
     def depot(self) -> Path:
@@ -66,4 +67,5 @@ def charger() -> Config:
         kit_url=os.environ.get("KIT_URL", "http://kit-urgence:8095").rstrip("/"),
         kit_token=os.environ.get("KIT_API_TOKEN", "").strip(),
         static=Path(os.environ.get("CARNET_STATIC", str(Path(__file__).parent / "static"))),
+        emoji_groupes=os.environ.get("CARNET_EMOJI_GROUPES", ""),
     )

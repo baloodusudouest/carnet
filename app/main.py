@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from . import __version__, config
 from .auth import COOKIE, Sessions
 from .db import Base
+from .normalisation import configurer_emojis
 from .modele import GROUPES, GROUPE_VERIFIES, LIBELLES_SOURCES, TYPES
 from .service import Carnet, ErreurCarnet
 
@@ -41,6 +42,7 @@ def _purge_quotidienne(carnet: Carnet, arret: threading.Event) -> None:
 @asynccontextmanager
 async def cycle(app: FastAPI):
     cfg = config.charger()
+    configurer_emojis(cfg.emoji_groupes)
     base = Base(cfg.db_path, cfg.db_key)
     carnet = Carnet(cfg, base)
     arret = threading.Event()

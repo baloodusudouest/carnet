@@ -1,6 +1,7 @@
 """Mise en forme et clés de comparaison des valeurs d'une fiche."""
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from datetime import date
@@ -107,7 +108,10 @@ def courriel(brut: str, type_: str) -> dict | None:
     v = (brut or "").strip().strip("<>").strip()
     if v.lower().startswith("mailto:"):
         v = v[7:]
-    return {"valeur": v, "type": type_} if "@" in v else None
+    # Un lien (https://t.me/@pseudo) n'est pas une adresse e-mail, même avec un « @ »
+    if "@" not in v or "://" in v or " " in v or v.lower().startswith("www."):
+        return None
+    return {"valeur": v, "type": type_}
 
 
 # Messageries grand public : une adresse ailleurs est très probablement professionnelle
@@ -159,6 +163,7 @@ def cle_courriel(c: dict) -> str:
 DOMAINES_RESEAUX = {
     "linkedin.com": "linkedin", "facebook.com": "facebook", "fb.com": "facebook",
     "instagram.com": "instagram", "tiktok.com": "tiktok", "x.com": "x", "twitter.com": "x",
+    "t.me": "telegram", "telegram.me": "telegram", "wa.me": "whatsapp", "signal.me": "signal",
 }
 
 
@@ -245,11 +250,41 @@ def note(texte: str) -> str:
     return t if any(c.isalnum() for c in t) else ""
 
 
+# Règles « émoji → groupe » lues dans la configuration (CARNET_EMOJI_GROUPES), jamais dans le code
+EMOJI_GROUPES: dict[str, str] = {}
+
+
+def configurer_emojis(texte: str) -> None:
+    """« 🍕:Amis;🔧:Artisans et services » → {"🍕": "Amis", "🔧": "Artisans et services"}."""
+    EMOJI_GROUPES.clear()
+    for regle in (texte or "").split(";"):
+        emoji, _, groupe = regle.partition(":")
+        if emoji.strip() and groupe.strip():
+            EMOJI_GROUPES[emoji.strip()] = groupe.strip()
+
+
+def groupes_par_emoji(fiche: dict) -> dict:
+    """Ajoute le groupe associé quand un émoji configuré apparaît n'importe où dans la fiche."""
+    if EMOJI_GROUPES:
+        texte = json.dumps({k: v for k, v in fiche.items() if k != "groupes"}, ensure_ascii=False)
+        for emoji, groupe in EMOJI_GROUPES.items():
+            if emoji in texte and groupe not in fiche.setdefault("groupes", []):
+                fiche["groupes"].append(groupe)
+    return fiche
+
+
 def nettoyer(fiche: dict) -> dict:
     """Appliqué aussi aux fiches déjà importées, à la lecture : notes et liens parasites."""
     fiche["notes"] = note(fiche.get("notes"))
-    fiche["courriels"] = [type_courriel_propose(c) for c in fiche.get("courriels", [])]
-    fiche["sites"] = [s for s in fiche.get("sites", []) if site(s.get("valeur", ""), s.get("type"))]
+    sites = [s for s in fiche.get("sites", []) if site(s.get("valeur", ""), s.get("type"))]
+    courriels = []
+    for c in fiche.get("courriels", []):
+        if courriel(c.get("valeur", ""), c.get("type", "domicile")):
+            courriels.append(type_courriel_propose(c))
+        elif (s := site(c.get("valeur", ""))):  # lien rangé par erreur dans les courriels
+            sites.append(s)
+    fiche["courriels"], fiche["sites"] = courriels, sites
+    groupes_par_emoji(fiche)
     return fiche
 
 
@@ -349,5 +384,6 @@ def normaliser_fiche(fiche: dict, region: str = "FR") -> dict:
     f["adresses"] = [a for a in (adresse(x.get("rue", ""), x.get("cp", ""), x.get("ville", ""),
                                          x.get("region", ""), x.get("pays", ""),
                                          x.get("type") or "domicile") for x in f["adresses"]) if a]
+    groupes_par_emoji(f)
     f["groupes"] = sorted(set(g for g in f["groupes"] if isinstance(g, str) and g.strip()))
     return dedoublonner(f)
