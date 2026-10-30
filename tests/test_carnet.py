@@ -318,3 +318,8 @@ def test_courriels_pro_proposes():
                                   {"valeur": "x@hotmail.fr", "type": "autre"},
                                   {"valeur": "y@wanadoo.fr", "type": "domicile"}]})
     assert [c["type"] for c in f["courriels"]] == ["travail", "domicile", "autre", "domicile"]
+
+
+def test_note_outlook_tronquee():
+    assert n.note("Ce contact est en lecture seule. Pour y apporter des modifications, a") == ""
+    assert n.note("Ce contact est en lecture seule. Pour y apporter\nCode 1234") == "Code 1234"
