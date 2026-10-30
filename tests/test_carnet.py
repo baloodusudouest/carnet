@@ -519,3 +519,29 @@ def test_messageries_dans_la_revue(client):
     assert r[0]["sites"] == [{"valeur": "https://wa.me/33612345678", "type": "linkedin", "attendu": "whatsapp"}]
     c.post(f"/api/personnes/{claire['id']}/retoucher", json={"types_sites": {"https://wa.me/33612345678": "whatsapp"}})
     assert c.get("/api/revue").json()["sites_mal_etiquetes"] == []
+
+
+def test_revue_emoji_sans_groupe(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    claire = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    f["surnom"] = "Clairette 🍕"
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})   # aucune règle encore
+    n.configurer_emojis("🍕:Amis")
+    try:
+        r = c.get("/api/revue").json()["emoji_sans_groupe"]
+        assert [(x["nom"], x["groupe"], x["champs"]) for x in r] == [("Claire MARTIN", "Amis", ["surnom"])]
+        c.post(f"/api/personnes/{claire['id']}/retoucher", json={"ajouter": ["Amis"]})
+        assert c.get("/api/revue").json()["emoji_sans_groupe"] == []
+    finally:
+        n.configurer_emojis("")
+
+
+def test_artisans_travail_bureau():
+    f = n.normaliser_fiche({"groupes": ["Artisans et services"],
+                            "telephones": [{"valeur": "06 12 34 56 78", "type": "mobile"},
+                                           {"valeur": "05 53 11 22 33", "type": "domicile"},
+                                           {"valeur": "+32 470 12 34 56", "type": "mobile"}]})
+    assert [t["type"] for t in f["telephones"]] == ["travail", "bureau", "mobile"]

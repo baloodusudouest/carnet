@@ -210,6 +210,12 @@
   // Famille, Amis, Jardin secret : un portable français (+33 6, +33 7) est « mobile »
   const PROCHES = ['Famille', 'Amis', 'Jardin secret']
   function regleProches() {
+    // Artisans et services : portable → travail, fixe → bureau (les proches restent prioritaires)
+    if (fiche.groupes.includes('Artisans et services')) {
+      for (const t of fiche.telephones) {
+        if (t.valeur.startsWith('+33')) t.type = /^\+33[67]/.test(t.valeur) ? 'travail' : 'bureau'
+      }
+    }
     if (!fiche.groupes.some((g) => PROCHES.includes(g))) return
     // un seul portable : mobile ; deux ou plus : la Revue demande lequel est celui du travail
     const portables = fiche.telephones.filter((t) => /^\+33[67]/.test(t.valeur))

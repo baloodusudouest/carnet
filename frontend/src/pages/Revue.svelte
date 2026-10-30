@@ -25,6 +25,8 @@
       aide: 'Numéros que carnet n’a pas pu mettre au format international : ouvre la fiche pour les corriger.' },
     { cle: 'injoignables', titre: 'Sans téléphone, courriel ni messagerie',
       aide: 'Ni numéro, ni adresse e-mail, ni Telegram, WhatsApp ou Signal : ces fiches ne permettent de joindre personne.' },
+    { cle: 'emoji_sans_groupe', titre: 'Émoji présent, groupe absent',
+      aide: 'La fiche contient un émoji associé à un groupe (règles CARNET_EMOJI_GROUPES) mais n’est pas dans ce groupe.' },
     { cle: 'sites_mal_etiquetes', titre: 'Messageries et réseaux mal étiquetés',
       aide: 'Liens Telegram, WhatsApp, Signal, LinkedIn… rangés avec une autre étiquette (souvent « site »).' },
   ]
@@ -146,7 +148,7 @@
               </ul>
             {:else}
             <ul class="rounded-xl border border-couture divide-y divide-couture overflow-hidden">
-              {#each liste as p (p.id + (p.numero ?? ''))}
+              {#each liste as p (p.id + (p.numero ?? '') + (p.groupe ?? ''))}
                 <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 {occupe === p.id ? 'opacity-60' : ''}">
                   <div class="w-56 min-w-0">
                     <a href={`#/revision/${p.id}`} class="block truncate hover:text-onglet" title="Ouvrir la fiche">{p.nom}</a>
@@ -174,6 +176,11 @@
                         onclick={() => retoucher(p, { types: Object.fromEntries(p.numeros.map((x) => [x.valeur, 'mobile'])) },
                           `Les portables de ${p.nom} sont tous personnels.`)}>Tous personnels</button>
                     </span>
+
+                  {:else if s.cle === 'emoji_sans_groupe'}
+                    <span class="text-sm text-mine">{p.emoji} dans {p.champs.join(', ')}</span>
+                    <button class="bouton bouton-principal !py-1 ml-auto" disabled={occupe === p.id}
+                      onclick={() => retoucher(p, { ajouter: [p.groupe] }, `${p.nom} ajouté à ${p.groupe}.`)}>Ajouter à {p.groupe}</button>
 
                   {:else if s.cle === 'sites_mal_etiquetes'}
                     <span class="flex-1 min-w-0 text-sm">
