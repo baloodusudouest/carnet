@@ -193,6 +193,15 @@ def importer(corps: Import):
     return carnet().importer(corps.nom, corps.source)
 
 
+class JetonLinkedIn(BaseModel):
+    jeton: str
+
+
+@app.post("/api/linkedin")
+def linkedin_api(corps: JetonLinkedIn):
+    return carnet().linkedin_api(corps.jeton)
+
+
 # ------------------------------------------------------------------ contacts et révision
 
 @app.get("/api/contacts")

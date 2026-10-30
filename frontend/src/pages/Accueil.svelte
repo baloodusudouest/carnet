@@ -41,6 +41,22 @@
     }
   }
 
+  // LinkedIn par l'API de portabilité : le jeton sert une fois, il n'est pas enregistré
+  let jetonLinkedin = $state('')
+  async function importerLinkedin() {
+    enCours = 'linkedin'
+    try {
+      const r = await api.post('/api/linkedin', { jeton: jetonLinkedin })
+      bilan = { nom: 'Relations LinkedIn (API)', ...r }
+      jetonLinkedin = ''
+      await rafraichir()
+    } catch (e) {
+      annoncer(e.message, true)
+    } finally {
+      enCours = null
+    }
+  }
+
   function deposer(e) {
     e.preventDefault()
     survol = false
@@ -68,6 +84,17 @@
       <span class="block text-papier">Glisse les fichiers .vcf ou .csv ici, ou clique pour les choisir</span>
       <span class="block text-sm text-mine mt-1">Tu peux aussi les copier dans le dossier <code>carnet/depot</code> du NAS.</span>
     </label>
+
+    <details class="mt-4 rounded-xl border border-couture bg-reliure px-5 py-3">
+      <summary class="cursor-pointer text-sm">LinkedIn sans archive : relations lues par l'API de portabilité</summary>
+      <p class="text-sm text-mine mt-2">Crée le jeton dans l'outil OAuth du portail LinkedIn Developers (portée
+        <code>r_dma_portability_self_serve</code>), puis colle-le ici. Il sert une seule fois et n'est pas enregistré.</p>
+      <div class="flex flex-wrap gap-2 mt-3">
+        <input type="password" class="flex-1 min-w-64" bind:value={jetonLinkedin} placeholder="Jeton d'accès LinkedIn" autocomplete="off" />
+        <button class="bouton bouton-principal" disabled={!jetonLinkedin.trim() || enCours !== null} onclick={importerLinkedin}>
+          {enCours === 'linkedin' ? 'Lecture…' : 'Importer les relations'}</button>
+      </div>
+    </details>
 
     {#if depot.length}
       <ul class="mt-6 divide-y divide-couture border-y border-couture">

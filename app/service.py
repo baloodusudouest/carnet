@@ -1,7 +1,9 @@
 """Opérations de carnet : import, rapprochement, révision, export, kit, archives."""
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 from collections import Counter
 import json
 import logging
@@ -1226,6 +1228,54 @@ class Carnet:
                                                + (f", {len(bilan['conflits'])} conflit(s)" if bilan["conflits"] else "")
                                                + (f", {len(bilan['erreurs'])} erreur(s)" if bilan["erreurs"] else "")
                                                + "."))
+
+    # ================================================================ LinkedIn par l'API (portabilité des données)
+
+    LINKEDIN_API = "https://api.linkedin.com/rest/memberSnapshotData"
+    COLONNES_LINKEDIN = ["First Name", "Last Name", "URL", "Email Address", "Company", "Position", "Connected On"]
+
+    def linkedin_api(self, jeton: str) -> dict:
+        """Relations LinkedIn lues par l'API de portabilité (membres UE), avec un jeton créé dans
+        l'outil OAuth de LinkedIn (portée r_dma_portability_self_serve). Le jeton sert une fois
+        et n'est jamais enregistré. Les relations passent ensuite par l'import LinkedIn habituel."""
+        jeton = (jeton or "").strip()
+        if not jeton:
+            raise ErreurCarnet("Colle le jeton d'accès LinkedIn.")
+        entetes = {"Authorization": f"Bearer {jeton}", "LinkedIn-Version": "202312",
+                   "X-Restli-Protocol-Version": "2.0.0"}
+        lignes: list[dict] = []
+        with httpx.Client(timeout=60, transport=getattr(self, "transport_linkedin", None)) as client:
+            for page in range(500):
+                try:
+                    r = client.get(self.LINKEDIN_API, headers=entetes,
+                                   params={"q": "criteria", "domain": "CONNECTIONS", "start": page})
+                except httpx.HTTPError as exc:
+                    raise ErreurCarnet(f"LinkedIn injoignable ({exc.__class__.__name__}).") from exc
+                if r.status_code in (401, 403):
+                    raise ErreurCarnet("LinkedIn refuse le jeton : il a expiré ou n'a pas la portée "
+                                       "r_dma_portability_self_serve. Recrée-le dans l'outil OAuth.")
+                if r.status_code == 404 or (r.status_code >= 400 and "No data found" in r.text):
+                    break  # fin des pages
+                if r.status_code >= 400:
+                    raise ErreurCarnet(f"LinkedIn a répondu {r.status_code} : {' '.join(r.text.split())[:200]}")
+                elements = r.json().get("elements") or []
+                if isinstance(elements, dict):
+                    elements = [elements]
+                donnees = [ligne for e in elements if e.get("snapshotDomain") == "CONNECTIONS"
+                           for ligne in (e.get("snapshotData") or [])]
+                if not donnees:
+                    break
+                lignes += donnees
+        if not lignes:
+            raise ErreurCarnet("LinkedIn n'a renvoyé aucune relation.")
+        tampon = io.StringIO()
+        ecrivain = csv.DictWriter(tampon, fieldnames=self.COLONNES_LINKEDIN, extrasaction="ignore")
+        ecrivain.writeheader()
+        for ligne in lignes:
+            ecrivain.writerow({k: str(ligne.get(k, "") or "") for k in self.COLONNES_LINKEDIN})
+        nom = f"linkedin-api-{maintenant():%Y-%m-%d_%H%M%S}.csv"
+        (self.cfg.depot / nom).write_text(tampon.getvalue(), encoding="utf-8")
+        return {"nom": nom, **self.importer(nom, "linkedin")}
 
     # ================================================================ veille iCloud (V3)
 
