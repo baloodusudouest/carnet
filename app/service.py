@@ -7,6 +7,7 @@ import io
 from collections import Counter
 import json
 import logging
+import secrets
 import shutil
 import threading
 import time
@@ -14,6 +15,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
 from rapidfuzz import fuzz
@@ -1233,6 +1235,45 @@ class Carnet:
 
     LINKEDIN_API = "https://api.linkedin.com/rest/memberSnapshotData"
     COLONNES_LINKEDIN = ["First Name", "Last Name", "URL", "Email Address", "Company", "Position", "Connected On"]
+
+    # Connexion OAuth faite par carnet lui-même (quand l'outil de jeton de LinkedIn échoue).
+    # L'adresse de retour n'a pas besoin d'exister : LinkedIn y renvoie le navigateur avec
+    # ?code=…&state=… dans la barre d'adresse, et il suffit de coller cette adresse dans carnet.
+    def linkedin_autorisation(self) -> dict:
+        if not (self.cfg.linkedin_client_id and self.cfg.linkedin_client_secret):
+            raise ErreurCarnet("Renseigne CARNET_LINKEDIN_CLIENT_ID et CARNET_LINKEDIN_CLIENT_SECRET "
+                               "(onglet Auth de l'app LinkedIn) dans les variables de la stack.")
+        etat = secrets.token_urlsafe(24)
+        self._etats_linkedin = {k: v for k, v in getattr(self, "_etats_linkedin", {}).items()
+                                if v > time.monotonic()}
+        self._etats_linkedin[etat] = time.monotonic() + 15 * 60
+        parametres = {"response_type": "code", "client_id": self.cfg.linkedin_client_id,
+                      "redirect_uri": self.cfg.linkedin_redirect, "state": etat,
+                      "scope": "r_dma_portability_self_serve"}
+        return {"url": "https://www.linkedin.com/oauth/v2/authorization?" + urlencode(parametres),
+                "retour": self.cfg.linkedin_redirect}
+
+    def linkedin_code(self, adresse: str) -> dict:
+        """Adresse de retour collée (…?code=…&state=…) → jeton → import des relations."""
+        requete = parse_qs(urlsplit((adresse or "").strip()).query)
+        if "error" in requete:
+            raise ErreurCarnet("LinkedIn a refusé : " + (requete.get("error_description") or requete["error"])[0])
+        code, etat = (requete.get("code") or [""])[0], (requete.get("state") or [""])[0]
+        if not code:
+            raise ErreurCarnet("Pas de « code= » dans cette adresse : colle l'adresse complète de la page "
+                               "sur laquelle LinkedIn t'a renvoyé.")
+        if getattr(self, "_etats_linkedin", {}).pop(etat, 0) < time.monotonic():
+            raise ErreurCarnet("Lien expiré ou déjà utilisé : clique de nouveau sur « Se connecter à LinkedIn ».")
+        try:
+            with httpx.Client(timeout=60, transport=getattr(self, "transport_linkedin", None)) as client:
+                r = client.post("https://www.linkedin.com/oauth/v2/accessToken", data={
+                    "grant_type": "authorization_code", "code": code, "redirect_uri": self.cfg.linkedin_redirect,
+                    "client_id": self.cfg.linkedin_client_id, "client_secret": self.cfg.linkedin_client_secret})
+        except httpx.HTTPError as exc:
+            raise ErreurCarnet(f"LinkedIn injoignable ({exc.__class__.__name__}).") from exc
+        if r.status_code >= 400 or "access_token" not in r.text:
+            raise ErreurCarnet(f"Échange du code refusé par LinkedIn : {' '.join(r.text.split())[:200]}")
+        return self.linkedin_api(r.json()["access_token"])
 
     def linkedin_api(self, jeton: str) -> dict:
         """Relations LinkedIn lues par l'API de portabilité (membres UE), avec un jeton créé dans

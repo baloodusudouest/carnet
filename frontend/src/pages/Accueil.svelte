@@ -43,10 +43,26 @@
 
   // LinkedIn par l'API de portabilité : le jeton sert une fois, il n'est pas enregistré
   let jetonLinkedin = $state('')
-  async function importerLinkedin() {
+  let adresseRetour = $state('')
+  let linkedin = $state({ oauth: false, retour: '' })
+  api.get('/api/linkedin/etat').then((r) => (linkedin = r))
+
+  async function connecterLinkedin() {
+    try {
+      const { url } = await api.post('/api/linkedin/autorisation')
+      window.open(url, '_blank', 'noopener')
+    } catch (e) {
+      annoncer(e.message, true)
+    }
+  }
+
+  async function importerLinkedin(parCode = false) {
     enCours = 'linkedin'
     try {
-      const r = await api.post('/api/linkedin', { jeton: jetonLinkedin })
+      const r = parCode
+        ? await api.post('/api/linkedin/code', { adresse: adresseRetour })
+        : await api.post('/api/linkedin', { jeton: jetonLinkedin })
+      adresseRetour = ''
       bilan = { nom: 'Relations LinkedIn (API)', ...r }
       jetonLinkedin = ''
       await rafraichir()
@@ -87,12 +103,28 @@
 
     <details class="mt-4 rounded-xl border border-couture bg-reliure px-5 py-3">
       <summary class="cursor-pointer text-sm">LinkedIn sans archive : relations lues par l'API de portabilité</summary>
-      <p class="text-sm text-mine mt-2">Crée le jeton dans l'outil OAuth du portail LinkedIn Developers (portée
-        <code>r_dma_portability_self_serve</code>), puis colle-le ici. Il sert une seule fois et n'est pas enregistré.</p>
-      <div class="flex flex-wrap gap-2 mt-3">
+      {#if linkedin.oauth}
+        <ol class="text-sm text-mine mt-2 list-decimal pl-5 space-y-2">
+          <li><button class="bouton !py-1" onclick={connecterLinkedin}>Se connecter à LinkedIn</button>
+            <span class="block mt-1">Un onglet s'ouvre : accepte l'accès. LinkedIn renvoie ensuite vers
+              <code>{linkedin.retour}</code>, une page qui ne s'affiche pas : c'est normal.</span></li>
+          <li>Copie l'adresse complète de cette page (elle contient <code>?code=</code>) et colle-la ici :
+            <div class="flex flex-wrap gap-2 mt-1">
+              <input class="flex-1 min-w-64" bind:value={adresseRetour} placeholder={`${linkedin.retour}?code=…&state=…`} autocomplete="off" />
+              <button class="bouton bouton-principal" disabled={!adresseRetour.trim() || enCours !== null} onclick={() => importerLinkedin(true)}>
+                {enCours === 'linkedin' ? 'Lecture…' : 'Importer les relations'}</button>
+            </div></li>
+        </ol>
+      {:else}
+        <p class="text-sm text-mine mt-2">Pour un bouton de connexion, ajoute <code>CARNET_LINKEDIN_CLIENT_ID</code> et
+          <code>CARNET_LINKEDIN_CLIENT_SECRET</code> (onglet Auth de l'app LinkedIn) dans les variables de la stack.</p>
+      {/if}
+      <p class="text-sm text-mine mt-3">Ou colle un jeton créé dans l'outil OAuth de LinkedIn (portée <code>r_dma_portability_self_serve</code>).
+        Rien n'est enregistré.</p>
+      <div class="flex flex-wrap gap-2 mt-2">
         <input type="password" class="flex-1 min-w-64" bind:value={jetonLinkedin} placeholder="Jeton d'accès LinkedIn" autocomplete="off" />
-        <button class="bouton bouton-principal" disabled={!jetonLinkedin.trim() || enCours !== null} onclick={importerLinkedin}>
-          {enCours === 'linkedin' ? 'Lecture…' : 'Importer les relations'}</button>
+        <button class="bouton" disabled={!jetonLinkedin.trim() || enCours !== null} onclick={() => importerLinkedin(false)}>
+          Importer avec ce jeton</button>
       </div>
     </details>
 

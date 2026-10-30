@@ -85,6 +85,8 @@ Copie `homeassistant/carnet.yaml` dans `/config/packages/`, ajoute `carnet_statu
 | `CARNET_EMOJI_GROUPES` | vide | règles « émoji:groupe » séparées par `;` (ex. `🍕:Amis;🔧:Artisans et services`) : un contact contenant l'émoji rejoint le groupe |
 | `CARNET_ICLOUD_USER` | vide | identifiant Apple (V2) |
 | `CARNET_ICLOUD_PASSWORD` | vide | mot de passe d'application Apple (V2) |
+| `CARNET_LINKEDIN_CLIENT_ID` / `_SECRET` | vide | app LinkedIn (portabilité des données) pour le bouton « Se connecter à LinkedIn » |
+| `CARNET_LINKEDIN_REDIRECT` | `https://localhost/carnet-linkedin` | adresse de retour déclarée dans l'onglet Auth de l'app |
 | `CARNET_VEILLE_HEURE` | `03:00` | heure de la veille iCloud quotidienne (vide : désactivée) |
 | `KIT_URL` | `http://kit-urgence:8095` | API du kit d'urgence |
 | `KIT_API_TOKEN` | vide | jeton du kit ; sans lui, le kit se régénère à sa prochaine synchronisation |

@@ -30,6 +30,9 @@ class Config:
     icloud_user: str = ""       # identifiant Apple (V2 : écriture dans iCloud)
     icloud_password: str = ""   # mot de passe d'application Apple, pas celui du compte
     veille_heure: str = "03:00" # veille iCloud quotidienne (vide : désactivée)
+    linkedin_client_id: str = ""      # app LinkedIn Developers (portabilité des données)
+    linkedin_client_secret: str = ""
+    linkedin_redirect: str = "https://localhost/carnet-linkedin"
 
     @property
     def depot(self) -> Path:
@@ -76,4 +79,7 @@ def charger() -> Config:
         icloud_user=os.environ.get("CARNET_ICLOUD_USER", "").strip(),
         icloud_password=os.environ.get("CARNET_ICLOUD_PASSWORD", "").strip(),
         veille_heure=os.environ.get("CARNET_VEILLE_HEURE", "03:00").strip(),
+        linkedin_client_id=os.environ.get("CARNET_LINKEDIN_CLIENT_ID", "").strip(),
+        linkedin_client_secret=os.environ.get("CARNET_LINKEDIN_CLIENT_SECRET", "").strip(),
+        linkedin_redirect=os.environ.get("CARNET_LINKEDIN_REDIRECT", "https://localhost/carnet-linkedin").strip(),
     )

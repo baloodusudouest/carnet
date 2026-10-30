@@ -16,6 +16,8 @@ services:
       - CARNET_EMOJI_GROUPES=${CARNET_EMOJI_GROUPES:-}  # règles émoji → groupe (facultatif)
       - CARNET_ICLOUD_USER=${CARNET_ICLOUD_USER:-}          # identifiant Apple (écriture iCloud)
       - CARNET_ICLOUD_PASSWORD=${CARNET_ICLOUD_PASSWORD:-}  # mot de passe d'application Apple
+      - CARNET_LINKEDIN_CLIENT_ID=${CARNET_LINKEDIN_CLIENT_ID:-}           # app LinkedIn (onglet Auth)
+      - CARNET_LINKEDIN_CLIENT_SECRET=${CARNET_LINKEDIN_CLIENT_SECRET:-}   # secret de l'app LinkedIn
       - LOG_LEVEL=INFO
     volumes:
       # Dépôt des exports, archives, export propre : visibles depuis le PC
