@@ -11,7 +11,7 @@
     { cle: 'deux_portables', titre: 'Proches avec deux portables',
       aide: 'Lequel est le portable du travail ? L’autre restera le mobile personnel.' },
     { cle: 'bureau_travail', titre: 'Bureau ou travail à corriger',
-      aide: 'Règle : un fixe (+33 1 à 5, 8, 9) est « bureau », un portable (+33 6, +33 7) est « travail ».' },
+      aide: 'Règle : un fixe est « bureau », un portable est « travail » (tous pays : +33 6, +32 4…).' },
     { cle: 'societes', titre: 'Collègues et clients sans société',
       aide: 'Rajoute le nom de la société. Une proposition est faite d’après l’adresse e-mail professionnelle.' },
     { cle: 'societes_a_uniformiser', titre: 'Noms de société à uniformiser',
