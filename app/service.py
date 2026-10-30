@@ -456,12 +456,20 @@ class Carnet:
                     "telephone": f["telephones"][0].get("affichage") if f["telephones"] else "",
                     "courriel": f["courriels"][0]["valeur"] if f["courriels"] else "", **extra}
 
-        sections = {k: [] for k in ("anniversaires", "societes", "travail_a_classer", "urgence_sans_mobile",
+        confirmes = set(self.base.etat("telephones_confirmes", []))
+        sections = {k: [] for k in ("anniversaires", "portables_proches", "societes", "travail_a_classer",
+                                    "urgence_sans_mobile",
                                     "sans_groupe", "numeros_non_reconnus", "injoignables")}
         for pid, f in sorted(personnes, key=lambda x: nom_affiche(x[1]).lower()):
             groupes = set(f["groupes"])
             if groupes & {"Famille", "Amis"} and not f["anniversaire"]:
                 sections["anniversaires"].append(resume(pid, f))
+            if groupes & {"Famille", "Amis"}:
+                # Portables (+33 6 / +33 7) d'un proche : son mobile perso ou celui du travail ?
+                for t in f["telephones"]:
+                    if t["valeur"].startswith(("+336", "+337")) and f"{pid}|{t['valeur']}" not in confirmes:
+                        sections["portables_proches"].append(
+                            resume(pid, f, numero=t["valeur"], affichage=t.get("affichage"), type=t["type"]))
             if groupes & set(GROUPES_TRAVAIL + [GROUPE_A_CLASSER]) and not f["societe"]:
                 proposition, origine = self._proposer_societe(f, par_domaine)
                 sections["societes"].append(resume(pid, f, proposition=proposition, origine=origine))
@@ -567,7 +575,8 @@ class Carnet:
         return res
 
     def retoucher(self, pid: str, anniversaire: str | None = None, societe: str | None = None,
-                  ajouter: list[str] | None = None, retirer: list[str] | None = None) -> dict:
+                  ajouter: list[str] | None = None, retirer: list[str] | None = None,
+                  telephone: str | None = None, type_telephone: str | None = None) -> dict:
         """Correction rapide depuis l'onglet Revue : appliquée à la fiche validée (et au brouillon
         s'il y en a un), sans repasser par la révision."""
         ligne = self._personne(pid)
@@ -584,6 +593,10 @@ class Carnet:
                 f["societe"] = societe
             f["groupes"] = [g for g in f["groupes"] if g not in (retirer or [])]
             f["groupes"] += [g for g in (ajouter or []) if g not in f["groupes"]]
+            if telephone and type_telephone:
+                for t in f["telephones"]:
+                    if t["valeur"] == telephone:
+                        t["type"] = type_telephone
             try:
                 propre = normaliser_fiche(f, self.cfg.region)
             except ValeurInvalide as exc:
@@ -592,6 +605,10 @@ class Carnet:
         with self.base.transaction() as cx:
             cx.execute("UPDATE personnes SET fiche = ?, brouillon = ?, modifie_le = ? WHERE id = ?",
                        (nouvelles["fiche"], nouvelles.get("brouillon"), _iso(maintenant()), pid))
+        if telephone and type_telephone:  # ce numéro ne sera plus redemandé dans la Revue
+            confirmes = self.base.etat("telephones_confirmes", [])
+            confirmes.append(f"{pid}|{telephone}")
+            self.base.ecrire_etat("telephones_confirmes", sorted(set(confirmes)))
         return {"ok": True}
 
     # ================================================================ export et kit

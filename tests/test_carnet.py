@@ -419,6 +419,22 @@ def test_societes_a_uniformiser(client):
 
 
 def test_portables_en_mobile():
-    f = n.nettoyer({"telephones": [n.telephone("06 12 34 56 78", "domicile"), n.telephone("07 12 34 56 78", "autre"),
+    f = n.nettoyer({"telephones": [n.telephone("06 12 34 56 78", "domicile"), n.telephone("07 81 23 45 67", "autre"),
                                    n.telephone("06 98 76 54 32", "travail"), n.telephone("05 53 11 22 33", "domicile")]})
     assert [t["type"] for t in f["telephones"]] == ["mobile", "mobile", "travail", "domicile"]
+
+
+def test_portables_des_proches(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    claire = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    f["groupes"] = ["Famille"]
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})
+    r = c.get("/api/revue").json()["portables_proches"]
+    assert [(x["nom"], x["numero"]) for x in r] == [("Claire MARTIN", "+33612345678")]
+    c.post(f"/api/personnes/{claire['id']}/retoucher", json={"telephone": "+33612345678", "type_telephone": "travail"})
+    assert c.get("/api/revue").json()["portables_proches"] == []
+    tel = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["telephones"][0]
+    assert tel["type"] == "travail"

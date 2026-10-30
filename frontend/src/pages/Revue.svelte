@@ -8,6 +8,8 @@
   const SECTIONS = [
     { cle: 'anniversaires', titre: 'Famille et amis sans anniversaire',
       aide: 'Saisis la date : 15/03/1985, 15 mars 1985, ou 15 mars si l’année est inconnue.' },
+    { cle: 'portables_proches', titre: 'Portables des proches à confirmer',
+      aide: 'Numéros en +33 6 ou +33 7 de la famille et des amis : mobile personnel ou téléphone de travail ?' },
     { cle: 'societes', titre: 'Collègues et clients sans société',
       aide: 'Rajoute le nom de la société. Une proposition est faite d’après l’adresse e-mail professionnelle.' },
     { cle: 'societes_a_uniformiser', titre: 'Noms de société à uniformiser',
@@ -139,7 +141,7 @@
               </ul>
             {:else}
             <ul class="rounded-xl border border-couture divide-y divide-couture overflow-hidden">
-              {#each liste as p (p.id)}
+              {#each liste as p (p.id + (p.numero ?? ''))}
                 <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2 {occupe === p.id ? 'opacity-60' : ''}">
                   <div class="w-56 min-w-0">
                     <a href={`#/revision/${p.id}`} class="block truncate hover:text-onglet" title="Ouvrir la fiche">{p.nom}</a>
@@ -152,6 +154,16 @@
                       onkeydown={(e) => touche(e, () => retoucher(p, { anniversaire: annifs[p.id] ?? '' }, `Anniversaire de ${p.nom} enregistré.`))} />
                     <button class="bouton !py-1" disabled={!annifs[p.id] || occupe === p.id}
                       onclick={() => retoucher(p, { anniversaire: annifs[p.id] }, `Anniversaire de ${p.nom} enregistré.`)}>Enregistrer</button>
+
+                  {:else if s.cle === 'portables_proches'}
+                    <span class="tabular-nums">{p.affichage}</span>
+                    <span class="text-xs text-mine">actuellement : {p.type}</span>
+                    <span class="ml-auto flex gap-2">
+                      <button class="bouton !py-1" disabled={occupe === p.id}
+                        onclick={() => retoucher(p, { telephone: p.numero, type_telephone: 'mobile' }, `${p.affichage} : mobile de ${p.nom}.`)}>Mobile</button>
+                      <button class="bouton !py-1" disabled={occupe === p.id}
+                        onclick={() => retoucher(p, { telephone: p.numero, type_telephone: 'travail' }, `${p.affichage} : travail de ${p.nom}.`)}>Travail</button>
+                    </span>
 
                   {:else if s.cle === 'societes'}
                     <input class="w-64" placeholder="Nom de la société" bind:value={saisies[p.id]}
