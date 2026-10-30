@@ -479,7 +479,7 @@
                 <td class="px-3 py-0.5 bg-papier text-[#2a211c] align-top" data-edition={edition === l.cle ? '' : undefined}>
                   {#if edition === l.cle}
                     {#if l.champ === 'notes'}
-                      <textarea rows="3" class="w-full !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={fiche.notes}
+                      <textarea rows="3" class="w-full resize-none !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={fiche.notes}
                         onblur={() => (edition = null)}></textarea>
                     {:else}
                       <input class="w-full !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={fiche[l.champ]}
@@ -530,14 +530,15 @@
                       {#if edition === l.cle && l.inclus}
                         {@const item = fiche[l.champ][l.index]}
                         {#if l.champ === 'adresses'}
-                          <div class="grid gap-1 py-1">
-                            <textarea rows="2" class="!bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Rue (plusieurs lignes possibles)" bind:value={item.rue}></textarea>
-                            <div class="flex gap-1">
-                              <input class="w-20 !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="CP" bind:value={item.cp} />
-                              <input class="flex-1 min-w-0 !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Ville" bind:value={item.ville} />
-                              <input class="w-24 !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Pays" bind:value={item.pays}
-                                onblur={() => (edition = null)} />
+                          <div class="grid gap-1 py-1 w-full min-w-0">
+                            <textarea rows="2" class="w-full min-w-0 resize-none !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Rue (plusieurs lignes possibles)" bind:value={item.rue}></textarea>
+                            <!-- une ligne par paire de champs : rien ne déborde sur le menu du type -->
+                            <div class="flex gap-1 min-w-0">
+                              <input size="5" class="w-20 shrink-0 !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="CP" bind:value={item.cp} />
+                              <input size="5" class="flex-1 min-w-0 !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Ville" bind:value={item.ville} />
                             </div>
+                            <input size="5" class="w-full min-w-0 !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Pays" bind:value={item.pays}
+                              onblur={() => (edition = null)} />
                           </div>
                         {:else}
                           <input class="w-full !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={item.valeur}
@@ -550,7 +551,7 @@
                           title={texte} ondblclick={() => editer(i)}>{texte}</button>
                       {/if}
                     </div>
-                    <select class="shrink-0 w-24 !py-0 !px-1 text-xs !bg-transparent !text-[#2a211c] !border-[#c9b9a3]"
+                    <select class="shrink-0 w-24 self-start mt-0.5 !py-0 !px-1 text-xs !bg-transparent !text-[#2a211c] !border-[#c9b9a3]"
                       value={l.inclus ? fiche[l.champ][l.index].type : l.item.type}
                       onchange={(e) => changerType(l, e.currentTarget.value)} aria-label="Type">
                       {#each ref.types[l.champ] ?? [] as t}<option value={t}>{t}</option>{/each}
