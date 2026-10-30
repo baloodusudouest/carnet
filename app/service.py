@@ -486,11 +486,12 @@ class Carnet:
 
         confirmes = set(self.base.etat("telephones_confirmes", []))
         tries = set(self.base.etat("portables_tries", []))
+        natures_faites = set(self.base.etat("natures_confirmees", []))
         sections = {k: [] for k in ("anniversaires", "deux_portables", "bureau_travail", "societes",
                                     "travail_a_classer",
                                     "urgence_sans_mobile",
                                     "sans_groupe", "numeros_non_reconnus", "injoignables",
-                                    "sites_mal_etiquetes", "emoji_sans_groupe")}
+                                    "sites_mal_etiquetes", "emoji_sans_groupe", "numeros_internationaux")}
         for pid, f in sorted(personnes, key=lambda x: nom_affiche(x[1]).lower()):
             groupes = set(f["groupes"])
             if groupes & {"Famille", "Amis"} and not f["anniversaire"]:
@@ -520,6 +521,13 @@ class Carnet:
                            or reseau_detecte(s["valeur"]) in MESSAGERIES]
             if not f["telephones"] and not f["courriels"] and not messageries:
                 sections["injoignables"].append(resume(pid, f))
+            # Numéros étrangers : mobile ou fixe ? (détecté quand le pays le permet, à confirmer)
+            for t in f["telephones"]:
+                if t.get("valide") and not t["valeur"].startswith("+33") \
+                        and f"{pid}|{t['valeur']}" not in natures_faites and not t.get("nature_choisie"):
+                    sections["numeros_internationaux"].append(resume(
+                        pid, f, numero=t["valeur"], affichage=t.get("affichage"), type=t["type"],
+                        detectee=nature(t["valeur"])))
             for manque in emojis_sans_groupe(f):
                 sections["emoji_sans_groupe"].append(resume(pid, f, **manque))
             # Lien d'un réseau ou d'une messagerie reconnu (t.me, wa.me…) qui n'a pas la bonne étiquette
@@ -622,7 +630,8 @@ class Carnet:
     def retoucher(self, pid: str, anniversaire: str | None = None, societe: str | None = None,
                   ajouter: list[str] | None = None, retirer: list[str] | None = None,
                   telephone: str | None = None, type_telephone: str | None = None,
-                  types: dict[str, str] | None = None, types_sites: dict[str, str] | None = None) -> dict:
+                  types: dict[str, str] | None = None, types_sites: dict[str, str] | None = None,
+                  natures: dict[str, str] | None = None) -> dict:
         """Correction rapide depuis l'onglet Revue : appliquée à la fiche validée (et au brouillon
         s'il y en a un), sans repasser par la révision."""
         ligne = self._personne(pid)
@@ -646,6 +655,14 @@ class Carnet:
             for s in f["sites"]:  # étiquettes des liens (telegram, whatsapp…)
                 if types_sites and s["valeur"] in types_sites:
                     s["type"] = types_sites[s["valeur"]]
+            for t in f["telephones"]:  # nature mobile / fixe confirmée dans la Revue
+                choix = (natures or {}).get(t["valeur"])
+                if choix in ("mobile", "fixe"):
+                    t["nature_choisie"] = choix
+                    if choix == "mobile" and t["type"] in ("domicile", "bureau", "principal", "autre"):
+                        t["type"] = "mobile"
+                    elif choix == "fixe" and t["type"] in ("mobile", "travail"):
+                        t["type"] = "domicile"
             for t in f["telephones"]:  # plusieurs numéros d'un coup (portables perso / travail)
                 if types and t["valeur"] in types:
                     t["type"] = types[t["valeur"]]
@@ -659,6 +676,9 @@ class Carnet:
                 self._retirer_moi_ailleurs(cx, pid)
             cx.execute("UPDATE personnes SET fiche = ?, brouillon = ?, modifie_le = ? WHERE id = ?",
                        (nouvelles["fiche"], nouvelles.get("brouillon"), _iso(maintenant()), pid))
+        if natures:  # numéros internationaux confirmés : plus redemandés
+            faites = self.base.etat("natures_confirmees", [])
+            self.base.ecrire_etat("natures_confirmees", sorted(set(faites) | {f"{pid}|{v}" for v in natures}))
         if types:  # portables triés : la question n'est plus posée pour ce contact
             tries = self.base.etat("portables_tries", [])
             self.base.ecrire_etat("portables_tries", sorted(set(tries) | {pid}))

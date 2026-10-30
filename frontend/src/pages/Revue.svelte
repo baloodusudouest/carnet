@@ -10,6 +10,8 @@
       aide: 'Saisis la date : 15/03/1985, 15 mars 1985, ou 15 mars si l’année est inconnue.' },
     { cle: 'deux_portables', titre: 'Proches avec deux portables',
       aide: 'Lequel est le portable du travail ? L’autre restera le mobile personnel.' },
+    { cle: 'numeros_internationaux', titre: 'Numéros internationaux : mobile ou fixe ?',
+      aide: 'Confirme la nature de chaque numéro étranger. Carnet la devine quand le pays le permet ; aux États-Unis ou au Canada, c’est à toi de dire. Les règles de type des groupes s’appliquent ensuite.' },
     { cle: 'bureau_travail', titre: 'Bureau ou travail à corriger',
       aide: 'Règle : un fixe est « bureau », un portable est « travail » (tous pays : +33 6, +32 4…).' },
     { cle: 'societes', titre: 'Collègues et clients sans société',
@@ -191,6 +193,17 @@
                     <button class="bouton bouton-principal !py-1" disabled={occupe === p.id}
                       onclick={() => retoucher(p, { types_sites: Object.fromEntries(p.sites.map((x) => [x.valeur, x.attendu])) },
                         `Étiquettes corrigées pour ${p.nom}.`)}>Corriger</button>
+
+                  {:else if s.cle === 'numeros_internationaux'}
+                    <span class="tabular-nums">{p.affichage}</span>
+                    <span class="text-xs text-mine">noté {p.type}, {p.detectee ? `détecté : ${p.detectee}` : 'impossible à déterminer'}</span>
+                    <span class="ml-auto flex gap-2">
+                      {#each ['mobile', 'fixe'] as choix}
+                        <button class="bouton !py-1 {p.detectee === choix ? 'bouton-principal' : ''}" disabled={occupe === p.id}
+                          onclick={() => retoucher(p, { natures: { [p.numero]: choix } }, `${p.affichage} : ${choix}.`)}>
+                          {choix === 'mobile' ? 'Mobile' : 'Fixe'}</button>
+                      {/each}
+                    </span>
 
                   {:else if s.cle === 'bureau_travail'}
                     <span class="tabular-nums">{p.affichage}</span>

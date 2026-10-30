@@ -261,6 +261,7 @@ class Retouche(BaseModel):
     type_telephone: str | None = None
     types: dict[str, str] = {}
     types_sites: dict[str, str] = {}
+    natures: dict[str, str] = {}
 
 
 class Societes(BaseModel):
@@ -281,7 +282,7 @@ def ignorer(corps: Societes):
 @app.post("/api/personnes/{pid}/retoucher")
 def retoucher(pid: str, corps: Retouche):
     return carnet().retoucher(pid, corps.anniversaire, corps.societe, corps.ajouter, corps.retirer,
-                              corps.telephone, corps.type_telephone, corps.types, corps.types_sites)
+                              corps.telephone, corps.type_telephone, corps.types, corps.types_sites, corps.natures)
 
 
 # ------------------------------------------------------------------ export, kit, archives

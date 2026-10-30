@@ -135,7 +135,7 @@ def type_pro_attendu(t: dict) -> str | None:
     « travail », un fixe est « bureau ». None si la règle ne s'applique pas."""
     if t.get("type") not in ("bureau", "travail"):
         return None
-    n = nature(t.get("valeur", ""))
+    n = t.get("nature_choisie") or nature(t.get("valeur", ""))
     return {"mobile": "travail", "fixe": "bureau"}.get(n) if n else None
 
 
@@ -151,7 +151,7 @@ def regle_proches(fiche: dict) -> dict:
     Ajoute aussi « nature » à chaque téléphone, pour l'interface."""
     telephones = fiche.get("telephones", [])
     for t in telephones:
-        t["nature"] = nature(t.get("valeur", ""))
+        t["nature"] = t.get("nature_choisie") or nature(t.get("valeur", ""))
     groupes = set(fiche.get("groupes", []))
     if "Clients" in groupes:  # l'adresse d'un client (personne ou société) est celle de son travail
         for a in fiche.get("adresses", []):
@@ -487,6 +487,8 @@ def normaliser_fiche(fiche: dict, region: str = "FR") -> dict:
         # La valeur garde l'extension éventuelle (« ;ext=12 »)
         n = telephone(t.get("valeur", ""), t.get("type") or None, region)
         if n:
+            if t.get("nature_choisie") in ("mobile", "fixe"):  # choix fait dans la Revue
+                n["nature_choisie"] = t["nature_choisie"]
             tels.append(n)
     f["telephones"] = tels
     f["courriels"] = [c for c in (courriel(x.get("valeur", ""), x.get("type") or "domicile")
