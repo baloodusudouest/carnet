@@ -249,6 +249,7 @@ class Retouche(BaseModel):
     retirer: list[str] = []
     telephone: str | None = None
     type_telephone: str | None = None
+    types: dict[str, str] = {}
 
 
 class Societes(BaseModel):
@@ -269,7 +270,7 @@ def ignorer(corps: Societes):
 @app.post("/api/personnes/{pid}/retoucher")
 def retoucher(pid: str, corps: Retouche):
     return carnet().retoucher(pid, corps.anniversaire, corps.societe, corps.ajouter, corps.retirer,
-                              corps.telephone, corps.type_telephone)
+                              corps.telephone, corps.type_telephone, corps.types)
 
 
 # ------------------------------------------------------------------ export, kit, archives

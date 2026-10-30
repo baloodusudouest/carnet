@@ -207,11 +207,13 @@
     })
   }
 
-  // Famille, Amis, Jardin secret : un portable français (+33 6, +33 7) est toujours « mobile »
+  // Famille, Amis, Jardin secret : un portable français (+33 6, +33 7) est « mobile »
   const PROCHES = ['Famille', 'Amis', 'Jardin secret']
   function regleProches() {
     if (!fiche.groupes.some((g) => PROCHES.includes(g))) return
-    for (const t of fiche.telephones) if (/^\+33[67]/.test(t.valeur) && t.type !== 'mobile') t.type = 'mobile'
+    // un seul portable : mobile ; deux ou plus : la Revue demande lequel est celui du travail
+    const portables = fiche.telephones.filter((t) => /^\+33[67]/.test(t.valeur))
+    if (portables.length === 1) portables[0].type = 'mobile'
   }
 
   function basculerGroupe(groupe) {

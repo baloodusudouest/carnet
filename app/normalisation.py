@@ -115,11 +115,12 @@ GROUPES_PROCHES = {"Famille", "Amis", "Jardin secret"}
 
 
 def regle_proches(fiche: dict) -> dict:
-    """Famille, Amis, Jardin secret : un portable français (+33 6, +33 7) est toujours « mobile »."""
+    """Famille, Amis, Jardin secret : un portable français (+33 6, +33 7) est « mobile ».
+    Avec deux portables ou plus, rien n'est forcé : la Revue demande lequel est celui du travail."""
     if GROUPES_PROCHES & set(fiche.get("groupes", [])):
-        for t in fiche.get("telephones", []):
-            if portable_fr(t.get("valeur", "")) and t.get("type") != "mobile":
-                t["type"] = "mobile"
+        portables = [t for t in fiche.get("telephones", []) if portable_fr(t.get("valeur", ""))]
+        if len(portables) == 1:
+            portables[0]["type"] = "mobile"
     return fiche
 
 
