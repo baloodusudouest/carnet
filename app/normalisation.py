@@ -276,7 +276,8 @@ def groupes_par_emoji(fiche: dict) -> dict:
 def nettoyer(fiche: dict) -> dict:
     """Appliqué aussi aux fiches déjà importées, à la lecture : notes et liens parasites."""
     fiche["notes"] = note(fiche.get("notes"))
-    sites = [s for s in fiche.get("sites", []) if site(s.get("valeur", ""), s.get("type"))]
+    # site() renvoie la valeur reclassée (un lien t.me importé comme « site » devient « telegram »)
+    sites = [r for s in fiche.get("sites", []) if (r := site(s.get("valeur", ""), s.get("type")))]
     courriels = []
     for c in fiche.get("courriels", []):
         if courriel(c.get("valeur", ""), c.get("type", "domicile")):
