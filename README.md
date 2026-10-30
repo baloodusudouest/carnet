@@ -2,9 +2,9 @@
 
 Application auto-hébergée qui **rassemble les contacts** de plusieurs carnets (iCloud, Gmail, Outlook.com, LinkedIn en complément), les fait **relire un par un**, **fusionne les doublons champ par champ**, puis produit un export `.vcf` propre et la liste des contacts d'urgence pour [kit-urgence](https://github.com/baloodusudouest/kit-urgence).
 
-Cette version (V1) ne se connecte à aucun compte : tu déposes des exports faits à la main, et rien n'est jamais écrit dans iCloud, Gmail ou Outlook.
+Les contacts sont importés depuis des exports faits à la main. Depuis la V2, carnet peut **réécrire iCloud** avec les fiches vérifiées (CardDAV), après simulation et sauvegarde. Gmail et Outlook ne sont jamais modifiés.
 
-## Ce que fait la V1
+## Ce que fait carnet
 
 | Étape | Détail |
 | --- | --- |
@@ -15,9 +15,25 @@ Cette version (V1) ne se connecte à aucun compte : tu déposes des exports fait
 | Formats | numéros stockés en E.164 et affichés `+33 6 12 34 56 78` ; noms `Prénom NOM` |
 | Export | `export/carnet-AAAA-MM-JJ_HHMM.vcf` (vCard 3.0, lisible par iCloud), contacts vérifiés seulement |
 | Kit d'urgence | bouton « Envoyer au kit » : réécrit `contacts-urgence.vcf` dans le dossier du kit, puis lui demande de se régénérer |
+| iCloud (V2) | onglet iCloud : simulation, essai sur sa propre fiche (groupe Moi), puis écriture ; voir ci-dessous |
 | Archives | exports d'origine gardés 365 jours puis supprimés ; un onglet et Home Assistant préviennent 30 jours avant |
 
 LinkedIn complète des contacts existants (société, poste, profil) mais n'en crée jamais.
+
+## Écriture dans iCloud (V2)
+
+1. **Simuler** : carnet lit tout iCloud et calcule les écritures, sans rien modifier. La simulation reste valable 30 minutes.
+2. **Essai** : n'écrit que la fiche du groupe Moi, pour contrôler le rendu sur l'iPhone.
+3. **Écrire** (après confirmation) : une **sauvegarde complète** d'iCloud est d'abord enregistrée dans `archives/AAAA-MM-JJ_HHMMSS_icloud-sauvegarde.vcf` (gardée 365 jours), puis :
+   - chaque contact vérifié met à jour sa fiche iCloud (UID conservé) ou est créé s'il venait de Gmail ou Outlook ;
+   - seules les propriétés gérées par carnet sont remplacées : les champs qu'il ne connaît pas (dates personnalisées, etc.) sont gardés, et la photo iCloud reste si carnet n'en a pas ;
+   - les autres fiches iCloud d'une personne fusionnée et les contacts mis de côté sont supprimés ;
+   - les groupes de carnet sont créés ou mis à jour dans iCloud ; les membres que carnet ne gère pas (contacts à réviser, groupes inconnus) restent ; le groupe « Travail » vidé est supprimé ;
+   - les contacts créés dans iCloud sans carnet sont importés pour révision ;
+   - les contacts encore à réviser ne sont pas touchés.
+
+Chaque écriture se fait avec contrôle d'ETag : une fiche modifiée sur l'iPhone depuis la simulation n'est pas écrasée, elle est signalée dans le journal.
+Le compte utilise un **mot de passe d'application** Apple (account.apple.com > Connexion et sécurité > Mots de passe pour app), jamais le mot de passe du compte.
 
 ## Sécurité
 
@@ -62,6 +78,8 @@ Copie `homeassistant/carnet.yaml` dans `/config/packages/`, ajoute `carnet_statu
 | `CARNET_ALERTE_JOURS` | `30` | préavis avant suppression |
 | `CARNET_SESSION_JOURS` | `30` | durée de la session |
 | `CARNET_EMOJI_GROUPES` | vide | règles « émoji:groupe » séparées par `;` (ex. `🍕:Amis;🔧:Artisans et services`) : un contact contenant l'émoji rejoint le groupe |
+| `CARNET_ICLOUD_USER` | vide | identifiant Apple (V2) |
+| `CARNET_ICLOUD_PASSWORD` | vide | mot de passe d'application Apple (V2) |
 | `KIT_URL` | `http://kit-urgence:8095` | API du kit d'urgence |
 | `KIT_API_TOKEN` | vide | jeton du kit ; sans lui, le kit se régénère à sa prochaine synchronisation |
 
@@ -75,5 +93,4 @@ CARNET_PASSWORD=x CARNET_DB_KEY=y CARNET_DATA=./data CARNET_STATE=./state CARNET
 ```
 
 ## Suite prévue
-- **V2** : écriture dans iCloud en place (CardDAV, UID conservés, contrôle ETag), simulation des différences, journal annulable.
 - **V3** : veille quotidienne, Home Assistant complet, liens Immich et Treemich, copie nocturne vers Synology Contacts.

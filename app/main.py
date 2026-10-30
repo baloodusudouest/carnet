@@ -295,6 +295,30 @@ def retoucher(pid: str, corps: Retouche):
                               corps.telephone, corps.type_telephone, corps.types, corps.types_sites, corps.natures)
 
 
+# ------------------------------------------------------------------ iCloud (V2)
+
+@app.get("/api/icloud")
+def icloud_etat():
+    return carnet().icloud_etat()
+
+
+@app.post("/api/icloud/simulation")
+def icloud_simuler():
+    return carnet().icloud_simuler()
+
+
+class Ecriture(BaseModel):
+    essai: bool = False
+    confirme: bool = False
+
+
+@app.post("/api/icloud/ecriture")
+def icloud_ecrire(corps: Ecriture):
+    if not corps.essai and not corps.confirme:
+        raise HTTPException(400, "Coche la confirmation avant d'écrire dans iCloud.")
+    return carnet().icloud_ecrire(corps.essai)
+
+
 # ------------------------------------------------------------------ export, kit, archives
 
 @app.post("/api/export")

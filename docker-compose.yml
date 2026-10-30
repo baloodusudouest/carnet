@@ -14,6 +14,8 @@ services:
       - KIT_API_TOKEN=${KIT_API_TOKEN}             # même jeton que le kit : régénération après envoi
       - KIT_URL=http://kit-urgence:8095            # nom du service du kit dans la même stack
       - CARNET_EMOJI_GROUPES=${CARNET_EMOJI_GROUPES:-}  # règles émoji → groupe (facultatif)
+      - CARNET_ICLOUD_USER=${CARNET_ICLOUD_USER:-}          # identifiant Apple (écriture iCloud)
+      - CARNET_ICLOUD_PASSWORD=${CARNET_ICLOUD_PASSWORD:-}  # mot de passe d'application Apple
       - LOG_LEVEL=INFO
     volumes:
       # Dépôt des exports, archives, export propre : visibles depuis le PC
