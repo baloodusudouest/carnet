@@ -111,6 +111,18 @@ def type_pro_attendu(t: dict) -> str | None:
     return "travail" if portable_fr(v) else "bureau"
 
 
+GROUPES_PROCHES = {"Famille", "Amis", "Jardin secret"}
+
+
+def regle_proches(fiche: dict) -> dict:
+    """Famille, Amis, Jardin secret : un portable français (+33 6, +33 7) est toujours « mobile »."""
+    if GROUPES_PROCHES & set(fiche.get("groupes", [])):
+        for t in fiche.get("telephones", []):
+            if portable_fr(t.get("valeur", "")) and t.get("type") != "mobile":
+                t["type"] = "mobile"
+    return fiche
+
+
 def type_telephone_propose(t: dict) -> dict:
     """Propositions de type : un portable français noté « domicile » ou « autre » devient « mobile » ;
     entre « bureau » et « travail », la règle de type_pro_attendu s'applique."""
@@ -412,4 +424,5 @@ def normaliser_fiche(fiche: dict, region: str = "FR") -> dict:
                                          x.get("type") or "domicile") for x in f["adresses"]) if a]
     groupes_par_emoji(f)
     f["groupes"] = sorted(set(g for g in f["groupes"] if isinstance(g, str) and g.strip()))
+    regle_proches(f)
     return dedoublonner(f)

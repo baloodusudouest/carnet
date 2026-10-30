@@ -7,7 +7,7 @@ LinkedIn n'apporte que ce qui manque : société, fonction, profil, courriel.
 from __future__ import annotations
 
 from .modele import CHAMPS_MULTIPLES, PRIORITE_SOURCES, completer, fiche_vide
-from .normalisation import CLES, note
+from .normalisation import CLES, note, regle_proches
 
 
 def _ordre(source: dict) -> tuple[int, int]:
@@ -49,7 +49,7 @@ def proposer(sources: list[dict]) -> dict:
         groupes.update(s["donnees"].get("groupes", []))
     fiche["groupes"] = sorted(groupes)
     fiche["photo"] = next((s["id"] for s in rangees if s.get("a_photo")), None)
-    return completer(fiche)
+    return regle_proches(completer(fiche))
 
 
 def reunir(base: dict, ajout: dict) -> dict:

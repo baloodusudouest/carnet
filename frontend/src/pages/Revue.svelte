@@ -8,8 +8,6 @@
   const SECTIONS = [
     { cle: 'anniversaires', titre: 'Famille et amis sans anniversaire',
       aide: 'Saisis la date : 15/03/1985, 15 mars 1985, ou 15 mars si l’année est inconnue.' },
-    { cle: 'portables_proches', titre: 'Portables des proches à confirmer',
-      aide: 'Numéros en +33 6 ou +33 7 de la famille et des amis : mobile personnel ou téléphone de travail ?' },
     { cle: 'bureau_travail', titre: 'Bureau ou travail à corriger',
       aide: 'Règle : un fixe (+33 1 à 5, 8, 9) est « bureau », un portable (+33 6, +33 7) est « travail ».' },
     { cle: 'societes', titre: 'Collègues et clients sans société',

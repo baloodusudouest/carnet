@@ -424,20 +424,18 @@ def test_portables_en_mobile():
     assert [t["type"] for t in f["telephones"]] == ["mobile", "mobile", "travail", "domicile"]
 
 
-def test_portables_des_proches(client):
+def test_portables_des_proches_en_mobile(client):
     c = client
     _connecter(c)
     _importer(c, "icloud.vcf", "icloud")
     claire = _personne(c, "Claire")
     f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
-    f["groupes"] = ["Famille"]
-    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})
-    r = c.get("/api/revue").json()["portables_proches"]
-    assert [(x["nom"], x["numero"]) for x in r] == [("Claire MARTIN", "+33612345678")]
-    c.post(f"/api/personnes/{claire['id']}/retoucher", json={"telephone": "+33612345678", "type_telephone": "travail"})
-    assert c.get("/api/revue").json()["portables_proches"] == []
-    tel = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["telephones"][0]
-    assert tel["type"] == "travail"
+    f["groupes"] = ["Jardin secret"]
+    f["telephones"][0]["type"] = "travail"            # +33 6 noté travail
+    d = c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True}).json()
+    types = {t["valeur"]: t["type"] for t in d["fiche"]["telephones"]}
+    assert types["+33612345678"] == "mobile" and types["+33553000001"] == "bureau"
+    assert "portables_proches" not in c.get("/api/revue").json()
 
 
 def test_bureau_ou_travail():
