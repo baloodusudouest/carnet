@@ -76,6 +76,7 @@ class Carnet:
         self._plan: dict | None = None
         self._verrou_icloud = threading.Lock()
         configurer_groupes(self.base.etat("groupes_perso", []))
+        self._rattrapage_linkedin()
 
     # ================================================================ dépôt et import
 
@@ -285,8 +286,37 @@ class Carnet:
             cx.execute("UPDATE personnes SET statut = CASE WHEN statut = 'ecarte' THEN 'ecarte' ELSE 'a_reviser' END, raisons = ?, "
                        "a_revoir = COALESCE(?, a_revoir), modifie_le = ? WHERE id = ?",
                        (json.dumps(toutes, ensure_ascii=False), motif, quand, pid))
+            self._completer_par_linkedin(cx, pid, json.loads(l["donnees"]))
             enrichies += 1
         return {"personnes_creees": 0, "personnes_completees": 0, "enrichies": enrichies}
+
+    @staticmethod
+    def _completer_par_linkedin(cx, pid: str, linkedin_fiche: dict) -> bool:
+        """Un contact déjà travaillé (brouillon ou fiche validée) reçoit d'office ce que LinkedIn
+        apporte et qui lui manque : fonction, société, profil, courriel. Rien n'est remplacé ;
+        le résultat va dans le brouillon, la fiche validée ne change qu'à la validation."""
+        ligne = cx.execute("SELECT fiche, brouillon FROM personnes WHERE id = ?", (pid,)).fetchone()
+        texte = ligne["brouillon"] or ligne["fiche"]
+        if not texte:
+            return False  # pas encore révisé : la proposition reprend déjà LinkedIn
+        actuelle = completer(json.loads(texte))
+        apport = completer({k: linkedin_fiche.get(k) for k in ("societe", "fonction", "courriels", "sites")
+                            if linkedin_fiche.get(k)})
+        reunie = fusion.reunir(actuelle, apport)
+        if reunie == completer(json.loads(texte)):
+            return False
+        cx.execute("UPDATE personnes SET brouillon = ? WHERE id = ?", (json.dumps(reunie, ensure_ascii=False), pid))
+        return True
+
+    def _rattrapage_linkedin(self) -> None:
+        """Une fois : contacts complétés par LinkedIn avant ce correctif (fonction et profil perdus)."""
+        if self.base.etat("rattrapage_linkedin_1"):
+            return
+        with self.base.transaction() as cx:
+            for l in cx.execute("SELECT personne_id, donnees FROM sources WHERE source = 'linkedin' "
+                                "AND personne_id IS NOT NULL").fetchall():
+                self._completer_par_linkedin(cx, l["personne_id"], json.loads(l["donnees"]))
+        self.base.ecrire_etat("rattrapage_linkedin_1", True)
 
     # ================================================================ lecture
 

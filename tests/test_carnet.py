@@ -986,11 +986,18 @@ def test_linkedin_par_api(client, monkeypatch):
                                   "Connected On": "12 Mar 2020"}]}]})
         return httpx.Response(404, text='{"message":"No data found for this memberId"}')
     monkeypatch.setattr(etat["carnet"], "transport_linkedin", httpx.MockTransport(repondre), raising=False)
+    pid = _personne(c, "Claire")["id"]
+    f = c.get(f"/api/personnes/{pid}").json()["fiche"]
+    c.put(f"/api/personnes/{pid}", json={"fiche": f, "valider": True})      # déjà révisée
     r = c.post("/api/linkedin", json={"jeton": "abc"})
     assert r.status_code == 200, r.text
     assert r.json()["enrichies"] == 1 and len(vus) == 2
-    claire = c.get(f"/api/personnes/{_personne(c, 'Claire')['id']}").json()
+    claire = c.get(f"/api/personnes/{pid}").json()
     assert any(s["source"] == "linkedin" for s in claire["sources"])
+    # La fiche en cours reçoit d'office la fonction et le profil LinkedIn qui lui manquaient
+    assert claire["fiche"]["fonction"] == "Gérante"
+    assert any(s["type"] == "linkedin" for s in claire["fiche"]["sites"])
+    assert claire["fiche"]["societe"] == "Boulangerie du Port"
 
 
 def test_linkedin_oauth_par_carnet(client, monkeypatch):
