@@ -1035,6 +1035,7 @@ def test_sauvegarde_synology(client, monkeypatch, tmp_path):
     _connecter(c)
     _importer(c, "icloud.vcf", "icloud")
     syno = FauxICloud("", utilisateur="carnet", mot_de_passe="pw")
+    syno.autres_carnets = [("Contacts de l'équipe", "/1234/carddavhome/equipe/")]   # jamais choisi
     cn = etat["carnet"]
     monkeypatch.setattr(cn, "transport_synology", syno.transport(), raising=False)
     monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "synology_url": "http://nas:5000/carddav/carnet/",
@@ -1053,6 +1054,7 @@ def test_sauvegarde_synology(client, monkeypatch, tmp_path):
     assert s["journal"][0]["synology"]["groupes"] == 1
     assert len(s["fichiers"]) == 1 and c.get(f"/api/sauvegardes/{s['fichiers'][0]['nom']}").text.count("BEGIN:VCARD") == 3
     assert len(syno.cartes) == 4 and c.get("/status").json()["sauvegarde"]["ok"]
+    assert all(h.startswith("/1234/carddavhome/card/") for _, h in syno.ecritures)
 
     # Rien n'a changé : aucune écriture
     avant = len(syno.ecritures)

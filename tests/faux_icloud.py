@@ -32,6 +32,8 @@ class FauxICloud:
             uid = re.search(r"^UID:(.+)$", bloc, flags=re.M).group(1).strip()
             self.cartes[f"{CARNET}{uid}.vcf"] = [self._etag(), bloc]
         self.ecritures: list[tuple[str, str]] = []
+        self.nom_carnet = "Mes contacts"
+        self.autres_carnets: list[tuple[str, str]] = []   # (nom, chemin) listés AVANT le carnet principal
         self.photos: dict[str, bytes] = {}       # chemin → image servie par lien (comme iCloud)
 
     def _etag(self) -> str:
@@ -62,8 +64,12 @@ class FauxICloud:
                 return _multistatus([_reponse(PRINCIPAL, "<c:addressbook-home-set><d:href>"
                                               f"https://p42-contacts.icloud.com:443{MAISON}</d:href></c:addressbook-home-set>")])
             if chemin == MAISON:
-                return _multistatus([_reponse(MAISON, "<d:resourcetype><d:collection/></d:resourcetype>"),
-                                     _reponse(CARNET, "<d:resourcetype><d:collection/><c:addressbook/></d:resourcetype>")])
+                autres = [_reponse(h, f"<d:displayname>{escape(n)}</d:displayname>"
+                                      "<d:resourcetype><d:collection/><c:addressbook/></d:resourcetype>")
+                          for n, h in self.autres_carnets]
+                return _multistatus([_reponse(MAISON, "<d:resourcetype><d:collection/></d:resourcetype>")] + autres
+                                    + [_reponse(CARNET, f"<d:displayname>{escape(self.nom_carnet)}</d:displayname>"
+                                                "<d:resourcetype><d:collection/><c:addressbook/></d:resourcetype>")])
             if chemin == CARNET:
                 return _multistatus([_reponse(CARNET, "<d:resourcetype><d:collection/><c:addressbook/></d:resourcetype>")]
                                     + [_reponse(h, f"<d:getetag>{e}</d:getetag><d:resourcetype/>")

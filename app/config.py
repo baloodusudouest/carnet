@@ -33,6 +33,7 @@ class Config:
     synology_url: str = ""          # CardDAV de Synology Contacts (copie de nuit), vide : désactivée
     synology_user: str = ""
     synology_password: str = ""
+    synology_carnet: str = "Mes contacts"   # carnet d'adresses personnel (jamais celui de l'équipe)
     sauvegarde_jours: int = 30       # exports .vcf datés gardés
     linkedin_client_id: str = ""      # app LinkedIn Developers (portabilité des données)
     linkedin_client_secret: str = ""
@@ -86,6 +87,7 @@ def charger() -> Config:
         synology_url=os.environ.get("CARNET_SYNOLOGY_URL", "").strip(),
         synology_user=os.environ.get("CARNET_SYNOLOGY_USER", "carnet").strip(),
         synology_password=os.environ.get("CARNET_SYNOLOGY_PASSWORD", "").strip(),
+        synology_carnet=os.environ.get("CARNET_SYNOLOGY_CARNET", "Mes contacts").strip(),
         sauvegarde_jours=int(os.environ.get("CARNET_SAUVEGARDE_JOURS", "30")),
         linkedin_client_id=os.environ.get("CARNET_LINKEDIN_CLIENT_ID", "").strip(),
         linkedin_client_secret=os.environ.get("CARNET_LINKEDIN_CLIENT_SECRET", "").strip(),
