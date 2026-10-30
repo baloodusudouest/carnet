@@ -293,8 +293,8 @@ class Carnet:
         sources = self._sources_de(pid)
         courante = self._fiche_courante(ligne, sources)
         # Société déduite des courriels pro (toutes sources), proposée quand la fiche n'en a pas
-        tous = completer({"courriels": [c for s in sources for c in s["donnees"]["courriels"]]
-                          + courante["courriels"]})
+        tous = completer({"courriels": courante["courriels"]          # ceux retenus d'abord
+                          + [c for s in sources for c in s["donnees"]["courriels"]]})
         valeur, origine = self._proposer_societe(tous, self._societes_par_domaine())
         return {
             "id": pid, "statut": ligne["statut"], "a_revoir": ligne["a_revoir"],
