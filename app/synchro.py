@@ -28,7 +28,13 @@ _NOM = re.compile(r"^(?:(?P<groupe>[A-Za-z0-9-]+)\.)?(?P<nom>[A-Za-z0-9-]+)")
 
 # iCloud colle parfois une propriété à la fin de la précédente, sans retour à la ligne
 # (« …x-apple:+3361234X-SHARED-PHOTO-DISPLAY-PREF:ALWAYS_ASK ») : elle est remise sur sa ligne
-_COLLEES = re.compile(r"(?<=\S)(?=(?:X-SHARED-PHOTO-DISPLAY-PREF|VND-\d+-[A-Z0-9-]+)[;:])")
+_COLLEES = re.compile(r"(?<=[^\s.])(?=(?:X-SHARED-PHOTO-DISPLAY-PREF|X-ADDRESSBOOKSERVER-[A-Z-]+|X-ADDRESSING-GRAMMAR"
+                      r"|VND-\d+-[A-Z0-9-]+)[;:])")
+# Une vraie ligne de vCard commence par « NOM: » ou « NOM; » (éventuellement « itemN.NOM »)
+_LIGNE = re.compile(r"^(?:[A-Za-z0-9-]+\.)?[A-Za-z0-9-]+[;:]")
+# Données internes d'iCloud (prononciation Siri, en JSON sur plusieurs lignes, ce qui rend la
+# carte illisible si on la renvoie) : jamais renvoyées, iCloud les recalcule
+JETEES = {"X-ADDRESSBOOKSERVER-PHONEME-DATA"}
 
 
 def deplier(texte: str) -> list[str]:
@@ -41,7 +47,14 @@ def deplier(texte: str) -> list[str]:
     res: list[str] = []
     for ligne in lignes:
         res.extend(x for x in _COLLEES.split(ligne) if x)
-    return res
+    # Les restes d'une valeur sur plusieurs lignes (JSON d'iCloud) ne sont pas des propriétés
+    return [l for l in res if _LIGNE.match(l)]
+
+
+def nettoyer_texte(texte: str) -> str:
+    """Carte iCloud remise en forme lisible : propriétés décollées, données internes retirées."""
+    lignes = [l for l in deplier(texte) if _decouper(l)[1] not in JETEES]
+    return "\r\n".join(plier(l) for l in lignes) + "\r\n"
 
 
 def _decouper(ligne: str) -> tuple[str | None, str, str]:
@@ -67,10 +80,11 @@ class Carte:
     nom: str = ""
     groupe: bool = False
     membres: list[str] = field(default_factory=list)
+    brut: str = ""       # texte reçu d'iCloud, tel quel (sauvegarde)
 
 
 def analyser(href: str, etag: str, texte: str) -> Carte:
-    c = Carte(href, etag, texte)
+    c = Carte(href, etag, nettoyer_texte(texte), brut=texte)
     for ligne in deplier(texte):
         _, nom, valeur = _decouper(ligne)
         if nom == "UID":
@@ -105,7 +119,7 @@ def _conservees(distante: str, gerees: set[str] = GEREES) -> list[str]:
         elif g:
             if g not in retires:
                 gardees.append(ligne)
-        elif nom not in gerees and nom not in ENVELOPPE:
+        elif nom not in gerees and nom not in ENVELOPPE and nom not in JETEES:
             gardees.append(ligne)
     return gardees
 
