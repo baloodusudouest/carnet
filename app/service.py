@@ -15,7 +15,7 @@ from . import doublons, export, fusion
 from .config import Config
 from .db import Base
 from .modele import GROUPE_URGENCE, LIBELLES_SOURCES, completer, nom_affiche
-from .normalisation import ValeurInvalide, normaliser_fiche
+from .normalisation import ValeurInvalide, nettoyer, normaliser_fiche
 from .sources import detecter_source, lire_texte, linkedin, outlook, vcard
 
 log = logging.getLogger("carnet")
@@ -268,7 +268,7 @@ class Carnet:
             " i.nom_fichier, i.importe_le FROM sources s JOIN imports i ON i.id = s.import_id"
             " WHERE s.personne_id = ? ORDER BY s.id", (pid,))
         return [{"id": l["id"], "source": l["source"], "libelle": LIBELLES_SOURCES.get(l["source"], l["source"]),
-                 "uid": l["uid"], "donnees": completer(json.loads(l["donnees"])),
+                 "uid": l["uid"], "donnees": nettoyer(completer(json.loads(l["donnees"]))),
                  "a_photo": bool(l["a_photo"]), "enrichissement": bool(l["enrichissement"]),
                  "fichier": l["nom_fichier"], "importe_le": l["importe_le"]} for l in lignes]
 
@@ -304,7 +304,7 @@ class Carnet:
                 "SELECT id, personne_id, source, donnees, photo IS NOT NULL AS a_photo, enrichissement"
                 " FROM sources WHERE personne_id IS NOT NULL ORDER BY id"):
             sources.setdefault(l["personne_id"], []).append(
-                {"id": l["id"], "source": l["source"], "donnees": json.loads(l["donnees"]),
+                {"id": l["id"], "source": l["source"], "donnees": nettoyer(completer(json.loads(l["donnees"]))),
                  "a_photo": bool(l["a_photo"]), "enrichissement": bool(l["enrichissement"])})
         resultat = []
         for p in personnes:

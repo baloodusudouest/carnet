@@ -297,3 +297,16 @@ def test_notes_sans_texte():
     f = proposer([{"id": 1, "source": "icloud", "a_photo": False, "donnees": {"notes": "*****"}},
                   {"id": 2, "source": "gmail", "a_photo": False, "donnees": {"notes": "Voisine"}}])
     assert f["notes"] == "Voisine"
+
+
+def test_parasites_outlook():
+    texte = ("Ce contact est en lecture seule. Pour y apporter des modifications, appuyez sur le lien "
+             "ci-dessus pour le modifier dans Outlook.")
+    assert n.note(texte) == ""
+    assert n.note(texte + "\nCode portail 1234") == "Code portail 1234"
+    assert n.site("ms-outlook://people/v3/3/LgAAAA?a=4a41") is None
+    assert n.site("x-apple:abc") is None
+    assert n.site("exemple.fr")["valeur"] == "exemple.fr"
+    f = n.nettoyer({"notes": texte, "sites": [{"valeur": "ms-outlook://people/x", "type": "site"},
+                                              {"valeur": "https://exemple.fr", "type": "site"}]})
+    assert f["notes"] == "" and [s["valeur"] for s in f["sites"]] == ["https://exemple.fr"]

@@ -89,7 +89,7 @@
       </div>
     </header>
 
-    <main class="flex-1 mx-auto w-full max-w-[1400px] px-6 py-8">
+    <main class="flex-1 mx-auto w-full max-w-[1400px] px-6 py-5">
       {#if route.page === 'revision'}
         <Revision />
       {:else if route.page === 'contacts'}

@@ -129,8 +129,12 @@ def _reseau(url: str) -> str | None:
 
 
 def site(brut: str, type_: str | None = None) -> dict | None:
+    """Une adresse web. Les liens internes d'applications (ms-outlook://…, x-apple:…) sont ignorés."""
     v = (brut or "").strip()
     if not v:
+        return None
+    schema = re.match(r"^([a-z][a-z0-9+.-]*):", v, re.I)
+    if schema and schema.group(1).lower() not in ("http", "https") and not re.match(r"^[^/]+\.[a-z]{2,}(:\d+)?(/|$)", v, re.I):
         return None
     if not type_ or type_ in ("site", "autre"):
         type_ = _reseau(v) or type_
@@ -179,10 +183,28 @@ CLES = {
 }
 
 
+# Texte ajouté automatiquement par Outlook dans les contacts synchronisés : ce n'est pas une note
+BOILERPLATE_NOTES = [
+    re.compile(r"Ce contact est en lecture seule\.?.*?modifier dans Outlook\.?", re.S | re.I),
+    re.compile(r"This contact is read-only\.?.*?edit it in Outlook\.?", re.S | re.I),
+]
+
+
 def note(texte: str) -> str:
-    """Une note sans aucune lettre ni chiffre (« ***** ***** », « --- ») est considérée vide."""
-    t = str(texte or "").strip()
+    """Nettoie une note : retire le texte automatique d'Outlook ; une note sans aucune lettre
+    ni chiffre (« ***** ***** », « --- ») est considérée vide."""
+    t = str(texte or "")
+    for motif in BOILERPLATE_NOTES:
+        t = motif.sub("", t)
+    t = t.strip()
     return t if any(c.isalnum() for c in t) else ""
+
+
+def nettoyer(fiche: dict) -> dict:
+    """Appliqué aussi aux fiches déjà importées, à la lecture : notes et liens parasites."""
+    fiche["notes"] = note(fiche.get("notes"))
+    fiche["sites"] = [s for s in fiche.get("sites", []) if site(s.get("valeur", ""), s.get("type"))]
+    return fiche
 
 
 # ---------------------------------------------------------------- dates
