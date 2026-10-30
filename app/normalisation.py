@@ -206,9 +206,12 @@ CLES = {
 
 
 # Texte ajouté automatiquement par Outlook dans les contacts synchronisés : ce n'est pas une note
+# (complet, ou tronqué par l'export : on retire alors le reste de la ligne)
 BOILERPLATE_NOTES = [
-    re.compile(r"Ce contact est en lecture seule\.?.*?modifier dans Outlook\.?", re.S | re.I),
-    re.compile(r"This contact is read-only\.?.*?edit it in Outlook\.?", re.S | re.I),
+    re.compile(r"Ce contact est en lecture seule\b.*?modifier dans Outlook\.?", re.S | re.I),
+    re.compile(r"This contact is read-only\b.*?edit it in Outlook\.?", re.S | re.I),
+    re.compile(r"Ce contact est en lecture seule\b[^\n]*", re.I),
+    re.compile(r"This contact is read-only\b[^\n]*", re.I),
 ]
 
 
