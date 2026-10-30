@@ -22,6 +22,9 @@ services:
       - CARNET_SYNOLOGY_PASSWORD=${CARNET_SYNOLOGY_PASSWORD:-}   # mot de passe du compte DSM « carnet »
       - CARNET_SYNOLOGY_CARNET=${CARNET_SYNOLOGY_CARNET:-My Contacts}   # carnet personnel, jamais celui de l'équipe
       - CARNET_SYNOLOGY_VERIFIER_TLS=${CARNET_SYNOLOGY_VERIFIER_TLS:-oui}   # « non » : HTTPS sur l'IP du NAS (réseau local)
+      - CARNET_IMMICH_CLE=${CARNET_IMMICH_CLE:-}                 # clé d'API Immich (person.read, person.update)
+      - CARNET_TREEMICH_EMAIL=${CARNET_TREEMICH_EMAIL:-}         # compte Treemich
+      - CARNET_TREEMICH_PASSWORD=${CARNET_TREEMICH_PASSWORD:-}
       - LOG_LEVEL=INFO
     volumes:
       # Dépôt des exports, archives, export propre : visibles depuis le PC

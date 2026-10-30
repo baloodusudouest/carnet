@@ -146,7 +146,7 @@
             </span>
             <select bind:value={choix[f.nom]} aria-label={`Source de ${f.nom}`}>
               <option value="" disabled>Source…</option>
-              {#each Object.entries(ref.sources) as [cle, nom]}
+              {#each Object.entries(ref.sources).filter(([cle]) => cle !== 'immich') as [cle, nom]}
                 <option value={cle}>{nom}</option>
               {/each}
             </select>

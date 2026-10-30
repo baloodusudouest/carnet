@@ -1085,3 +1085,108 @@ def test_sauvegarde_synology(client, monkeypatch, tmp_path):
     c.post("/api/sauvegardes/forcer")
     _attendre(c)
     assert syno.texte("carnet-x0") is None
+
+
+def _faux_immich_treemich():
+    import httpx, json as _json
+    visages = {"im-claire": b"\xff\xd8\xff\xe0visage-claire", "im-paul": b"\xff\xd8\xff\xe0visage-paul"}
+
+    def immich(r):
+        assert r.headers["x-api-key"] == "cle"
+        if r.url.path == "/api/people":
+            return httpx.Response(200, json={"people": [
+                {"id": "im-claire", "name": "Claire Martin", "birthDate": None, "isHidden": False},
+                {"id": "im-jp", "name": "Jean-Pierre Duboiss", "birthDate": "1970-07-02", "isHidden": False},
+                {"id": "im-paul", "name": "Paul Martin", "birthDate": None, "isHidden": False},
+                {"id": "im-x", "name": "", "isHidden": False}], "total": 4, "hasNextPage": False})
+        pid = r.url.path.split("/")[3]
+        return httpx.Response(200, content=visages[pid], headers={"content-type": "image/jpeg"}) if pid in visages \
+            else httpx.Response(404)
+
+    def treemich(r):
+        if r.url.path == "/auth/login":
+            assert _json.loads(r.content) == {"email": "moi@x.fr", "password": "tm"}
+            return httpx.Response(200, json={"user": {}}, headers={"set-cookie": "treemich_session=s1; Path=/"})
+        assert "treemich_session=s1" in r.headers.get("cookie", "")
+        if r.url.path == "/people":
+            return httpx.Response(200, json={"people": [
+                {"id": "t-claire", "name": "Claire Martin", "profile": {"gender": "FEMALE"},
+                 "externalIdentities": [{"provider": "IMMICH", "providerPersonId": "im-claire"}]},
+                {"id": "t-paul", "name": "Paul Martin", "profile": {"gender": "MALE"}, "externalIdentities": []},
+                {"id": "t-lea", "name": "Léa Martin", "profile": {"gender": "FEMALE"}, "externalIdentities": []}]})
+        if r.url.path == "/relationships":
+            return httpx.Response(200, json={"relationships": [
+                {"fromPersonId": "t-claire", "toPersonId": "t-paul", "type": "SPOUSE_OF"},
+                {"fromPersonId": "t-claire", "toPersonId": "t-lea", "type": "PARENT_OF"}], "nextCursor": None})
+        return httpx.Response(404)
+    return httpx.MockTransport(immich), httpx.MockTransport(treemich)
+
+
+def test_liaisons_immich_treemich(client, monkeypatch):
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    t_im, t_tm = _faux_immich_treemich()
+    monkeypatch.setattr(cn, "transport_immich", t_im, raising=False)
+    monkeypatch.setattr(cn, "transport_treemich", t_tm, raising=False)
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "immich_cle": "cle",
+                                                        "treemich_email": "moi@x.fr", "treemich_password": "tm"}))
+    for debut in ("Claire", "Jean-Pierre"):
+        p = _personne(c, debut)
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    l = c.get("/api/liaisons?rafraichir=true").json()
+    assert l["erreurs"] == [] and l["nb_immich"] == 3
+    props = {p["nom"]: p for p in l["propositions"]}
+    claire = props["Claire MARTIN"]
+    assert claire["exacte"] and claire["immich"][0]["id"] == "im-claire" and claire["treemich"]["id"] == "t-claire"
+    jp = props["Jean-Pierre DUBOIS"]                 # nom presque identique : proposé, pas exact
+    assert not jp["exacte"] and jp["immich"][0]["id"] == "im-jp"
+    # Claire avait « Paul Martin » en conjoint (saisi) : Treemich confirme et ajoute sa fille
+    c.post("/api/liaisons/valider", json={"liaisons": [{"pid": claire["pid"], "immich": "im-claire", "treemich": "t-claire"}]})
+    t = _attendre(c)
+    assert t["tache"]["etat"] == "termine", t["tache"]
+    f = c.get(f"/api/personnes/{claire['pid']}").json()
+    assert f["statut"] == "verifie"
+    assert {(n["valeur"], n["type"]) for n in f["fiche"]["noms_associes"]} >= {("Paul Martin", "conjoint"), ("Léa Martin", "enfant")}
+    assert any(s["source"] == "immich" for s in f["sources"])
+    assert c.get(f"/api/photos/{f['fiche']['photo']}").content.endswith(b"visage-claire")
+    assert c.get("/api/revue").json()["relations_treemich"] == []
+    assert [x["pid"] for x in c.get("/api/liaisons").json()["liees"]] == [claire["pid"]]
+    assert "immich" not in [a["source"] for a in c.get("/api/archives").json()]
+    # Refus d'une proposition : plus reproposée
+    c.post("/api/liaisons/refuser", json={"pid": jp["pid"], "immich": "im-jp"})
+    assert "Jean-Pierre DUBOIS" not in {p["nom"] for p in c.get("/api/liaisons").json()["propositions"]}
+
+
+def test_relations_treemich_contradiction(client, monkeypatch):
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    t_im, t_tm = _faux_immich_treemich()
+    monkeypatch.setattr(cn, "transport_treemich", t_tm, raising=False)
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "treemich_email": "moi@x.fr", "treemich_password": "tm"}))
+    p = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+    f["noms_associes"] = [{"valeur": "Paul Martin", "type": "frère"}, {"valeur": "Marc Martin", "type": "enfant"}]
+    c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/liaisons/valider", json={"liaisons": [{"pid": p["id"], "treemich": "t-claire"}]})
+    _attendre(c)
+    revue = c.get("/api/revue").json()["relations_treemich"]
+    assert len(revue) == 1 and {x["valeur"] for x in revue[0]["contact"]} == {"Paul Martin", "Marc Martin"}
+    c.post(f"/api/personnes/{p['id']}/relations", json={"choix": "contact"})       # garder : plus redemandé
+    c.post("/api/liaisons/actualiser")
+    _attendre(c)
+    assert c.get("/api/revue").json()["relations_treemich"] == []
+    etat["carnet"].base.ecrire_etat("relations_gardees", {})                        # oublié : redemandé
+    c.post("/api/liaisons/actualiser")
+    _attendre(c)
+    assert len(c.get("/api/revue").json()["relations_treemich"]) == 1
+    c.post(f"/api/personnes/{p['id']}/relations", json={"choix": "treemich"})
+    noms = {(n["valeur"], n["type"]) for n in c.get(f"/api/personnes/{p['id']}").json()["fiche"]["noms_associes"]}
+    assert noms == {("Paul Martin", "conjoint"), ("Léa Martin", "enfant")}
+    assert c.get("/api/revue").json()["relations_treemich"] == []

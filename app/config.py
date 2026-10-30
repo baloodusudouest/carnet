@@ -36,6 +36,11 @@ class Config:
     synology_verifier_tls: bool = True      # False : certificat du NAS non vérifié (adresse IP en réseau local)
     synology_carnet: str = "My Contacts|Mes contacts"   # carnet d'adresses personnel (jamais celui de l'équipe)
     sauvegarde_jours: int = 30       # exports .vcf datés gardés
+    immich_url: str = "http://immich-server:2283"
+    immich_cle: str = ""              # clé d'API Immich (person.read, person.update)
+    treemich_url: str = "http://treemich-api:4000"
+    treemich_email: str = ""
+    treemich_password: str = ""
     linkedin_client_id: str = ""      # app LinkedIn Developers (portabilité des données)
     linkedin_client_secret: str = ""
     linkedin_redirect: str = "https://localhost/carnet-linkedin"
@@ -92,6 +97,11 @@ def charger() -> Config:
         not in ("non", "false", "0", "no"),
         synology_carnet=os.environ.get("CARNET_SYNOLOGY_CARNET", "My Contacts|Mes contacts").strip(),
         sauvegarde_jours=int(os.environ.get("CARNET_SAUVEGARDE_JOURS", "30")),
+        immich_url=os.environ.get("CARNET_IMMICH_URL", "http://immich-server:2283").strip(),
+        immich_cle=os.environ.get("CARNET_IMMICH_CLE", "").strip(),
+        treemich_url=os.environ.get("CARNET_TREEMICH_URL", "http://treemich-api:4000").strip(),
+        treemich_email=os.environ.get("CARNET_TREEMICH_EMAIL", "").strip(),
+        treemich_password=os.environ.get("CARNET_TREEMICH_PASSWORD", "").strip(),
         linkedin_client_id=os.environ.get("CARNET_LINKEDIN_CLIENT_ID", "").strip(),
         linkedin_client_secret=os.environ.get("CARNET_LINKEDIN_CLIENT_SECRET", "").strip(),
         linkedin_redirect=os.environ.get("CARNET_LINKEDIN_REDIRECT", "https://localhost/carnet-linkedin").strip(),

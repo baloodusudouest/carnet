@@ -22,10 +22,11 @@ from rapidfuzz import fuzz
 
 from . import doublons, export, fusion, synchro
 from .carddav import CardDAV, Conflit, ErreurICloud
+from .liens import TYPES_FAMILLE, ErreurLien, Immich, Treemich, relations_de
 from .config import Config
 from .db import Base
 from .modele import (CHAMPS_MULTIPLES, GROUPE_A_CLASSER, GROUPE_MOI, GROUPE_URGENCE, GROUPE_VERIFIES, GROUPES, GROUPES_PERSO,
-                     GROUPES_TRAVAIL, LIBELLES_SOURCES, REGLES_GROUPES, completer, groupes_reconnus, nom_affiche)
+                     GROUPES_TRAVAIL, LIBELLES_SOURCES, REGLES_GROUPES, completer, fiche_vide, groupes_reconnus, nom_affiche)
 from .normalisation import (CLES, GROUPES_PROCHES, MESSAGERIES, note, configurer_groupes, ValeurInvalide, cle_texte, domaine_pro, regle_proches,
                             emojis_sans_groupe, nature, reseau_detecte, type_pro_attendu, nettoyer, normaliser_fiche,
                             societe_depuis_domaine)
@@ -676,6 +677,12 @@ class Carnet:
                     for v, t in a_corriger.items()]))
         sections["societes_a_uniformiser"] = self._societes_a_uniformiser(personnes)
         sections["doublons_possibles"] = self._doublons_possibles(personnes)
+        ids = {pid for pid, _ in personnes}
+        noms = {pid: nom_affiche(f) for pid, f in personnes}
+        sections["relations_treemich"] = [
+            {"id": pid, "nom": noms[pid], "groupes": [], "treemich": item["treemich"], "contact": item["contact"]}
+            for pid, item in sorted(self.base.etat("relations_treemich", {}).items(),
+                                    key=lambda x: noms.get(x[0], "").lower()) if pid in ids]
         return sections
 
     def _doublons_possibles(self, personnes: list[tuple[str, dict]]) -> list[dict]:
@@ -1481,6 +1488,259 @@ class Carnet:
                 + (f", {entree['importes']} remis en révision." if entree["revision"] else " (mode journal)."))
             )
 
+    # ================================================================ liaisons Immich et Treemich (V3)
+
+    def _immich(self) -> Immich:
+        return Immich(self.cfg.immich_url, self.cfg.immich_cle, transport=getattr(self, "transport_immich", None))
+
+    def _treemich(self) -> Treemich:
+        return Treemich(self.cfg.treemich_url, self.cfg.treemich_email, self.cfg.treemich_password,
+                        transport=getattr(self, "transport_treemich", None))
+
+    def _donnees_liens(self, rafraichir: bool = False) -> dict:
+        """Personnes Immich et Treemich (gardées 10 minutes en mémoire)."""
+        cache = getattr(self, "_cache_liens", None)
+        if cache and not rafraichir and time.monotonic() - cache["t"] < 600:
+            return cache
+        d = {"t": time.monotonic(), "immich": [], "treemich": [], "relations": [], "erreurs": []}
+        if self.cfg.immich_cle:
+            try:
+                im = self._immich()
+                try:
+                    d["immich"] = im.personnes()
+                finally:
+                    im.fermer()
+            except ErreurLien as exc:
+                d["erreurs"].append(str(exc))
+        if self.cfg.treemich_email:
+            try:
+                tm = self._treemich()
+                try:
+                    d["treemich"], d["relations"] = tm.personnes(), tm.relations()
+                finally:
+                    tm.fermer()
+            except ErreurLien as exc:
+                d["erreurs"].append(str(exc))
+        self._cache_liens = d
+        return d
+
+    def liaisons(self, rafraichir: bool = False) -> dict:
+        """Contacts vérifiés liés à Immich / Treemich, et propositions à valider."""
+        d = self._donnees_liens(rafraichir)
+        liens = self.base.etat("liaisons", {})
+        refus = set(self.base.etat("liaisons_refusees", []))
+        immich_par_id = {p["id"]: p for p in d["immich"]}
+        tree_par_id = {p["id"]: p for p in d["treemich"]}
+        tree_par_immich = {p["immich"]: p for p in d["treemich"] if p["immich"]}
+        pris_immich = {l.get("immich") for l in liens.values() if l.get("immich")}
+        pris_tree = {l.get("treemich") for l in liens.values() if l.get("treemich")}
+
+        def index(personnes: list[dict]) -> dict[str, list[dict]]:
+            res: dict[str, list[dict]] = defaultdict(list)
+            for p in personnes:
+                res[cle_texte(p["nom"])].append(p)
+            return res
+        immich_noms, tree_noms = index(d["immich"]), index(d["treemich"])
+        liees, propositions = [], []
+        for pid, fiche, _ in self._verifiees():
+            nom = nom_affiche(fiche)
+            lien = liens.get(pid, {})
+            ligne = {"pid": pid, "nom": nom, "groupes": fiche["groupes"], "anniversaire": fiche["anniversaire"]}
+            if lien:
+                im, tm = immich_par_id.get(lien.get("immich") or ""), tree_par_id.get(lien.get("treemich") or "")
+                liees.append({**ligne, "immich": im and {"id": im["id"], "nom": im["nom"]},
+                              "treemich": tm and {"id": tm["id"], "nom": tm["nom"]}})
+                continue
+            cles = {cle_texte(f"{fiche['prenom']} {fiche['nom']}"), cle_texte(fiche["surnom"] or "")} - {""}
+            candidats = [p for c in cles for p in immich_noms.get(c, [])
+                         if p["id"] not in pris_immich and f"{pid}|{p['id']}" not in refus]
+            if not candidats:  # nom presque identique (accent, tiret, ordre)
+                candidats = [p for p in d["immich"] if p["id"] not in pris_immich and f"{pid}|{p['id']}" not in refus
+                             and any(fuzz.token_sort_ratio(c, cle_texte(p["nom"])) >= 92 for c in cles)]
+            tree = None
+            if len(candidats) == 1 and candidats[0]["id"] in tree_par_immich:
+                tree = tree_par_immich[candidats[0]["id"]]
+            else:
+                t = [p for c in cles for p in tree_noms.get(c, []) if p["id"] not in pris_tree]
+                tree = t[0] if len(t) == 1 else None
+            if not candidats and not tree:
+                continue
+            annif = fiche["anniversaire"]
+            def date_compatible(p: dict) -> bool:
+                return not (annif and p["naissance"] and len(annif) == 10 and p["naissance"][:10] != annif)
+            exacte = (len(candidats) == 1 and cle_texte(candidats[0]["nom"]) in cles
+                      and date_compatible(candidats[0]))
+            propositions.append({**ligne, "exacte": exacte,
+                                 "immich": [{"id": p["id"], "nom": p["nom"], "naissance": p["naissance"]}
+                                            for p in candidats[:5]],
+                                 "treemich": tree and {"id": tree["id"], "nom": tree["nom"]}})
+        propositions.sort(key=lambda x: (not x["exacte"], x["nom"].lower()))
+        return {"immich": bool(self.cfg.immich_cle), "treemich": bool(self.cfg.treemich_email),
+                "erreurs": d["erreurs"], "liees": liees, "propositions": propositions,
+                "nb_immich": len(d["immich"]), "nb_treemich": len(d["treemich"]),
+                "dernier_passage": self.base.etat("liens_journal", [None])[0]}
+
+    def valider_liaisons(self, liaisons: list[dict]) -> dict:
+        liens = self.base.etat("liaisons", {})
+        for l in liaisons:
+            if l.get("immich") or l.get("treemich"):
+                liens[l["pid"]] = {"immich": l.get("immich"), "treemich": l.get("treemich"), "le": _iso(maintenant())}
+        self.base.ecrire_etat("liaisons", liens)
+        pids = [l["pid"] for l in liaisons]
+        return self._lancer("liens", lambda: self._appliquer_liens(pids))
+
+    def refuser_liaison(self, pid: str, immich: str) -> dict:
+        refus = set(self.base.etat("liaisons_refusees", []))
+        refus.add(f"{pid}|{immich}")
+        self.base.ecrire_etat("liaisons_refusees", sorted(refus))
+        return {"ok": True}
+
+    def delier(self, pid: str) -> dict:
+        liens = self.base.etat("liaisons", {})
+        liens.pop(pid, None)
+        self.base.ecrire_etat("liaisons", liens)
+        return {"ok": True}
+
+    def actualiser_liens(self) -> dict:
+        return self._lancer("liens", lambda: self._appliquer_liens(None))
+
+    def _source_immich(self, cx, pid: str, immich_id: str, image: tuple[bytes, str]) -> int:
+        """Visage Immich rangé comme une fiche source « Immich » (complément) du contact."""
+        imp = cx.execute("SELECT id FROM imports WHERE source = 'immich'").fetchone()
+        if imp:
+            import_id = imp["id"]
+        else:
+            quand = maintenant()
+            import_id = cx.execute(
+                "INSERT INTO imports(source, nom_fichier, sha256, archive, importe_le, expire_le, nb_lus) "
+                "VALUES('immich', 'Immich', 'immich', NULL, ?, '9999-12-31T00:00:00+00:00', 0)",
+                (_iso(quand),)).lastrowid
+        existante = cx.execute("SELECT id FROM sources WHERE source = 'immich' AND personne_id = ?", (pid,)).fetchone()
+        emp = hashlib.sha256(image[0]).hexdigest()
+        if existante:
+            cx.execute("UPDATE sources SET uid = ?, empreinte = ?, photo = ?, photo_type = ? WHERE id = ?",
+                       (immich_id, emp, image[0], image[1], existante["id"]))
+            return existante["id"]
+        return cx.execute(
+            "INSERT INTO sources(import_id, source, uid, empreinte, donnees, photo, photo_type, enrichissement, personne_id) "
+            "VALUES(?, 'immich', ?, ?, ?, ?, ?, 1, ?)",
+            (import_id, immich_id, emp, json.dumps(fiche_vide()), image[0], image[1], pid)).lastrowid
+
+    def _appliquer_liens(self, pids: list[str] | None) -> None:
+        """Photos depuis Immich, relations depuis Treemich, pour les contacts liés.
+        Les ajouts sans conflit vont directement dans la fiche validée (iCloud suivra à la
+        prochaine écriture) ; une relation qui contredit un nom associé saisi va dans la Revue."""
+        d = self._donnees_liens(rafraichir=True)
+        liens = self.base.etat("liaisons", {})
+        cibles = {p: l for p, l in liens.items() if pids is None or p in pids}
+        bilan = {"le": _iso(maintenant()), "photos": 0, "relations": 0, "a_revoir": 0, "erreurs": list(d["erreurs"])}
+        self._tache.update(total=len(cibles), fait=0, message="Liaisons : photos et relations…")
+        verifiees = {pid: f for pid, f, _ in self._verifiees()}
+        tid_vers_pid = {l["treemich"]: p for p, l in liens.items() if l.get("treemich")}
+        genres = {p["id"]: p["genre"] for p in d["treemich"]}
+        noms_tree = {p["id"]: p["nom"] for p in d["treemich"]}
+        a_revoir = self.base.etat("relations_treemich", {})
+        gardees = self.base.etat("relations_gardees", {})   # « Garder le contact » : pas redemandé
+        immich = None
+        try:
+            if self.cfg.immich_cle and any(l.get("immich") for l in cibles.values()):
+                immich = self._immich()
+            for pid, lien in cibles.items():
+                self._tache["fait"] += 1
+                fiche = verifiees.get(pid)
+                if fiche is None:
+                    continue
+                maj = False
+                if immich and lien.get("immich"):
+                    try:
+                        image = immich.visage(lien["immich"])
+                    except ErreurLien as exc:
+                        bilan["erreurs"].append(str(exc))
+                        image = None
+                    if image:
+                        with self.base.transaction() as cx:
+                            sid = self._source_immich(cx, pid, lien["immich"], image)
+                        ancienne = self.photo(fiche["photo"]) if fiche.get("photo") else None
+                        if fiche.get("photo") != sid or not ancienne or ancienne[0] != image[0]:
+                            fiche["photo"] = sid
+                            maj = True
+                            bilan["photos"] += 1
+                if lien.get("treemich") and d["treemich"]:
+                    voulues = [{"valeur": nom_affiche(verifiees[tid_vers_pid[t]]) if tid_vers_pid.get(t) in verifiees
+                                else noms_tree.get(t, ""), "type": typ}
+                               for t, typ in relations_de(lien["treemich"], d["relations"], genres) if noms_tree.get(t)]
+                    existantes = fiche["noms_associes"]
+                    noms_existants = {cle_texte(x["valeur"]) for x in existantes}
+                    ajouts = [v for v in voulues if cle_texte(v["valeur"]) not in noms_existants]
+                    if ajouts:
+                        fiche["noms_associes"] = existantes + ajouts
+                        maj = True
+                        bilan["relations"] += len(ajouts)
+                    cles_voulues = {(cle_texte(v["valeur"]), v["type"]) for v in voulues}
+                    noms_voulus = {cle_texte(v["valeur"]) for v in voulues}
+                    contradictions = [x for x in existantes if x.get("type") in TYPES_FAMILLE and (
+                        cle_texte(x["valeur"]) not in noms_voulus
+                        or (cle_texte(x["valeur"]), x["type"]) not in cles_voulues)]
+                    signature = hashlib.sha256(json.dumps(sorted(cles_voulues), ensure_ascii=False).encode()).hexdigest()
+                    if contradictions and gardees.get(pid) != signature:
+                        a_revoir[pid] = {"treemich": voulues, "contact": contradictions, "signature": signature}
+                        bilan["a_revoir"] += 1
+                    else:
+                        a_revoir.pop(pid, None)
+                if maj:
+                    self._remplacer_fiche_validee(pid, fiche)
+        finally:
+            if immich:
+                immich.fermer()
+        self.base.ecrire_etat("relations_treemich", a_revoir)
+        journal = [bilan] + self.base.etat("liens_journal", [])
+        self.base.ecrire_etat("liens_journal", journal[:30])
+        self._tache.update(etat="erreur" if bilan["erreurs"] else "termine", message=(
+            f"Liaisons : {bilan['photos']} photo(s), {bilan['relations']} relation(s) ajoutée(s)"
+            + (f", {bilan['a_revoir']} à revoir dans la Revue" if bilan["a_revoir"] else "")
+            + (f" ; {bilan['erreurs'][0]}" if bilan["erreurs"] else "") + "."))
+
+    def _remplacer_fiche_validee(self, pid: str, fiche: dict) -> None:
+        """Met à jour la fiche validée (et le brouillon en cours, s'il existe) sans la rouvrir."""
+        propre = normaliser_fiche(fiche, self.cfg.region)
+        with self.base.transaction() as cx:
+            ligne = cx.execute("SELECT brouillon FROM personnes WHERE id = ?", (pid,)).fetchone()
+            cx.execute("UPDATE personnes SET fiche = ?, modifie_le = ? WHERE id = ?",
+                       (json.dumps(propre, ensure_ascii=False), _iso(maintenant()), pid))
+            if ligne and ligne["brouillon"]:
+                b = completer(json.loads(ligne["brouillon"]))
+                b["photo"] = propre["photo"]
+                b["noms_associes"] = b["noms_associes"] + [x for x in propre["noms_associes"]
+                                                           if cle_texte(x["valeur"]) not in
+                                                           {cle_texte(y["valeur"]) for y in b["noms_associes"]}]
+                cx.execute("UPDATE personnes SET brouillon = ? WHERE id = ?", (json.dumps(b, ensure_ascii=False), pid))
+
+    def trancher_relations(self, pid: str, choix: str) -> dict:
+        """Revue « relations Treemich » : prendre l'arbre, ou garder le contact tel quel."""
+        a_revoir = self.base.etat("relations_treemich", {})
+        item = a_revoir.pop(pid, None)
+        if not item:
+            raise ErreurCarnet("Plus de différence à trancher pour ce contact.")
+        if choix != "treemich":  # tant que l'arbre ne change pas, la question n'est plus posée
+            gardees = self.base.etat("relations_gardees", {})
+            gardees[pid] = item.get("signature")
+            self.base.ecrire_etat("relations_gardees", gardees)
+        if choix == "treemich":
+            ligne = self._personne(pid)
+            fiche = completer(json.loads(ligne["fiche"]))
+            fiche["noms_associes"] = [x for x in fiche["noms_associes"] if x.get("type") not in TYPES_FAMILLE] \
+                + item["treemich"]
+            self._remplacer_fiche_validee(pid, fiche)
+        self.base.ecrire_etat("relations_treemich", a_revoir)
+        return {"ok": True}
+
+    def visage_immich(self, immich_id: str) -> tuple[bytes, str] | None:
+        im = self._immich()
+        try:
+            return im.visage(immich_id)
+        finally:
+            im.fermer()
+
     # ================================================================ sauvegarde de nuit (V3)
 
     SEUIL_COUPE_CIRCUIT = 0.05   # au-delà de 5 % de fiches supprimées ou changées d'un coup : arrêt
@@ -1490,6 +1750,11 @@ class Carnet:
         def travail():
             if self.cfg.icloud_user and self.cfg.icloud_password:
                 self._veiller()
+            if self.base.etat("liaisons", {}) and (self.cfg.immich_cle or self.cfg.treemich_email):
+                try:
+                    self._appliquer_liens(None)
+                except Exception:  # noqa: BLE001 — la sauvegarde passe quand même
+                    log.exception("Liaisons de nuit")
             self._sauvegarder()
         return self._lancer("veille", travail)
 
@@ -1629,7 +1894,7 @@ class Carnet:
     def archives(self) -> list[dict]:
         aujourdhui = maintenant()
         res = []
-        for imp in self.base.lire("SELECT * FROM imports ORDER BY importe_le DESC"):
+        for imp in self.base.lire("SELECT * FROM imports WHERE source != 'immich' ORDER BY importe_le DESC"):
             expire = datetime.fromisoformat(imp["expire_le"])
             jours = (expire - aujourdhui).days
             noms = sorted({nom_affiche(completer(json.loads(l["donnees"]))) for l in self.base.lire(
