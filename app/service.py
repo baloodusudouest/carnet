@@ -538,7 +538,44 @@ class Carnet:
                     {"valeur": v, "type": next(s["type"] for s in f["sites"] if s["valeur"] == v), "attendu": t}
                     for v, t in a_corriger.items()]))
         sections["societes_a_uniformiser"] = self._societes_a_uniformiser(personnes)
+        sections["doublons_possibles"] = self._doublons_possibles(personnes)
         return sections
+
+    def _doublons_possibles(self, personnes: list[tuple[str, dict]]) -> list[dict]:
+        """Contacts vérifiés distincts qui désignent peut-être la même personne : mêmes règles
+        que l'import, plus souples (même nom de famille et un mot commun, noms proches…)."""
+        ignores = set(self.base.etat("doublons_ignores", []))
+        # Fiches déjà déclarées « pas la même personne » (détachées) : pas reproposées
+        personne_de = self._personne_de()
+        separees = {"|".join(sorted((personne_de[a], personne_de[b])))
+                    for a, b in self._interdits() if a in personne_de and b in personne_de}
+        sigs = [doublons.signature(i, f) for i, (_, f) in enumerate(personnes)]
+        resultat = []
+        for x, y, score, raisons in doublons.rapprochements(sigs, seuil=doublons.SEUIL_REVUE):
+            (pa, fa), (pb, fb) = personnes[x], personnes[y]
+            cle = "|".join(sorted((pa, pb)))
+            if cle in ignores or cle in separees:
+                continue
+            # La fiche d'une personne (prénom ou nom) sert de base, sinon la plus remplie
+            def poids(f: dict) -> tuple:
+                return (bool(f["prenom"] or f["nom"]),
+                        sum(len(f[c]) for c in ("telephones", "courriels", "adresses", "sites")))
+            if poids(fb) > poids(fa):
+                (pa, fa), (pb, fb) = (pb, fb), (pa, fa)
+
+            def carte(pid: str, f: dict) -> dict:
+                return {"id": pid, "nom": nom_affiche(f), "societe": f["societe"], "groupes": f["groupes"],
+                        "telephone": f["telephones"][0].get("affichage") if f["telephones"] else "",
+                        "courriel": f["courriels"][0]["valeur"] if f["courriels"] else ""}
+            resultat.append({"cle": cle, "score": score, "raisons": raisons,
+                             "base": carte(pa, fa), "autre": carte(pb, fb)})
+        return sorted(resultat, key=lambda d: (-d["score"], d["base"]["nom"].lower()))
+
+    def ignorer_doublon(self, a: str, b: str) -> dict:
+        ignores = set(self.base.etat("doublons_ignores", []))
+        ignores.add("|".join(sorted((a, b))))
+        self.base.ecrire_etat("doublons_ignores", sorted(ignores))
+        return {"ok": True}
 
     def _societes_a_uniformiser(self, personnes: list[tuple[str, dict]]) -> list[dict]:
         """Noms de société qui désignent sans doute la même entreprise : même nom à la casse

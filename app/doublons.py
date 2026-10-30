@@ -6,6 +6,8 @@ Règles (spec, « Détection des doublons ») :
 - même numéro fixe + noms compatibles       → doublon probable (un fixe est souvent partagé en famille)
 - noms très proches (RapidFuzz, accents et ordre ignorés)          → doublon probable
 - noms proches + même date de naissance ou même société            → doublon probable
+- même nom de famille + un autre mot commun (société, ville…)       → doublon possible (Revue)
+  ex. « Docteur Chossat PSV Villeneuve » / « Isabelle CHOSSAT, PSV Villeneuve sur Lot »
 Deux dates de naissance complètes et différentes affaiblissent un rapprochement par le nom.
 """
 from __future__ import annotations
@@ -19,6 +21,21 @@ from rapidfuzz import fuzz, process
 from .normalisation import cle_courriel, cle_texte
 
 SEUIL = 80
+# Doublons possibles, montrés dans la Revue mais jamais réunis automatiquement à l'import
+SEUIL_REVUE = 70
+SCORE_FAMILLE = 75
+
+# Mots qui ne distinguent personne : titres, formes juridiques, mots de liaison
+MOTS_VIDES = {
+    "docteur", "dr", "doc", "madame", "mme", "mlle", "monsieur", "mr", "maitre", "me",
+    "pr", "professeur", "prof", "sarl", "sas", "sasu", "eurl", "sci", "scp", "selarl", "ste",
+    "societe", "cabinet", "et", "de", "du", "des", "la", "le", "les", "sur", "sous", "en", "au",
+    "aux", "chez", "pour", "par", "the", "and", "of",
+}
+
+
+def _mots(texte: str) -> set[str]:
+    return {m for m in cle_texte(texte).split() if len(m) >= 3 and m not in MOTS_VIDES}
 
 
 @dataclass
@@ -30,6 +47,9 @@ class Signature:
     courriels: set[str]
     anniversaire: str
     societe: str
+    prenom: str = ""
+    famille: frozenset = frozenset()   # mots du nom de famille
+    mots: frozenset = frozenset()      # mots du prénom, du nom et de la société
 
 
 def signature(id_: int, fiche: dict) -> Signature:
@@ -44,7 +64,25 @@ def signature(id_: int, fiche: dict) -> Signature:
         courriels={cle_courriel(c) for c in fiche.get("courriels", [])},
         anniversaire=fiche.get("anniversaire", ""),
         societe=cle_texte(fiche.get("societe", "")),
+        prenom=" ".join(sorted(_mots(fiche.get("prenom", "")))),
+        famille=frozenset(_mots(fiche.get("nom", ""))),
+        mots=frozenset(_mots(f"{fiche.get('prenom', '')} {fiche.get('nom', '')} {fiche.get('societe', '')}")),
     )
+
+
+def _prenoms_differents(a: Signature, b: Signature) -> bool:
+    if not a.prenom or not b.prenom:
+        return False
+    if a.prenom.startswith(b.prenom) or b.prenom.startswith(a.prenom):  # Isa / Isabelle
+        return False
+    return fuzz.ratio(a.prenom, b.prenom) < 80
+
+
+def meme_famille_et_structure(a: Signature, b: Signature) -> bool:
+    """Le nom de famille de l'un se retrouve chez l'autre, et ils partagent un autre mot
+    (société, ville…), sans prénoms contraires."""
+    noms = (a.famille & b.mots) | (b.famille & a.mots)
+    return bool(noms) and len(a.mots & b.mots) >= 2 and not _prenoms_differents(a, b)
 
 
 def comparer(a: Signature, b: Signature, sim_nom: float | None = None) -> tuple[int, list[str]]:
@@ -70,6 +108,9 @@ def comparer(a: Signature, b: Signature, sim_nom: float | None = None) -> tuple[
         if par_nom > 0:
             raisons.append("même nom" if sim_nom >= 99.5 else f"noms proches ({sim_nom:.0f} %)")
             score = max(score, par_nom)
+    if score < SCORE_FAMILLE and meme_famille_et_structure(a, b):
+        score = SCORE_FAMILLE
+        raisons.append("même nom de famille et mots communs")
     if meme_annif and score:
         raisons.append("même date de naissance")
     if meme_societe and score:
@@ -90,6 +131,15 @@ def rapprochements(sigs: list[Signature], interdits: set[tuple[int, int]] | None
         for x in range(len(positions)):
             for y in range(x + 1, len(positions)):
                 candidats.add((positions[x], positions[y]))
+    # Même nom de famille retrouvé dans l'autre fiche (mots rares seulement)
+    par_mot: dict[str, list[int]] = defaultdict(list)
+    for i, s in enumerate(sigs):
+        for m in s.mots:
+            par_mot[m].append(i)
+    for i, s in enumerate(sigs):
+        for m in s.famille:
+            if len(par_mot[m]) <= 50:
+                candidats.update((min(i, j), max(i, j)) for j in par_mot[m] if j != i)
     sims: dict[tuple[int, int], float] = {}
     avec_nom = [i for i, s in enumerate(sigs) if len(s.nom) >= 3]
     if len(avec_nom) > 1:

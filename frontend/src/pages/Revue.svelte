@@ -6,6 +6,8 @@
   // Contrôles sur les contacts déjà vérifiés. Les corrections faites ici sont enregistrées
   // directement dans la fiche validée.
   const SECTIONS = [
+    { cle: 'doublons_possibles', titre: 'Doublons possibles',
+      aide: 'Ces contacts désignent peut-être la même personne (même nom de famille et mots communs, noms proches, même numéro…). « Fusionner » réunit les deux fiches et ouvre le résultat dans la Révision pour choisir les valeurs.' },
     { cle: 'anniversaires', titre: 'Famille et amis sans anniversaire',
       aide: 'Saisis la date : 15/03/1985, 15 mars 1985, ou 15 mars si l’année est inconnue.' },
     { cle: 'deux_portables', titre: 'Proches avec deux portables',
@@ -86,6 +88,31 @@
     }
   }
 
+  async function fusionner(d) {
+    occupe = d.cle
+    try {
+      await api.post(`/api/personnes/${d.base.id}/fusionner`, { autre: d.autre.id })
+      annoncer(`${d.autre.nom} fusionné avec ${d.base.nom} : choisis les valeurs à garder.`)
+      aller('revision', d.base.id)
+    } catch (e) {
+      annoncer(e.message, true)
+      occupe = null
+    }
+  }
+
+  async function pasDoublon(d) {
+    occupe = d.cle
+    try {
+      await api.post('/api/doublons/ignorer', { a: d.base.id, b: d.autre.id })
+      annoncer('Noté : ces deux contacts ne seront plus proposés ensemble.')
+      await charger()
+    } catch (e) {
+      annoncer(e.message, true)
+    } finally {
+      occupe = null
+    }
+  }
+
   function touche(e, action) {
     if (e.key === 'Enter') { e.preventDefault(); action() }
   }
@@ -121,7 +148,27 @@
           <h2 class="titre text-xl">{s.titre} <span class="text-mine text-base font-normal tabular-nums">({liste.length})</span></h2>
           <p class="text-sm text-mine mb-2">{liste.length ? s.aide : 'Rien à signaler.'}</p>
           {#if liste.length}
-            {#if s.cle === 'societes_a_uniformiser'}
+            {#if s.cle === 'doublons_possibles'}
+              <ul class="rounded-xl border border-couture divide-y divide-couture overflow-hidden">
+                {#each liste as d (d.cle)}
+                  <li class="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 {occupe === d.cle ? 'opacity-60' : ''}">
+                    {#each [d.base, d.autre] as p, i}
+                      <div class="w-64 min-w-0">
+                        <a href={`#/revision/${p.id}`} class="block truncate hover:text-onglet" title="Ouvrir la fiche">
+                          {#if i === 0}<span class="text-xs text-mine">base · </span>{/if}{p.nom}</a>
+                        <span class="block text-xs text-mine truncate">{[p.societe !== p.nom ? p.societe : '', p.telephone, p.courriel].filter(Boolean).join(', ') || p.groupes.join(', ')}</span>
+                      </div>
+                    {/each}
+                    <span class="text-xs text-onglet">{d.raisons.join(', ')}</span>
+                    <span class="ml-auto flex items-center gap-2">
+                      <button class="bouton bouton-principal !py-1" disabled={occupe === d.cle} onclick={() => fusionner(d)}>Fusionner</button>
+                      <button class="text-sm text-mine underline underline-offset-2 hover:text-papier ml-2"
+                        disabled={occupe === d.cle} onclick={() => pasDoublon(d)}>Pas la même personne</button>
+                    </span>
+                  </li>
+                {/each}
+              </ul>
+            {:else if s.cle === 'societes_a_uniformiser'}
               <ul class="rounded-xl border border-couture divide-y divide-couture overflow-hidden">
                 {#each liste as g (g.variantes.map((v) => v.nom).join('|'))}
                   {@const cle = g.variantes.map((v) => v.nom).join('|')}

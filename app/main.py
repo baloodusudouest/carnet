@@ -279,6 +279,16 @@ def ignorer(corps: Societes):
     return carnet().ignorer_societes(corps.variantes)
 
 
+class Paire(BaseModel):
+    a: str
+    b: str
+
+
+@app.post("/api/doublons/ignorer")
+def ignorer_doublon(corps: Paire):
+    return carnet().ignorer_doublon(corps.a, corps.b)
+
+
 @app.post("/api/personnes/{pid}/retoucher")
 def retoucher(pid: str, corps: Retouche):
     return carnet().retoucher(pid, corps.anniversaire, corps.societe, corps.ajouter, corps.retirer,
