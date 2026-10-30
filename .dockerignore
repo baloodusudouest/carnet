@@ -1,0 +1,11 @@
+.git
+.github
+.env
+**/__pycache__
+.pytest_cache
+frontend/node_modules
+app/static
+tests
+data
+state
+homeassistant

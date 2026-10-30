@@ -1,0 +1,16 @@
+# Jamais de données personnelles dans le dépôt
+.env
+*.vcf
+*.csv
+!tests/donnees/*.vcf
+!tests/donnees/*.csv
+*.db
+*.db-*
+data/
+state/
+
+# Construction
+__pycache__/
+.pytest_cache/
+frontend/node_modules/
+app/static/

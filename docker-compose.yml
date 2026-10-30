@@ -1,0 +1,23 @@
+# Service à ajouter dans une stack Docker Compose (ex. Portainer).
+# Les variables viennent des « Environment variables » de la stack (voir .env.example).
+services:
+  carnet:
+    image: ghcr.io/baloodusudouest/carnet:latest
+    container_name: carnet
+    restart: unless-stopped
+    ports:
+      - "${PORT_CARNET:-8096}:8096"              # réseau local uniquement (pas de reverse proxy)
+    environment:
+      - TZ=Europe/Paris
+      - CARNET_PASSWORD=${CARNET_PASSWORD}         # mot de passe de l'interface
+      - CARNET_DB_KEY=${CARNET_DB_KEY}             # clé de chiffrement de la base (ne jamais la perdre)
+      - KIT_API_TOKEN=${KIT_API_TOKEN}             # même jeton que le kit : régénération après envoi
+      - KIT_URL=http://kit-urgence:8095            # nom du service du kit dans la même stack
+      - LOG_LEVEL=INFO
+    volumes:
+      # Dépôt des exports, archives, export propre : visibles depuis le PC
+      - ${CARNET_DATA_DIR}:/data
+      # Base chiffrée : hors de tout partage réseau
+      - ${CARNET_STATE_DIR}:/state
+      # Dossier config/ du kit d'urgence : carnet y écrit contacts-urgence.vcf
+      - ${KIT_DATA_DIR}/config:/kit-config

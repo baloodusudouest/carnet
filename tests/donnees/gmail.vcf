@@ -1,0 +1,24 @@
+BEGIN:VCARD
+VERSION:3.0
+FN:Claire Martin
+N:Martin;Claire;;;
+EMAIL;TYPE=INTERNET;TYPE=WORK:c.martin@boulangerie-port.fr
+TEL;TYPE=CELL:+33612345678
+BDAY:1985-03-14
+CATEGORIES:myContacts,Amis
+PHOTO:https://lh3.googleusercontent.com/xyz
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Sophie Lefèvre
+N:Lefèvre;Sophie;;;
+EMAIL;TYPE=INTERNET:sophie.lefevre@exemple.org
+item1.URL:https://www.linkedin.com/in/sophie-lefevre
+item1.X-ABLabel:
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Jean Pierre Dubois
+N:Dubois;Jean Pierre;;;
+EMAIL;TYPE=INTERNET:jp.dubois@exemple.net
+END:VCARD

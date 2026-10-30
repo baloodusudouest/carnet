@@ -1,0 +1,56 @@
+# Paquet Home Assistant de carnet.
+# À placer dans /config/packages/carnet.yaml (les packages sont déjà activés pour le kit d'urgence).
+# Dans secrets.yaml :
+#   carnet_status_url: "http://<IP_DU_NAS>:8096/status"
+# /status ne renvoie que des compteurs, aucune donnée personnelle : pas de jeton nécessaire.
+
+rest:
+  - resource: !secret carnet_status_url
+    scan_interval: 900
+    timeout: 10
+    sensor:
+      - name: Carnet contacts à vérifier
+        unique_id: carnet_contacts_a_verifier
+        icon: mdi:account-question
+        unit_of_measurement: contacts
+        state_class: measurement
+        value_template: "{{ value_json.a_reviser }}"
+        json_attributes:
+          - total
+          - verifies
+          - doublons_a_reviser
+          - a_revoir
+          - linkedin_sans_contact
+      - name: Carnet archives bientôt supprimées
+        unique_id: carnet_archives_bientot
+        icon: mdi:archive-clock
+        value_template: "{{ value_json.archives_bientot }}"
+        json_attributes:
+          - contacts_archives_bientot
+          - prochaine_suppression
+
+automation:
+  - id: carnet_archives_bientot
+    alias: "Carnet – archives bientôt supprimées"
+    triggers:
+      - trigger: state
+        entity_id: sensor.carnet_archives_bientot_supprimees
+    conditions:
+      - condition: template
+        # Uniquement quand le nombre augmente (pas au redémarrage de HA)
+        value_template: >-
+          {{ trigger.from_state is not none
+             and trigger.from_state.state not in ['unknown', 'unavailable']
+             and trigger.to_state.state not in ['unknown', 'unavailable']
+             and trigger.to_state.state | int(0) > trigger.from_state.state | int(0) }}
+    actions:
+      - action: persistent_notification.create
+        data:
+          notification_id: carnet_archives
+          title: "Carnet : archives bientôt supprimées"
+          message: >-
+            {{ trigger.to_state.state }} export(s), soit
+            {{ state_attr(trigger.entity_id, 'contacts_archives_bientot') }} fiches, seront
+            supprimés à partir du
+            {{ as_timestamp(state_attr(trigger.entity_id, 'prochaine_suppression')) | timestamp_custom('%d/%m/%Y') }}.
+            Détail dans l'onglet Archives de carnet ; copie le fichier ailleurs pour le garder.
