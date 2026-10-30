@@ -98,6 +98,14 @@ def telephone(brut: str, type_: str | None, region: str = "FR") -> dict | None:
             "mobile": False}
 
 
+def type_telephone_propose(t: dict) -> dict:
+    """Un portable français (+33 6, +33 7) noté « domicile » ou « autre » est proposé en « mobile »
+    (un portable noté « travail » le reste)."""
+    if t.get("type") in ("domicile", "autre") and str(t.get("valeur", "")).startswith(("+336", "+337")):
+        return {**t, "type": "mobile"}
+    return t
+
+
 def cle_telephone(tel: dict) -> str:
     return tel["valeur"] if tel.get("valide") else re.sub(r"\D", "", tel["valeur"])
 
@@ -285,6 +293,7 @@ def nettoyer(fiche: dict) -> dict:
         elif (s := site(c.get("valeur", ""))):  # lien rangé par erreur dans les courriels
             sites.append(s)
     fiche["courriels"], fiche["sites"] = courriels, sites
+    fiche["telephones"] = [type_telephone_propose(t) for t in fiche.get("telephones", [])]
     groupes_par_emoji(fiche)
     return fiche
 
