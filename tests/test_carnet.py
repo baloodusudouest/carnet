@@ -310,3 +310,11 @@ def test_parasites_outlook():
     f = n.nettoyer({"notes": texte, "sites": [{"valeur": "ms-outlook://people/x", "type": "site"},
                                               {"valeur": "https://exemple.fr", "type": "site"}]})
     assert f["notes"] == "" and [s["valeur"] for s in f["sites"]] == ["https://exemple.fr"]
+
+
+def test_courriels_pro_proposes():
+    f = n.nettoyer({"courriels": [{"valeur": "b.martin@sicaf-cosmetiques.fr", "type": "domicile"},
+                                  {"valeur": "claire@gmail.com", "type": "domicile"},
+                                  {"valeur": "x@hotmail.fr", "type": "autre"},
+                                  {"valeur": "y@wanadoo.fr", "type": "domicile"}]})
+    assert [c["type"] for c in f["courriels"]] == ["travail", "domicile", "autre", "domicile"]
