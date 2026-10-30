@@ -11,13 +11,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
+from rapidfuzz import fuzz
 
 from . import doublons, export, fusion
 from .config import Config
 from .db import Base
 from .modele import (GROUPE_A_CLASSER, GROUPE_URGENCE, GROUPES_TRAVAIL, LIBELLES_SOURCES,
                      completer, nom_affiche)
-from .normalisation import (ValeurInvalide, domaine_pro, nettoyer, normaliser_fiche,
+from .normalisation import (ValeurInvalide, cle_texte, domaine_pro, nettoyer, normaliser_fiche,
                             societe_depuis_domaine)
 from .sources import detecter_source, lire_texte, linkedin, outlook, vcard
 
@@ -25,6 +26,11 @@ log = logging.getLogger("carnet")
 LECTEURS = {"icloud": vcard.lire, "gmail": vcard.lire, "outlook": outlook.lire,
             "linkedin": linkedin.lire}
 EXTENSIONS = {".vcf", ".vcard", ".csv"}
+
+
+# Mots qui ne distinguent pas une société (formes juridiques, articles)
+MOTS_SOCIETE_VIDES = {"sa", "sas", "sasu", "sarl", "eurl", "sci", "scop", "gmbh", "ltd", "inc", "llc",
+                      "group", "groupe", "la", "le", "les", "de", "des", "du", "et", "the", "and", "france"}
 
 
 class ErreurCarnet(Exception):
@@ -470,7 +476,66 @@ class Carnet:
                 sections["numeros_non_reconnus"].append(resume(pid, f, numeros=invalides))
             if not f["telephones"] and not f["courriels"]:
                 sections["injoignables"].append(resume(pid, f))
+        sections["societes_a_uniformiser"] = self._societes_a_uniformiser(personnes)
         return sections
+
+    def _societes_a_uniformiser(self, personnes: list[tuple[str, dict]]) -> list[dict]:
+        """Noms de société qui désignent sans doute la même entreprise : même nom à la casse
+        ou aux accents près (bioMérieux / BIOMERIEUX), mots de l'un contenus dans l'autre
+        (Sicaf / Sicaf Cosmétiques), ou presque identiques (faute de frappe)."""
+        ignores = {frozenset(g) for g in self.base.etat("societes_ignorees", [])}
+        compte: dict[str, int] = {}
+        for _, f in personnes:
+            if f["societe"]:
+                compte[f["societe"]] = compte.get(f["societe"], 0) + 1
+        noms = sorted(compte)
+        parent = {x: x for x in noms}
+
+        def racine(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        mots = {x: set(cle_texte(x).split()) - MOTS_SOCIETE_VIDES for x in noms}
+        for i, a in enumerate(noms):
+            for b in noms[i + 1:]:
+                ka, kb = cle_texte(a), cle_texte(b)
+                ma, mb = mots[a], mots[b]
+                court = min((ma, mb), key=len)
+                inclus = court and len("".join(court)) >= 4 and (ma <= mb or mb <= ma)
+                if ka == kb or inclus or fuzz.ratio(ka, kb) >= 92:
+                    parent[racine(a)] = racine(b)
+        groupes: dict[str, list[str]] = {}
+        for x in noms:
+            groupes.setdefault(racine(x), []).append(x)
+        res = []
+        for variantes in groupes.values():
+            if len(variantes) < 2 or frozenset(variantes) in ignores:
+                continue
+            # Proposition : la variante la plus utilisée, puis la plus courte, puis avec majuscules et minuscules
+            proposition = sorted(variantes, key=lambda v: (-compte[v], len(v), v.isupper() or v.islower()))[0]
+            res.append({"variantes": [{"nom": v, "nb": compte[v]} for v in
+                                      sorted(variantes, key=lambda v: -compte[v])],
+                        "proposition": proposition})
+        return sorted(res, key=lambda g: g["proposition"].lower())
+
+    def uniformiser_societes(self, variantes: list[str], nom: str) -> dict:
+        nom = " ".join(nom.split())
+        if not nom:
+            raise ErreurCarnet("Indique le nom de société à garder.")
+        n = 0
+        for p in self.base.lire("SELECT id, fiche FROM personnes WHERE statut = 'verifie' AND fiche IS NOT NULL"):
+            if completer(json.loads(p["fiche"]))["societe"] in variantes:
+                self.retoucher(p["id"], societe=nom)
+                n += 1
+        return {"modifies": n}
+
+    def ignorer_societes(self, variantes: list[str]) -> dict:
+        ignores = self.base.etat("societes_ignorees", [])
+        ignores.append(sorted(set(variantes)))
+        self.base.ecrire_etat("societes_ignorees", ignores)
+        return {"ok": True}
 
     def _societes_par_domaine(self) -> dict[str, Counter]:
         """Société déjà connue pour un domaine (chez un autre contact) : la meilleure proposition."""

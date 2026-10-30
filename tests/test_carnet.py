@@ -394,3 +394,25 @@ def test_emoji_vers_groupe():
 def test_telegram_deja_importe():
     f = n.nettoyer({"sites": [{"valeur": "https://t.me/@id99", "type": "site"}]})
     assert f["sites"][0]["type"] == "telegram"
+
+
+def test_societes_a_uniformiser(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    _importer(c, "gmail.vcf", "gmail")
+    _importer(c, "outlook.csv", "outlook")
+    noms = ["bioMérieux", "BIOMERIEUX", "Pierre Fabre", "Pierre Fabre Dermo-Cosmétique", "Total SA"]
+    for p, soc in zip(c.get("/api/contacts").json(), noms):
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        f["societe"] = soc
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    groupes = c.get("/api/revue").json()["societes_a_uniformiser"]
+    assert sorted(sorted(v["nom"] for v in g["variantes"]) for g in groupes) == [
+        ["BIOMERIEUX", "bioMérieux"], ["Pierre Fabre", "Pierre Fabre Dermo-Cosmétique"]]
+    bio = next(g for g in groupes if "bioMérieux" in [v["nom"] for v in g["variantes"]])
+    assert bio["proposition"] == "bioMérieux"
+    r = c.post("/api/societes/uniformiser", json={"variantes": ["bioMérieux", "BIOMERIEUX"], "nom": "bioMérieux"})
+    assert r.json()["modifies"] == 2
+    c.post("/api/societes/ignorer", json={"variantes": ["Pierre Fabre", "Pierre Fabre Dermo-Cosmétique"]})
+    assert c.get("/api/revue").json()["societes_a_uniformiser"] == []
