@@ -216,6 +216,8 @@
         if (t.valeur.startsWith('+33')) t.type = /^\+33[67]/.test(t.valeur) ? 'travail' : 'bureau'
       }
     }
+    // Clients : les adresses sont celles du travail
+    if (fiche.groupes.includes('Clients')) for (const a of fiche.adresses) a.type = 'travail'
     // Fiche d'entreprise (société sans prénom ni nom) : standard « principal », portable « travail »
     const pros = ['Artisans et services', 'Clients', 'Collègues']
     if (fiche.groupes.some((g) => pros.includes(g)) && fiche.societe && !fiche.prenom && !fiche.nom) {

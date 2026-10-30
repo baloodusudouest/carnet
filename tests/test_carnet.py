@@ -572,3 +572,9 @@ def test_poste_relu_depuis_vcard():
     texte = vcard({"telephones": [n.telephone("05 53 00 00 00 poste 123", "principal")]}, "u")
     relu, _ = lecteur_vcf.lire(texte)
     assert relu[0].fiche["telephones"][0]["valeur"] == "+33553000000;ext=123"
+
+
+def test_adresse_client_en_travail():
+    f = n.normaliser_fiche({"prenom": "Paul", "groupes": ["Clients"],
+                            "adresses": [{"rue": "1 rue A", "ville": "Agen", "type": "domicile"}]})
+    assert f["adresses"][0]["type"] == "travail"

@@ -126,6 +126,9 @@ def regle_proches(fiche: dict) -> dict:
     Famille, Amis, Jardin secret (prioritaires) : un portable français (+33 6, +33 7) est « mobile ».
     Avec deux portables ou plus, rien n'est forcé : la Revue demande lequel est celui du travail."""
     groupes = set(fiche.get("groupes", []))
+    if "Clients" in groupes:  # l'adresse d'un client (personne ou société) est celle de son travail
+        for a in fiche.get("adresses", []):
+            a["type"] = "travail"
     if "Artisans et services" in groupes:
         for t in fiche.get("telephones", []):
             if str(t.get("valeur", "")).startswith("+33"):
