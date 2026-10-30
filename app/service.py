@@ -1253,6 +1253,11 @@ class Carnet:
         return {"url": "https://www.linkedin.com/oauth/v2/authorization?" + urlencode(parametres),
                 "retour": self.cfg.linkedin_redirect}
 
+    def linkedin_reessayer(self) -> dict:
+        if not getattr(self, "_jeton_linkedin", None):
+            raise ErreurCarnet("Plus de connexion LinkedIn en mémoire : clique sur « Se connecter à LinkedIn ».")
+        return self.linkedin_api(self._jeton_linkedin)
+
     def linkedin_code(self, adresse: str) -> dict:
         """Adresse de retour collée (…?code=…&state=…) → jeton → import des relations."""
         requete = parse_qs(urlsplit((adresse or "").strip()).query)
@@ -1308,7 +1313,12 @@ class Carnet:
                     break
                 lignes += donnees
         if not lignes:
-            raise ErreurCarnet("LinkedIn n'a renvoyé aucune relation.")
+            # Après la première autorisation, LinkedIn prépare les données (~20 à 30 min pour CONNECTIONS)
+            # et répond « No data found » d'ici là. Le jeton est gardé en mémoire pour réessayer.
+            self._jeton_linkedin = jeton
+            raise ErreurCarnet("LinkedIn prépare encore tes données : c'est normal juste après la première "
+                               "autorisation (environ 30 minutes). Réessaie plus tard avec « Réessayer ».")
+        self._jeton_linkedin = None
         tampon = io.StringIO()
         ecrivain = csv.DictWriter(tampon, fieldnames=self.COLONNES_LINKEDIN, extrasaction="ignore")
         ecrivain.writeheader()

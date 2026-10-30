@@ -205,7 +205,13 @@ def linkedin_api(corps: JetonLinkedIn):
 @app.get("/api/linkedin/etat")
 def linkedin_etat():
     cfg = etat["cfg"]
-    return {"oauth": bool(cfg.linkedin_client_id and cfg.linkedin_client_secret), "retour": cfg.linkedin_redirect}
+    return {"oauth": bool(cfg.linkedin_client_id and cfg.linkedin_client_secret), "retour": cfg.linkedin_redirect,
+            "en_attente": bool(getattr(carnet(), "_jeton_linkedin", None))}
+
+
+@app.post("/api/linkedin/reessayer")
+def linkedin_reessayer():
+    return carnet().linkedin_reessayer()
 
 
 @app.post("/api/linkedin/autorisation")
