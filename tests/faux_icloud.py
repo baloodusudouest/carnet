@@ -32,6 +32,7 @@ class FauxICloud:
             uid = re.search(r"^UID:(.+)$", bloc, flags=re.M).group(1).strip()
             self.cartes[f"{CARNET}{uid}.vcf"] = [self._etag(), bloc]
         self.ecritures: list[tuple[str, str]] = []
+        self.photos: dict[str, bytes] = {}       # chemin → image servie par lien (comme iCloud)
 
     def _etag(self) -> str:
         self.n += 1
@@ -51,6 +52,8 @@ class FauxICloud:
         if r.headers.get("authorization") != self.auth:
             return httpx.Response(401)
         chemin, corps = r.url.path, r.content.decode()
+        if r.method == "GET" and chemin in self.photos:
+            return httpx.Response(200, content=self.photos[chemin], headers={"Content-Type": "image/jpeg"})
         if r.method == "PROPFIND":
             if chemin == "/":
                 return _multistatus([_reponse("/", f"<d:current-user-principal><d:href>{PRINCIPAL}</d:href></d:current-user-principal>")])

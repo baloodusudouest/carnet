@@ -119,7 +119,7 @@ CARNET_ICLOUD_PASSWORD=xxxx-xxxx-xxxx-xxxx</pre>
         <div class="rounded-xl border border-couture bg-reliure p-5">
           <h2 class="titre text-xl mb-1">1. Essai sur ta fiche</h2>
           {#if plan.essai}
-            <p class="text-sm text-mine mb-4">Écrit uniquement <span class="text-papier">{plan.essai}</span> (groupe Moi). Regarde ensuite le résultat sur l'iPhone : téléphones, postes, adresses, photo.</p>
+            <p class="text-sm text-mine mb-4">Écrit uniquement <span class="text-papier">{plan.essai}</span> et le groupe Moi. Regarde ensuite le résultat sur l'iPhone : téléphones, postes, adresses, photo.</p>
             <button class="bouton" disabled={enCours} onclick={() => lancer('/api/icloud/ecriture', { essai: true })}>Écrire seulement ma fiche</button>
           {:else}
             <p class="text-sm text-mine">Ajoute ta propre fiche au groupe Moi (touche I en révision) pour pouvoir faire un essai.</p>

@@ -719,7 +719,8 @@ def test_synchro_icloud(client, monkeypatch):
     # Essai : seule la fiche « Moi » est écrite
     assert c.post("/api/icloud/ecriture", json={"essai": True}).status_code == 200
     t = _attendre(c)
-    assert t["tache"]["etat"] == "termine" and serveur.ecritures == [("PUT", "/1234/carddavhome/card/AAAA-1111.vcf")]
+    assert t["tache"]["etat"] == "termine" and serveur.ecritures[0] == ("PUT", "/1234/carddavhome/card/AAAA-1111.vcf")
+    assert len(serveur.ecritures) == 2 and "FN:Moi" in serveur.cartes[serveur.ecritures[1][1]][1]   # + groupe Moi
     carte = serveur.texte("AAAA-1111")
     assert "TITLE:Boulangère" in carte and "X-ABDATE:2010-06-12" in carte      # champ inconnu gardé
     assert "CATEGORIES" not in carte and carte.count("BEGIN:VCARD") == 1
@@ -737,7 +738,7 @@ def test_synchro_icloud(client, monkeypatch):
     bilan = t["journal"][0]
     assert bilan["conflits"] == ["Jean-Pierre DUBOIS"] and serveur.texte("BBBB-2222") == iphone
     assert serveur.texte("CCCC-3333") is None and bilan["supprimes"] == 1
-    assert bilan["groupes"] == 3 and bilan["importes"] == 1
+    assert bilan["groupes"] == 2 and bilan["importes"] == 1         # Famille et Boulot (Moi : fait à l'essai)
     famille = next(t for t in serveur.cartes.values() if "FN:Famille" in t[1])[1]
     assert "X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:AAAA-1111" in famille
     boulot = serveur.texte("GGGG-0002")
@@ -764,3 +765,42 @@ def test_icloud_mauvais_mot_de_passe(client, monkeypatch):
     c.post("/api/icloud/simulation")
     t = _attendre(c)
     assert t["tache"]["etat"] == "erreur" and "mot de passe d'application" in t["tache"]["message"]
+
+
+def test_icloud_photo_par_lien(client, monkeypatch):
+    """iCloud ne donne parfois qu'un lien vers la photo : elle est téléchargée et gardée."""
+    import base64
+    from app.main import etat
+    from tests.faux_icloud import FauxICloud
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    image = b"\xff\xd8\xff\xe0" + b"photo-de-jp" * 20
+    origine = (DONNEES / "icloud.vcf").read_text().replace(
+        "UID:BBBB-2222", "PHOTO;X-ABCROP-RECTANGLE=ABClipRect_1&0&0&10&10;VALUE=uri:https://p42-contacts.icloud.com/photos/jp\r\nUID:BBBB-2222")
+    serveur = FauxICloud(origine)
+    serveur.photos["/photos/jp"] = image
+    cn = etat["carnet"]
+    monkeypatch.setattr(cn, "transport_icloud", serveur.transport())
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "icloud_user": "moi@icloud.com",
+                                                        "icloud_password": "abcd-efgh-ijkl-mnop"}))
+    dubois = _personne(c, "Jean-Pierre")
+    f = c.get(f"/api/personnes/{dubois['id']}").json()["fiche"]
+    f["groupes"] = ["Moi"]
+    c.put(f"/api/personnes/{dubois['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/icloud/simulation")
+    _attendre(c)
+    c.post("/api/icloud/ecriture", json={"essai": True})
+    _attendre(c)
+    assert any("FN:Moi" in t for _, t in serveur.cartes.values())     # l'essai crée aussi le groupe Moi
+    carte = serveur.texte("BBBB-2222").replace("\r\n ", "")
+    assert "VALUE=uri" not in carte and base64.b64encode(image).decode() in carte
+
+    # Photo disparue d'iCloud lors d'une écriture précédente : reprise dans la sauvegarde
+    serveur.modifier_sur_iphone("BBBB-2222", "\r\n".join(
+        l for l in serveur.texte("BBBB-2222").replace("\r\n ", "").split("\r\n") if not l.startswith("PHOTO")))
+    c.post("/api/icloud/simulation")
+    assert [x["nom"] for x in _attendre(c)["plan"]["modifier"]] == ["Jean-Pierre DUBOIS"]
+    c.post("/api/icloud/ecriture", json={"essai": True})
+    _attendre(c)
+    assert base64.b64encode(image).decode() in serveur.texte("BBBB-2222").replace("\r\n ", "")

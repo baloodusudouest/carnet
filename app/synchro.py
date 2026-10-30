@@ -7,6 +7,8 @@ gère (nom, téléphones, courriels, adresses, sites, notes, photo…) et garde 
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import re
 from dataclasses import dataclass, field
@@ -136,3 +138,37 @@ def empreinte(texte: str) -> str:
             continue
         lignes.append(l[len(g) + 1:] if g else l)
     return hashlib.sha256("\n".join(sorted(x.lower() for x in lignes)).encode()).hexdigest()
+
+
+def type_image(donnees: bytes) -> str:
+    if donnees[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if donnees[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if donnees[:4] in (b"GIF8",):
+        return "image/gif"
+    if donnees[8:12] == b"WEBP":
+        return "image/webp"
+    if donnees[4:12] in (b"ftypheic", b"ftypheix", b"ftypmif1"):
+        return "image/heic"
+    return "image/jpeg"
+
+
+def photo(texte: str) -> tuple[str, object] | None:
+    """Photo d'une carte : ("lien", url) quand iCloud ne donne qu'une adresse à télécharger,
+    ("image", (octets, type)) quand elle est incluse dans la carte, None sinon."""
+    for ligne in deplier(texte):
+        _, nom, valeur = _decouper(ligne)
+        if nom != "PHOTO" or not valeur.strip():
+            continue
+        valeur = valeur.strip()
+        if valeur.lower().startswith(("http://", "https://")):
+            return "lien", valeur
+        if valeur.startswith("data:"):
+            valeur = valeur.partition(",")[2]
+        try:
+            donnees = base64.b64decode(valeur, validate=False)
+        except (binascii.Error, ValueError):
+            return None
+        return ("image", (donnees, type_image(donnees))) if donnees else None
+    return None
