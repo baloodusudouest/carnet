@@ -61,6 +61,7 @@ Copie `homeassistant/carnet.yaml` dans `/config/packages/`, ajoute `carnet_statu
 | `CARNET_ARCHIVE_JOURS` | `365` | conservation des exports d'origine |
 | `CARNET_ALERTE_JOURS` | `30` | préavis avant suppression |
 | `CARNET_SESSION_JOURS` | `30` | durée de la session |
+| `CARNET_EMOJI_GROUPES` | vide | règles « émoji:groupe » séparées par `;` (ex. `🍕:Amis;🔧:Artisans et services`) : un contact contenant l'émoji rejoint le groupe |
 | `KIT_URL` | `http://kit-urgence:8095` | API du kit d'urgence |
 | `KIT_API_TOKEN` | vide | jeton du kit ; sans lui, le kit se régénère à sa prochaine synchronisation |
 

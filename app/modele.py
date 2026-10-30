@@ -31,7 +31,8 @@ TYPES = {
     "telephones": ["mobile", "domicile", "travail", "bureau", "principal", "autre"],
     "courriels": ["domicile", "travail", "autre"],
     "adresses": ["domicile", "travail", "autre"],
-    "sites": ["site", "linkedin", "facebook", "instagram", "x", "tiktok", "autre"],
+    "sites": ["site", "linkedin", "facebook", "instagram", "x", "tiktok", "telegram", "whatsapp",
+              "signal", "autre"],
     "noms_associes": ["conjoint", "partenaire", "mère", "père", "parent", "enfant",
                       "frère", "sœur", "ami", "assistant", "responsable", "autre"],
 }

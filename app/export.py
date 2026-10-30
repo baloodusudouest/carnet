@@ -14,7 +14,7 @@ LIEU = {"domicile": "type=HOME", "travail": "type=WORK"}
 RELATIONS = {"conjoint": "Spouse", "partenaire": "Partner", "mère": "Mother", "père": "Father",
              "parent": "Parent", "enfant": "Child", "frère": "Brother", "sœur": "Sister",
              "ami": "Friend", "assistant": "Assistant", "responsable": "Manager", "autre": "Other"}
-RESEAUX = {"linkedin", "facebook", "instagram", "tiktok", "x"}
+RESEAUX = {"linkedin", "facebook", "instagram", "tiktok", "x", "telegram", "whatsapp", "signal"}
 
 
 def echapper(texte: str) -> str:

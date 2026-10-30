@@ -367,3 +367,25 @@ def test_revue(client):
     d = c.get(f"/api/personnes/{jp['id']}").json()
     assert d["statut"] == "verifie" and d["fiche"]["anniversaire"] == "1960-07-02"
     assert c.post(f"/api/personnes/{jp['id']}/retoucher", json={"anniversaire": "bof"}).status_code == 400
+
+
+def test_telegram():
+    assert n.site("https://t.me/@id1234")["type"] == "telegram"
+    assert n.courriel("https://t.me/@id1234", "domicile") is None
+    f = n.nettoyer({"courriels": [{"valeur": "https://t.me/@id1234", "type": "domicile"},
+                                  {"valeur": "a@gmail.com", "type": "domicile"}]})
+    assert [c["valeur"] for c in f["courriels"]] == ["a@gmail.com"]
+    assert f["sites"] == [{"valeur": "https://t.me/@id1234", "type": "telegram"}]
+    from app.export import vcard
+    assert "X-SOCIALPROFILE;type=telegram:https://t.me/@id1234" in vcard(f, "u")
+
+
+def test_emoji_vers_groupe():
+    n.configurer_emojis("🍕:Amis;🔧:Artisans et services")
+    try:
+        f = n.nettoyer({"prenom": "Léa 🍕", "groupes": []})
+        assert f["groupes"] == ["Amis"]
+        assert n.normaliser_fiche({"notes": "plombier 🔧"})["groupes"] == ["Artisans et services"]
+        assert n.nettoyer({"prenom": "Léa"}).get("groupes", []) == []
+    finally:
+        n.configurer_emojis("")

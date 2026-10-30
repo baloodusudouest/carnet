@@ -144,6 +144,12 @@ def _lire_carte(brut: str, region: str) -> tuple[FicheLue | None, dict | None]:
                                _type_depuis(ligne, libelles, TYPES_LIEU, "domicile"))
                 if c:
                     f["courriels"].append(c)
+                elif (s := n.site(_texte(ligne.value))):  # un lien saisi comme courriel
+                    f["sites"].append(s)
+            elif nom == "IMPP":  # messageries instantanées : seuls les liens web sont gardés
+                s = n.site(_texte(ligne.value))
+                if s:
+                    f["sites"].append(s)
             elif nom == "ADR":
                 a = ligne.value
                 ad = n.adresse(_texte(a.street), _texte(a.code), _texte(a.city), _texte(a.region),
@@ -160,7 +166,8 @@ def _lire_carte(brut: str, region: str) -> tuple[FicheLue | None, dict | None]:
                 valeur = _texte(ligne.value)
                 if not valeur.startswith("http") and "X-USER" in {k.upper() for k in ligne.params}:
                     valeur = valeur or _texte(ligne.params.get("X-USER", [""])[0])
-                s = n.site(valeur, reseau if reseau in ("linkedin", "facebook", "instagram", "tiktok")
+                s = n.site(valeur, reseau if reseau in ("linkedin", "facebook", "instagram", "tiktok", "telegram",
+                                                     "whatsapp", "signal")
                            else ("x" if reseau == "twitter" else None))
                 if s:
                     f["sites"].append(s)
