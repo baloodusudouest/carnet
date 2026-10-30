@@ -323,3 +323,47 @@ def test_courriels_pro_proposes():
 def test_note_outlook_tronquee():
     assert n.note("Ce contact est en lecture seule. Pour y apporter des modifications, a") == ""
     assert n.note("Ce contact est en lecture seule. Pour y apporter\nCode 1234") == "Code 1234"
+
+
+def test_societe_depuis_domaine():
+    assert n.societe_depuis_domaine("sicaf-cosmetiques.fr") == "Sicaf Cosmetiques"
+    assert n.societe_depuis_domaine("edf.fr") == "EDF"
+    assert n.societe_depuis_domaine("sncf.com") == "SNCF"
+    assert n.societe_depuis_domaine("mail.groupe-exemple.com") == "Groupe Exemple"
+    assert n.domaine_pro("a@gmail.com") is None
+
+
+def test_revue(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    _importer(c, "gmail.vcf", "gmail")
+    claire, jp = _personne(c, "Claire"), _personne(c, "Jean")
+    # Claire : cliente, société vidée, courriel pro ; Jean-Pierre : Famille sans anniversaire, ancien « Travail »
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    f.update(societe="", groupes=["Clients", "Urgence"])
+    f["courriels"] = [x for x in f["courriels"] if "boulangerie" in x["valeur"]]
+    f["telephones"] = [t for t in f["telephones"] if not t["mobile"]]
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})
+    g = c.get(f"/api/personnes/{jp['id']}").json()["fiche"]
+    g.update(anniversaire="", groupes=["Famille", "Travail"])
+    c.put(f"/api/personnes/{jp['id']}", json={"fiche": g, "valider": True})
+
+    r = c.get("/api/revue").json()
+    assert [x["nom"] for x in r["anniversaires"]] == ["Jean-Pierre DUBOIS"]
+    soc = {x["nom"]: x for x in r["societes"]}
+    assert soc["Claire MARTIN"]["proposition"] == "Boulangerie Port"
+    d = c.get(f"/api/personnes/{claire['id']}").json()
+    assert d["societe_deduite"] == {"valeur": "Boulangerie Port", "origine": "déduite de @boulangerie-port.fr"}
+    assert [x["nom"] for x in r["travail_a_classer"]] == ["Jean-Pierre DUBOIS"]
+    assert [x["nom"] for x in r["urgence_sans_mobile"]] == ["Claire MARTIN"]
+
+    c.post(f"/api/personnes/{jp['id']}/retoucher", json={"anniversaire": "2/7/1960", "ajouter": ["Collègues"],
+                                                        "retirer": ["Travail"]})
+    c.post(f"/api/personnes/{claire['id']}/retoucher", json={"societe": "Boulangerie du Port"})
+    r = c.get("/api/revue").json()
+    assert not r["anniversaires"] and not r["travail_a_classer"]
+    assert "Jean-Pierre DUBOIS" in [x["nom"] for x in r["societes"]]   # collègue sans société
+    d = c.get(f"/api/personnes/{jp['id']}").json()
+    assert d["statut"] == "verifie" and d["fiche"]["anniversaire"] == "1960-07-02"
+    assert c.post(f"/api/personnes/{jp['id']}/retoucher", json={"anniversaire": "bof"}).status_code == 400

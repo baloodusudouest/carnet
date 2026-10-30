@@ -10,7 +10,7 @@ import io
 import re
 
 from .. import normalisation as n
-from ..modele import GROUPES, fiche_vide
+from ..modele import GROUPES_RECONNUS, fiche_vide
 from . import FicheLue
 
 TELEPHONES = [
@@ -23,7 +23,7 @@ TELEPHONES = [
 COURRIELS = [("E-mail Address", "domicile"), ("E-mail 2 Address", "domicile"),
              ("E-mail 3 Address", "domicile")]
 ADRESSES = [("Home", "domicile"), ("Business", "travail"), ("Other", "autre")]
-CLES_GROUPES = {n.cle_texte(g): g for g in GROUPES}
+CLES_GROUPES = {n.cle_texte(g): g for g in GROUPES_RECONNUS}
 
 
 def _ordre_des_dates(lignes: list[dict]) -> tuple[str, bool]:

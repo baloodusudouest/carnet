@@ -132,6 +132,26 @@ def type_courriel_propose(c: dict) -> dict:
     return c
 
 
+def domaine_pro(adresse: str) -> str | None:
+    """« b.martin@sicaf-cosmetiques.fr » → « sicaf-cosmetiques.fr » ; None pour une messagerie perso."""
+    if "@" not in adresse or courriel_perso(adresse):
+        return None
+    return adresse.rsplit("@", 1)[-1].strip().lower()
+
+
+def societe_depuis_domaine(domaine: str) -> str:
+    """Nom de société deviné à partir du domaine : « sicaf-cosmetiques.fr » → « Sicaf Cosmetiques »,
+    « edf.fr » → « EDF », « mail.groupe-exemple.com » → « Groupe Exemple »."""
+    morceaux = domaine.split(".")
+    nom = morceaux[-2] if len(morceaux) >= 2 else morceaux[0]
+    if len(morceaux) >= 3 and morceaux[-2] in ("co", "com", "gouv", "asso"):
+        nom = morceaux[-3]
+    mots = [m for m in re.split(r"[-_]+", nom) if m]
+    # Sigle : 3 lettres ou moins, ou sans voyelle (edf, sncf) ; sinon un mot (port, cosmetiques)
+    return " ".join(m.upper() if len(m) <= 3 or not re.search(r"[aeiouy]", m) else m.capitalize()
+                    for m in mots)
+
+
 def cle_courriel(c: dict) -> str:
     return c["valeur"].strip().lower()
 

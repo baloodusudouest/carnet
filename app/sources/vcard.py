@@ -8,7 +8,7 @@ import re
 import vobject
 
 from .. import normalisation as n
-from ..modele import GROUPES, fiche_vide
+from ..modele import GROUPES_RECONNUS, fiche_vide
 from . import FicheLue
 
 log = logging.getLogger("carnet.vcard")
@@ -31,7 +31,7 @@ ETIQUETTES_APPLE = {
 TYPES_TEL = {"CELL": "mobile", "IPHONE": "mobile", "HOME": "domicile", "WORK": "travail",
              "MAIN": "principal", "OTHER": "autre", "FAX": "autre", "PAGER": "autre"}
 TYPES_LIEU = {"HOME": "domicile", "WORK": "travail", "OTHER": "autre"}
-CLES_GROUPES = {n.cle_texte(g): g for g in GROUPES}
+CLES_GROUPES = {n.cle_texte(g): g for g in GROUPES_RECONNUS}
 
 BLOC = re.compile(r"BEGIN:VCARD.*?END:VCARD", re.S | re.I)
 

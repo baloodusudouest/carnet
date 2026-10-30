@@ -7,11 +7,13 @@
   import Contacts from './pages/Contacts.svelte'
   import Export from './pages/Export.svelte'
   import Archives from './pages/Archives.svelte'
+  import Revue from './pages/Revue.svelte'
 
   const PAGES = [
     { cle: 'accueil', nom: 'Accueil' },
     { cle: 'revision', nom: 'Révision' },
     { cle: 'contacts', nom: 'Contacts' },
+    { cle: 'revue', nom: 'Revue' },
     { cle: 'export', nom: 'Export et kit' },
     { cle: 'archives', nom: 'Archives' },
   ]
@@ -94,6 +96,8 @@
         <Revision />
       {:else if route.page === 'contacts'}
         <Contacts />
+      {:else if route.page === 'revue'}
+        <Revue />
       {:else if route.page === 'export'}
         <Export />
       {:else if route.page === 'archives'}
