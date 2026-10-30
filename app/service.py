@@ -20,9 +20,9 @@ from . import doublons, export, fusion, synchro
 from .carddav import CardDAV, Conflit, ErreurICloud
 from .config import Config
 from .db import Base
-from .modele import (GROUPE_A_CLASSER, GROUPE_MOI, GROUPE_URGENCE, GROUPE_VERIFIES, GROUPES, GROUPES_PERSO,
+from .modele import (CHAMPS_MULTIPLES, GROUPE_A_CLASSER, GROUPE_MOI, GROUPE_URGENCE, GROUPE_VERIFIES, GROUPES, GROUPES_PERSO,
                      GROUPES_TRAVAIL, LIBELLES_SOURCES, REGLES_GROUPES, completer, groupes_reconnus, nom_affiche)
-from .normalisation import (GROUPES_PROCHES, MESSAGERIES, configurer_groupes, ValeurInvalide, cle_texte, domaine_pro, regle_proches,
+from .normalisation import (CLES, GROUPES_PROCHES, MESSAGERIES, note, configurer_groupes, ValeurInvalide, cle_texte, domaine_pro, regle_proches,
                             emojis_sans_groupe, nature, reseau_detecte, type_pro_attendu, nettoyer, normaliser_fiche,
                             societe_depuis_domaine)
 from .sources import detecter_source, lire_texte, linkedin, outlook, vcard
@@ -904,13 +904,15 @@ class Carnet:
         masque = (utilisateur[:2] + "…" + utilisateur[utilisateur.find("@"):]) if "@" in utilisateur else utilisateur
         return {"configure": bool(self.cfg.icloud_user and self.cfg.icloud_password), "compte": masque,
                 "tache": dict(self._tache), "plan": plan["resume"] if plan else None,
-                "journal": self.base.etat("journal_icloud", [])}
+                "journal": self.base.etat("journal_icloud", []),
+                "veille": {"revision": bool(self.base.etat("veille_revision", False)),
+                           "journal": self.base.etat("veille_journal", [])[:30]}}
 
     def _lancer(self, nom: str, travail) -> dict:
         with self._verrou_icloud:
             if self._tache.get("etat") in ("lecture", "ecriture"):
                 raise ErreurCarnet("Une opération iCloud est déjà en cours.")
-            self._tache = {"etat": "lecture" if nom == "simulation" else "ecriture", "operation": nom,
+            self._tache = {"etat": "lecture" if nom in ("simulation", "veille") else "ecriture", "operation": nom,
                            "fait": 0, "total": 0, "message": "Connexion à iCloud…"}
 
         def executer():
@@ -1225,6 +1227,129 @@ class Carnet:
                                                + (f", {len(bilan['erreurs'])} erreur(s)" if bilan["erreurs"] else "")
                                                + "."))
 
+    # ================================================================ veille iCloud (V3)
+
+    def veiller(self) -> dict:
+        """Relit iCloud et compare aux fiches validées (bouton « Vérifier maintenant » et 3 h)."""
+        return self._lancer("veille", self._veiller)
+
+    def veille_mode(self, revision: bool) -> dict:
+        self.base.ecrire_etat("veille_revision", bool(revision))
+        return {"revision": bool(revision)}
+
+    def _ecarts(self, fiche: dict, texte: str) -> list[dict]:
+        """Différences de fond entre la fiche validée et la carte iCloud (la forme est ignorée :
+        ordre des lignes, données Siri, photo, types recalculés par les règles de groupe)."""
+        try:
+            lues, _ = vcard.lire(texte, self.cfg.region)
+        except Exception:  # noqa: BLE001 — carte illisible : signalée comme modifiée
+            return [{"champ": "carte", "carnet": "", "iphone": "illisible"}]
+        if not lues:
+            return [{"champ": "carte", "carnet": "", "iphone": "illisible"}]
+        iphone = completer(nettoyer(completer(lues[0].fiche)))
+        carnet_f = completer(fiche)
+        ecarts = []
+        for champ in ("prenom", "nom", "surnom", "societe", "fonction", "anniversaire"):
+            a, b = (carnet_f[champ] or "").strip(), (iphone[champ] or "").strip()
+            if cle_texte(a) != cle_texte(b):
+                ecarts.append({"champ": champ, "carnet": a, "iphone": b})
+        if " ".join(note(carnet_f["notes"]).split()) != " ".join(note(iphone["notes"]).split()):
+            ecarts.append({"champ": "notes", "carnet": carnet_f["notes"][:80], "iphone": iphone["notes"][:80]})
+        for champ in CHAMPS_MULTIPLES:
+            def valeurs(f: dict) -> dict:
+                return {CLES[champ](x): x for x in f[champ] if CLES[champ](x)}
+            a, b = valeurs(carnet_f), valeurs(iphone)
+            if set(a) != set(b):
+                def texte_de(x: dict) -> str:
+                    return x.get("affichage") or x.get("valeur") or ", ".join(
+                        v for k, v in x.items() if k in ("rue", "cp", "ville") and v)
+                ecarts.append({"champ": champ,
+                               "carnet": ", ".join(texte_de(a[k]) for k in sorted(set(a) - set(b))),
+                               "iphone": ", ".join(texte_de(b[k]) for k in sorted(set(b) - set(a)))})
+        return ecarts
+
+    def _veiller(self) -> None:
+        quand = maintenant()
+        entree = {"le": _iso(quand), "revision": bool(self.base.etat("veille_revision", False)),
+                  "lus": 0, "forme": 0, "modifies": [], "nouveaux": [], "supprimes": [], "importes": 0,
+                  "erreur": None}
+        try:
+            dav = self._dav()
+            try:
+                self._tache["message"] = "Veille : lecture d'iCloud…"
+                brutes = dav.lister()
+            finally:
+                dav.fermer()
+            cartes = [synchro.analyser(b.href, b.etag, b.texte) for b in brutes]
+            contacts = {c.uid: c for c in cartes if not c.groupe}
+            entree["lus"] = len(contacts)
+            self._tache["message"] = "Veille : comparaison avec carnet…"
+            suivi = self.base.etat("icloud_suivi", {})
+            uid_pid: dict[str, str] = {}
+            connus: set[str] = set()
+            for l in self.base.lire("SELECT personne_id, uid FROM sources WHERE source = 'icloud' AND uid IS NOT NULL"):
+                connus.add(l["uid"])
+                if l["personne_id"]:
+                    uid_pid[l["uid"]] = l["personne_id"]
+            for pid, info in suivi.items():
+                uid_pid[info["uid"]] = pid
+                connus.add(info["uid"])
+            orphelines = [c for u, c in contacts.items() if u not in uid_pid and not u.startswith("carnet-")]
+            for u, (pid, _exacte) in self._reconnaitre(orphelines).items():
+                uid_pid[u] = pid
+            verifiees = {pid: fiche for pid, fiche, _ in self._verifiees()}
+            a_importer = []
+            for u, c in sorted(contacts.items(), key=lambda x: x[1].nom.lower()):
+                pid = uid_pid.get(u) or (u[len("carnet-"):] if u.startswith("carnet-") else None)
+                if pid is None:
+                    entree["nouveaux"].append({"nom": c.nom or "(sans nom)", "uid": u})
+                    a_importer.append(c)
+                    continue
+                fiche = verifiees.get(pid)
+                if fiche is None:  # à réviser ou mis de côté : pas surveillé
+                    continue
+                info = suivi.get(pid)
+                if info and info.get("uid") == u and info.get("etag") and info["etag"] == c.etag:
+                    continue
+                ecarts = self._ecarts(fiche, c.texte)
+                if ecarts:
+                    entree["modifies"].append({"pid": pid, "nom": nom_affiche(fiche), "ecarts": ecarts})
+                    a_importer.append(c)
+                else:
+                    entree["forme"] += 1
+                    if info and info.get("uid") == u:
+                        info["etag"] = c.etag  # simple réécriture par iCloud : plus recomparée
+            for pid, info in suivi.items():
+                if pid in verifiees and info["uid"] not in contacts:
+                    entree["supprimes"].append({"pid": pid, "nom": nom_affiche(verifiees[pid])})
+            self.base.ecrire_etat("icloud_suivi", suivi)
+            if entree["revision"] and a_importer:
+                # Mode révision : les cartes changées passent par l'import (remise à réviser)
+                nom = f"icloud-veille-{quand:%Y-%m-%d_%H%M%S}.vcf"
+                (self.cfg.depot / nom).write_text("".join(
+                    c.texte if c.texte.endswith("\n") else c.texte + "\r\n" for c in a_importer), encoding="utf-8")
+                try:
+                    r = self.importer(nom, "icloud")
+                    entree["importes"] = r["ajoutes"] + r["mises_a_jour"]
+                except ErreurCarnet as exc:
+                    entree["erreur"] = f"Import des changements : {exc}"
+        except (ErreurICloud, ErreurCarnet) as exc:
+            entree["erreur"] = str(exc)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Veille iCloud")
+            entree["erreur"] = f"Erreur inattendue : {exc}"
+        entree["modifies"] = entree["modifies"][:300]
+        journal = [entree] + self.base.etat("veille_journal", [])
+        self.base.ecrire_etat("veille_journal", journal[:30])
+        if entree["erreur"]:
+            self._tache.update(etat="erreur", message=f"Veille : {entree['erreur']}")
+        else:
+            self._tache.update(etat="termine", message=(
+                f"Veille : {len(entree['modifies'])} modifié(s), {len(entree['nouveaux'])} nouveau(x), "
+                f"{len(entree['supprimes'])} supprimé(s) sur l'iPhone"
+                + (f", {entree['importes']} remis en révision." if entree["revision"] else " (mode journal)."))
+            )
+
     # ================================================================ archives
 
     def archives(self) -> list[dict]:
@@ -1268,6 +1393,15 @@ class Carnet:
 
     # ================================================================ état (Home Assistant)
 
+    def _resume_veille(self) -> dict | None:
+        """Dernière veille, pour Home Assistant : compteurs et erreur éventuelle (aucun nom)."""
+        journal = self.base.etat("veille_journal", [])
+        if not journal:
+            return None
+        v = journal[0]
+        return {"le": v["le"], "ok": not v["erreur"], "erreur": v["erreur"], "revision": v["revision"],
+                "modifies": len(v["modifies"]), "nouveaux": len(v["nouveaux"]), "supprimes": len(v["supprimes"])}
+
     def statut(self) -> dict:
         compte = {l["statut"]: l["n"] for l in
                   self.base.lire("SELECT statut, count(*) AS n FROM personnes GROUP BY statut")}
@@ -1288,6 +1422,7 @@ class Carnet:
             "prochaine_suppression": prochaine,
             "dernier_export": self.base.etat("dernier_export"),
             "dernier_envoi_kit": self.base.etat("dernier_envoi_kit"),
+            "veille": self._resume_veille(),
             "derniere_ecriture_icloud": {k: v for k, v in (self.base.etat("derniere_ecriture_icloud") or {}).items()
                                          if k in ("le", "essai", "crees", "modifies", "supprimes", "groupes")} or None,
         }

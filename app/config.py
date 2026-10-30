@@ -29,6 +29,7 @@ class Config:
     icloud_url: str = "https://contacts.icloud.com"
     icloud_user: str = ""       # identifiant Apple (V2 : écriture dans iCloud)
     icloud_password: str = ""   # mot de passe d'application Apple, pas celui du compte
+    veille_heure: str = "03:00" # veille iCloud quotidienne (vide : désactivée)
 
     @property
     def depot(self) -> Path:
@@ -74,4 +75,5 @@ def charger() -> Config:
         icloud_url=os.environ.get("CARNET_ICLOUD_URL", "https://contacts.icloud.com").strip(),
         icloud_user=os.environ.get("CARNET_ICLOUD_USER", "").strip(),
         icloud_password=os.environ.get("CARNET_ICLOUD_PASSWORD", "").strip(),
+        veille_heure=os.environ.get("CARNET_VEILLE_HEURE", "03:00").strip(),
     )

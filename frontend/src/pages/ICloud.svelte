@@ -145,9 +145,58 @@ CARNET_ICLOUD_PASSWORD=xxxx-xxxx-xxxx-xxxx</pre>
       </section>
     {/if}
 
+    <section class="mb-10">
+      <div class="flex flex-wrap items-end gap-4 mb-2">
+        <div>
+          <h2 class="titre text-xl">Veille de l'iPhone</h2>
+          <p class="text-sm text-mine">Chaque nuit à 3 h, carnet relit iCloud et repère ce qui a changé sur l'iPhone depuis ta validation.
+            La forme (réécritures d'iCloud, photo, données Siri) est ignorée.</p>
+        </div>
+        <button class="bouton ml-auto" disabled={enCours} onclick={() => lancer('/api/icloud/veille')}>Vérifier maintenant</button>
+      </div>
+      <label class="flex items-start gap-2 text-sm mb-4">
+        <input type="checkbox" class="mt-1" checked={infos.veille.revision}
+          onchange={async (e) => { await api.post('/api/icloud/veille/mode', { revision: e.currentTarget.checked }); await charger() }} />
+        <span>Remettre en révision les contacts modifiés ou créés sur l'iPhone.
+          <span class="text-mine">Décoché : mode journal, les écarts sont seulement notés (conseillé les deux premières semaines).</span></span>
+      </label>
+      {#if infos.veille.journal.length}
+        <ul class="divide-y divide-couture border-y border-couture text-sm">
+          {#each infos.veille.journal as v, i}
+            <li class="py-2.5">
+              <details open={i === 0 && (v.modifies.length + v.nouveaux.length + v.supprimes.length) > 0}>
+                <summary class="cursor-pointer flex flex-wrap gap-x-4">
+                  <span class="text-papier">{dateCourte(v.le)} {new Date(v.le).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+                  {#if v.erreur}
+                    <span class="text-alerte">{v.erreur}</span>
+                  {:else}
+                    <span class="text-mine">{v.lus} lus : {v.modifies.length} modifié(s), {v.nouveaux.length} nouveau(x), {v.supprimes.length} supprimé(s){v.forme ? `, ${v.forme} réécrit(s) par iCloud sans changement` : ''}</span>
+                    <span class="text-xs text-mine ml-auto">{v.revision ? `${v.importes} remis en révision` : 'mode journal'}</span>
+                  {/if}
+                </summary>
+                {#if v.modifies.length}
+                  <ul class="mt-2 ml-4 space-y-1">
+                    {#each v.modifies as m}
+                      <li><a class="hover:text-onglet" href={`#/revision/${m.pid}`}>{m.nom}</a>
+                        {#each m.ecarts as e}<span class="block text-xs text-mine ml-3">{e.champ} : <span class="line-through">{e.carnet || '—'}</span> → <span class="text-onglet">{e.iphone || '—'}</span></span>{/each}
+                      </li>
+                    {/each}
+                  </ul>
+                {/if}
+                {#if v.nouveaux.length}<p class="mt-2 ml-4 text-xs text-mine">Nouveaux sur l'iPhone : {v.nouveaux.map((n) => n.nom).join(', ')}</p>{/if}
+                {#if v.supprimes.length}<p class="mt-1 ml-4 text-xs text-alerte">Supprimés sur l'iPhone : {v.supprimes.map((n) => n.nom).join(', ')}</p>{/if}
+              </details>
+            </li>
+          {/each}
+        </ul>
+      {:else}
+        <p class="text-sm text-mine">Aucune veille pour l'instant.</p>
+      {/if}
+    </section>
+
     {#if infos.journal.length}
       <section>
-        <h2 class="titre text-xl mb-2">Journal</h2>
+        <h2 class="titre text-xl mb-2">Journal des écritures</h2>
         <ul class="divide-y divide-couture border-y border-couture text-sm">
           {#each infos.journal as j}
             <li class="py-2.5">

@@ -39,6 +39,25 @@ def _purge_quotidienne(carnet: Carnet, arret: threading.Event) -> None:
         arret.wait(6 * 3600)
 
 
+def _veille_nocturne(carnet: Carnet, cfg, arret: threading.Event) -> None:
+    """Veille iCloud chaque nuit à l'heure CARNET_VEILLE_HEURE (03:00 par défaut, heure locale)."""
+    from datetime import datetime, timedelta
+    h, _, m = (cfg.veille_heure or "03:00").partition(":")
+    while not arret.is_set():
+        maintenant = datetime.now().astimezone()
+        prochaine = maintenant.replace(hour=int(h), minute=int(m or 0), second=0, microsecond=0)
+        if prochaine <= maintenant:
+            prochaine += timedelta(days=1)
+        if arret.wait((prochaine - maintenant).total_seconds()):
+            return
+        if not (cfg.icloud_user and cfg.icloud_password):
+            continue
+        try:
+            carnet.veiller()
+        except Exception:  # noqa: BLE001 — opération déjà en cours : la veille attend la nuit suivante
+            log.exception("Veille iCloud non lancée")
+
+
 @asynccontextmanager
 async def cycle(app: FastAPI):
     cfg = config.charger()
@@ -47,6 +66,8 @@ async def cycle(app: FastAPI):
     carnet = Carnet(cfg, base)
     arret = threading.Event()
     threading.Thread(target=_purge_quotidienne, args=(carnet, arret), daemon=True).start()
+    if cfg.veille_heure:
+        threading.Thread(target=_veille_nocturne, args=(carnet, cfg, arret), daemon=True).start()
     etat.update(cfg=cfg, base=base, carnet=carnet,
                 sessions=Sessions(cfg.password, cfg.db_key, cfg.session_jours,
                                   base.etat("generation_session", 0)))
@@ -343,6 +364,20 @@ def icloud_etat():
 @app.post("/api/icloud/simulation")
 def icloud_simuler():
     return carnet().icloud_simuler()
+
+
+@app.post("/api/icloud/veille")
+def icloud_veille():
+    return carnet().veiller()
+
+
+class ModeVeille(BaseModel):
+    revision: bool
+
+
+@app.post("/api/icloud/veille/mode")
+def icloud_veille_mode(corps: ModeVeille):
+    return carnet().veille_mode(corps.revision)
 
 
 class Ecriture(BaseModel):

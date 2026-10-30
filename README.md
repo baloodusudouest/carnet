@@ -33,6 +33,10 @@ LinkedIn complète des contacts existants (société, poste, profil) mais n'en c
    - les contacts créés dans iCloud sans carnet sont importés pour révision ;
    - les contacts encore à réviser ne sont pas touchés.
 
+### Veille de l'iPhone (V3)
+
+Chaque nuit (`CARNET_VEILLE_HEURE`, 03:00 par défaut), carnet relit iCloud et compare chaque fiche à la version validée. Les différences de forme (réécritures d'iCloud, données Siri, photo, types recalculés) sont ignorées ; restent les contacts modifiés, créés ou supprimés sur l'iPhone. En **mode journal** (par défaut) ils sont seulement listés dans l'onglet iCloud ; en **mode révision** les fiches modifiées ou nouvelles sont importées et repassent « à réviser ». `/status` expose le résultat (compteurs seulement) et le paquet Home Assistant alerte si la veille échoue ou ne tourne plus.
+
 Chaque écriture se fait avec contrôle d'ETag : une fiche modifiée sur l'iPhone depuis la simulation n'est pas écrasée, elle est signalée dans le journal.
 Le compte utilise un **mot de passe d'application** Apple (account.apple.com > Connexion et sécurité > Mots de passe pour app), jamais le mot de passe du compte.
 
@@ -81,6 +85,7 @@ Copie `homeassistant/carnet.yaml` dans `/config/packages/`, ajoute `carnet_statu
 | `CARNET_EMOJI_GROUPES` | vide | règles « émoji:groupe » séparées par `;` (ex. `🍕:Amis;🔧:Artisans et services`) : un contact contenant l'émoji rejoint le groupe |
 | `CARNET_ICLOUD_USER` | vide | identifiant Apple (V2) |
 | `CARNET_ICLOUD_PASSWORD` | vide | mot de passe d'application Apple (V2) |
+| `CARNET_VEILLE_HEURE` | `03:00` | heure de la veille iCloud quotidienne (vide : désactivée) |
 | `KIT_URL` | `http://kit-urgence:8095` | API du kit d'urgence |
 | `KIT_API_TOKEN` | vide | jeton du kit ; sans lui, le kit se régénère à sa prochaine synchronisation |
 
