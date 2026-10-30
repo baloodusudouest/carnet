@@ -630,3 +630,32 @@ def test_revue_numeros_internationaux(client):
     assert c.get("/api/revue").json()["numeros_internationaux"] == []
     types = {t["valeur"]: t["type"] for t in c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["telephones"]}
     assert types["+12025550123"] == "travail"          # collègue + mobile confirmé → travail
+
+
+def test_meme_nom_de_famille_et_structure():
+    from app import doublons as d
+    cabinet = d.signature(1, {"societe": "Docteur Chossat PSV Villeneuve"})
+    isabelle = d.signature(2, {"prenom": "Isabelle", "nom": "CHOSSAT", "societe": "PSV Villeneuve Sur Lot Prep"})
+    pierre = d.signature(3, {"prenom": "Pierre", "nom": "Chossat", "societe": "PSV Villeneuve"})
+    structure = d.signature(4, {"societe": "PSV Villeneuve"})
+    assert d.comparer(cabinet, isabelle)[0] == d.SCORE_FAMILLE
+    assert d.comparer(isabelle, pierre)[0] == 0           # prénoms différents
+    assert d.comparer(isabelle, structure)[0] == 0        # la structure seule ne suffit pas
+    assert d.SCORE_FAMILLE < d.SEUIL                      # jamais réunis seuls à l'import
+    assert [p[:2] for p in d.rapprochements([cabinet, isabelle, pierre, structure], seuil=d.SEUIL_REVUE)] == [(1, 2), (1, 3)]
+
+
+def test_revue_doublons_possibles(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    claire, plombier = _personne(c, "Claire"), _personne(c, "Plomberie")
+    for p, modif in ((claire, {"societe": "Cabinet Garonne Agen"}),
+                     (plombier, {"prenom": "", "nom": "", "societe": "Docteur Martin Garonne"})):
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        f.update(modif)
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    doublons = c.get("/api/revue").json()["doublons_possibles"]
+    assert len(doublons) == 1 and doublons[0]["base"]["id"] == claire["id"]
+    assert c.post("/api/doublons/ignorer", json={"a": claire["id"], "b": plombier["id"]}).status_code == 200
+    assert c.get("/api/revue").json()["doublons_possibles"] == []
