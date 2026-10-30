@@ -399,6 +399,70 @@ def icloud_simuler():
     return carnet().icloud_simuler()
 
 
+@app.get("/api/liaisons")
+def liaisons(rafraichir: bool = False):
+    return carnet().liaisons(rafraichir)
+
+
+class Liaison(BaseModel):
+    pid: str
+    immich: str | None = None
+    treemich: str | None = None
+
+
+class Liaisons(BaseModel):
+    liaisons: list[Liaison]
+
+
+@app.post("/api/liaisons/valider")
+def valider_liaisons(corps: Liaisons):
+    return carnet().valider_liaisons([l.model_dump() for l in corps.liaisons])
+
+
+class Refus(BaseModel):
+    pid: str
+    immich: str
+
+
+@app.post("/api/liaisons/refuser")
+def refuser_liaison(corps: Refus):
+    return carnet().refuser_liaison(corps.pid, corps.immich)
+
+
+class Deliaison(BaseModel):
+    pid: str
+
+
+@app.post("/api/liaisons/delier")
+def delier(corps: Deliaison):
+    return carnet().delier(corps.pid)
+
+
+@app.post("/api/liaisons/actualiser")
+def actualiser_liens():
+    return carnet().actualiser_liens()
+
+
+class Tranche(BaseModel):
+    choix: str
+
+
+@app.post("/api/personnes/{pid}/relations")
+def trancher_relations(pid: str, corps: Tranche):
+    return carnet().trancher_relations(pid, corps.choix)
+
+
+@app.get("/api/immich/visage/{immich_id}")
+def visage_immich(immich_id: str):
+    try:
+        image = carnet().visage_immich(immich_id)
+    except Exception:  # noqa: BLE001 — pas de visage : l'interface affiche une initiale
+        image = None
+    if not image:
+        raise HTTPException(404, "Pas de visage.")
+    return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=3600"})
+
+
 @app.get("/api/sauvegardes")
 def sauvegardes():
     return carnet().sauvegardes()

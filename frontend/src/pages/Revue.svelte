@@ -6,6 +6,8 @@
   // Contrôles sur les contacts déjà vérifiés. Les corrections faites ici sont enregistrées
   // directement dans la fiche validée.
   const SECTIONS = [
+    { cle: 'relations_treemich', titre: 'Relations Treemich à trancher',
+      aide: 'L’arbre Treemich ne dit pas la même chose que les noms associés saisis dans le contact. « Prendre Treemich » remplace les relations familiales du contact par celles de l’arbre ; « Garder le contact » ne change rien.' },
     { cle: 'doublons_possibles', titre: 'Doublons possibles',
       aide: 'Ces contacts désignent peut-être la même personne (même nom de famille et mots communs, noms proches, même numéro…). « Fusionner » réunit les deux fiches et ouvre le résultat dans la Révision pour choisir les valeurs.' },
     { cle: 'anniversaires', titre: 'Famille et amis sans anniversaire',
@@ -100,6 +102,19 @@
     }
   }
 
+  async function trancher(r, choix) {
+    occupe = r.id
+    try {
+      await api.post(`/api/personnes/${r.id}/relations`, { choix })
+      annoncer(choix === 'treemich' ? `Relations de ${r.nom} reprises de Treemich.` : `Relations de ${r.nom} gardées.`)
+      await charger()
+    } catch (e) {
+      annoncer(e.message, true)
+    } finally {
+      occupe = null
+    }
+  }
+
   async function pasDoublon(d) {
     occupe = d.cle
     try {
@@ -148,7 +163,24 @@
           <h2 class="titre text-xl">{s.titre} <span class="text-mine text-base font-normal tabular-nums">({liste.length})</span></h2>
           <p class="text-sm text-mine mb-2">{liste.length ? s.aide : 'Rien à signaler.'}</p>
           {#if liste.length}
-            {#if s.cle === 'doublons_possibles'}
+            {#if s.cle === 'relations_treemich'}
+              <ul class="rounded-xl border border-couture divide-y divide-couture overflow-hidden">
+                {#each liste as r (r.id)}
+                  <li class="flex flex-wrap items-start gap-x-6 gap-y-2 px-4 py-3 {occupe === r.id ? 'opacity-60' : ''}">
+                    <a href={`#/revision/${r.id}`} class="w-52 truncate hover:text-onglet">{r.nom}</a>
+                    <div class="text-sm min-w-48"><span class="text-xs text-mine block">Contact</span>
+                      {#each r.contact as x}<span class="block line-through decoration-mine/60">{x.valeur} <span class="text-xs text-mine">{x.type}</span></span>{/each}</div>
+                    <div class="text-sm min-w-48"><span class="text-xs text-mine block">Treemich</span>
+                      {#each r.treemich as x}<span class="block text-onglet">{x.valeur} <span class="text-xs text-mine">{x.type}</span></span>{:else}<span class="text-mine">aucune relation</span>{/each}</div>
+                    <span class="ml-auto flex gap-2">
+                      <button class="bouton bouton-principal !py-1" disabled={occupe === r.id}
+                        onclick={() => trancher(r, 'treemich')}>Prendre Treemich</button>
+                      <button class="bouton !py-1" disabled={occupe === r.id} onclick={() => trancher(r, 'contact')}>Garder le contact</button>
+                    </span>
+                  </li>
+                {/each}
+              </ul>
+            {:else if s.cle === 'doublons_possibles'}
               <ul class="rounded-xl border border-couture divide-y divide-couture overflow-hidden">
                 {#each liste as d (d.cle)}
                   <li class="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3 {occupe === d.cle ? 'opacity-60' : ''}">

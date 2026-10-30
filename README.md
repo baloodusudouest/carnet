@@ -33,6 +33,10 @@ LinkedIn complète des contacts existants (société, poste, profil) mais n'en c
    - les contacts créés dans iCloud sans carnet sont importés pour révision ;
    - les contacts encore à réviser ne sont pas touchés.
 
+### Liaisons Immich et Treemich (V3)
+
+Onglet Liaisons : carnet propose, pour chaque contact vérifié, la personne Immich et la personne Treemich du même nom (la personne Treemich liée à ce visage Immich si elle existe). Les correspondances exactes se valident d'un clic. Ensuite, chaque nuit : le visage Immich devient la photo du contact, et les relations Treemich (conjoint, parents, enfants, frères et sœurs) complètent ses noms associés ; une relation qui contredit un nom associé saisi est proposée dans la Revue. Rien n'est écrit dans Immich ni dans Treemich à ce stade.
+
 ### Sauvegarde de nuit (V3)
 
 Après la veille, carnet écrit `archives/sauvegardes/carnet-AAAA-MM-JJ.vcf` (contacts vérifiés, sans photos, gardé 30 jours) puis recopie à l'identique les contacts vérifiés et leurs groupes dans Synology Contacts. Si plus de 5 % des fiches déjà copiées devaient être supprimées ou modifiées d'un coup, la copie s'arrête sans rien écrire (bouton « Forcer la copie » dans l'onglet Export et kit) et Home Assistant alerte.
@@ -96,6 +100,8 @@ Copie `homeassistant/carnet.yaml` dans `/config/packages/`, ajoute `carnet_statu
 | `CARNET_SYNOLOGY_CARNET` | `My Contacts\|Mes contacts` | carnet d'adresses visé (nom CardDAV, souvent en anglais ; plusieurs noms séparés par `\|`) ; jamais un carnet partagé (« Contacts de l'équipe ») |
 | `CARNET_SYNOLOGY_VERIFIER_TLS` | `oui` | `non` pour accepter le certificat du NAS joint par son adresse IP (réseau local) |
 | `CARNET_SAUVEGARDE_JOURS` | `30` | exports .vcf datés gardés dans `archives/sauvegardes` |
+| `CARNET_IMMICH_URL` / `CARNET_IMMICH_CLE` | `http://immich-server:2283` / vide | Immich : visages (photo des contacts liés), droits `person.read` et `person.update` |
+| `CARNET_TREEMICH_URL` / `_EMAIL` / `_PASSWORD` | `http://treemich-api:4000` / vide | Treemich : relations familiales des contacts liés |
 | `CARNET_VEILLE_HEURE` | `03:00` | heure de la veille iCloud quotidienne (vide : désactivée) |
 | `KIT_URL` | `http://kit-urgence:8095` | API du kit d'urgence |
 | `KIT_API_TOKEN` | vide | jeton du kit ; sans lui, le kit se régénère à sa prochaine synchronisation |
