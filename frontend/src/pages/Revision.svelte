@@ -216,6 +216,14 @@
         if (t.valeur.startsWith('+33')) t.type = /^\+33[67]/.test(t.valeur) ? 'travail' : 'bureau'
       }
     }
+    // Fiche d'entreprise (société sans prénom ni nom) : standard « principal », portable « travail »
+    const pros = ['Artisans et services', 'Clients', 'Collègues']
+    if (fiche.groupes.some((g) => pros.includes(g)) && fiche.societe && !fiche.prenom && !fiche.nom) {
+      for (const t of fiche.telephones) {
+        const portable = /^\+33[67]/.test(t.valeur) || (!t.valeur.startsWith('+33') && t.mobile)
+        t.type = portable ? 'travail' : 'principal'
+      }
+    }
     if (!fiche.groupes.some((g) => PROCHES.includes(g))) return
     // un seul portable : mobile ; deux ou plus : la Revue demande lequel est celui du travail
     const portables = fiche.telephones.filter((t) => /^\+33[67]/.test(t.valeur))

@@ -118,10 +118,19 @@ def regle_proches(fiche: dict) -> dict:
     """Artisans et services : portable français → « travail », fixe français → « bureau ».
     Famille, Amis, Jardin secret (prioritaires) : un portable français (+33 6, +33 7) est « mobile ».
     Avec deux portables ou plus, rien n'est forcé : la Revue demande lequel est celui du travail."""
-    if "Artisans et services" in fiche.get("groupes", []):
+    groupes = set(fiche.get("groupes", []))
+    if "Artisans et services" in groupes:
         for t in fiche.get("telephones", []):
             if str(t.get("valeur", "")).startswith("+33"):
                 t["type"] = "travail" if portable_fr(t["valeur"]) else "bureau"
+    # Fiche d'entreprise (société sans prénom ni nom) d'un artisan, client ou collègue :
+    # le standard est « principal », un portable reste « travail »
+    if (groupes & {"Artisans et services", "Clients", "Collègues"} and fiche.get("societe")
+            and not fiche.get("prenom") and not fiche.get("nom")):
+        for t in fiche.get("telephones", []):
+            v = str(t.get("valeur", ""))
+            portable = portable_fr(v) or (not v.startswith("+33") and t.get("mobile"))
+            t["type"] = "travail" if portable else "principal"
     if GROUPES_PROCHES & set(fiche.get("groupes", [])):
         portables = [t for t in fiche.get("telephones", []) if portable_fr(t.get("valeur", ""))]
         if len(portables) == 1:
