@@ -110,6 +110,28 @@ def courriel(brut: str, type_: str) -> dict | None:
     return {"valeur": v, "type": type_} if "@" in v else None
 
 
+# Messageries grand public : une adresse ailleurs est très probablement professionnelle
+DOMAINES_PERSO = {
+    "gmail.com", "googlemail.com", "icloud.com", "me.com", "mac.com", "msn.com", "aol.com",
+    "ymail.com", "proton.me", "protonmail.com", "pm.me", "tutanota.com", "orange.fr", "wanadoo.fr",
+    "free.fr", "sfr.fr", "neuf.fr", "laposte.net", "bbox.fr", "numericable.fr", "club-internet.fr",
+    "aliceadsl.fr", "cegetel.net", "noos.fr", "voila.fr", "nordnet.fr", "mail.ru",
+}
+PREFIXES_PERSO = ("hotmail.", "outlook.", "live.", "yahoo.", "gmx.", "yandex.", "web.de")
+
+
+def courriel_perso(adresse: str) -> bool:
+    domaine = adresse.rsplit("@", 1)[-1].strip().lower()
+    return domaine in DOMAINES_PERSO or domaine.startswith(PREFIXES_PERSO)
+
+
+def type_courriel_propose(c: dict) -> dict:
+    """Propose « travail » pour une adresse hors messagerie grand public (exemple@sicaf.fr)."""
+    if c.get("type") != "travail" and not courriel_perso(c["valeur"]):
+        return {**c, "type": "travail"}
+    return c
+
+
 def cle_courriel(c: dict) -> str:
     return c["valeur"].strip().lower()
 
@@ -203,6 +225,7 @@ def note(texte: str) -> str:
 def nettoyer(fiche: dict) -> dict:
     """Appliqué aussi aux fiches déjà importées, à la lecture : notes et liens parasites."""
     fiche["notes"] = note(fiche.get("notes"))
+    fiche["courriels"] = [type_courriel_propose(c) for c in fiche.get("courriels", [])]
     fiche["sites"] = [s for s in fiche.get("sites", []) if site(s.get("valeur", ""), s.get("type"))]
     return fiche
 
