@@ -151,6 +151,7 @@
   })
 
   const navigables = $derived(lignes.filter((l) => l.type !== 'entete'))
+  const vides = $derived(lignes.filter((l) => l.type === 'entete' && l.vide))
   const ligneActive = $derived(navigables[Math.min(actif, navigables.length - 1)])
   const position = $derived(dossier ? file.findIndex((p) => p.id === dossier.id) : -1)
   const raisons = $derived(dossier ? [...new Set(dossier.raisons.flatMap((r) => r.raisons))] : [])
@@ -360,12 +361,12 @@
     </div>
   </div>
 {:else}
-  <div class="flex flex-wrap items-end gap-x-6 gap-y-3 mb-5">
+  <div class="flex flex-wrap items-end gap-x-6 gap-y-2 mb-3">
     <div>
       <p class="text-sm text-mine tabular-nums">
         {#if position >= 0}Fiche {position + 1} sur {file.length} à relire{:else}Contact {dossier.statut === 'verifie' ? 'déjà vérifié' : 'hors file'}{/if}
       </p>
-      <h1 class="titre text-3xl leading-tight">
+      <h1 class="titre text-2xl leading-tight">
         {[fiche.prenom, fiche.nom].filter(Boolean).join(' ') || fiche.societe || '(sans nom)'}
       </h1>
     </div>
@@ -392,46 +393,57 @@
     </div>
   </div>
 
-  <div class="overflow-x-auto rounded-xl border border-couture">
-    <table class="w-full border-collapse text-[0.93rem]">
+  <!-- Tableau à largeur fixe : tout tient à l'écran, les valeurs trop longues sont raccourcies
+       (le texte complet s'affiche au survol). -->
+  <div class="rounded-xl border border-couture overflow-hidden">
+    <table class="w-full table-fixed border-collapse text-sm">
+      <colgroup>
+        <col class="w-28" />
+        {#each colonnes as c (c.id)}<col />{/each}
+        <col class="w-[36%]" />
+      </colgroup>
       <thead>
         <tr class="bg-reliure">
-          <th class="w-36 text-left font-normal text-mine text-sm px-4 py-3 align-bottom">Champ</th>
+          <th class="text-left font-normal text-mine px-3 py-2 align-bottom">Champ</th>
           {#each colonnes as c, ci (c.id)}
-            <th class="text-left font-normal px-4 py-3 align-bottom border-l border-couture min-w-44">
-              <span class="flex items-center gap-2">
+            <th class="text-left font-normal px-3 py-2 align-bottom border-l border-couture">
+              <span class="flex items-center gap-1.5 min-w-0">
                 <kbd>{ci + 1}</kbd>
-                <span class="font-medium text-papier">{c.libelle}</span>
+                <span class="font-medium text-papier truncate">{c.libelle}</span>
                 {#if c.enrichissement}<span class="text-xs text-mine">complément</span>{/if}
               </span>
-              <span class="block text-xs text-mine mt-0.5 truncate" title={c.fichier}>{c.fichier}, {dateCourte(c.importe_le)}</span>
-              {#if colonnes.filter((x) => !x.enrichissement).length > 1 || c.enrichissement}
-                <button class="text-xs text-mine hover:text-alerte underline underline-offset-2 mt-1"
-                  onclick={() => detacher(c)}>Pas la même personne</button>
-              {/if}
+              <span class="flex items-center gap-2 text-xs text-mine mt-0.5 min-w-0">
+                <span class="truncate" title={`${c.fichier}, ${dateCourte(c.importe_le)}`}>{c.fichier}</span>
+                {#if colonnes.filter((x) => !x.enrichissement).length > 1 || c.enrichissement}
+                  <button class="shrink-0 ml-auto hover:text-alerte underline underline-offset-2"
+                    onclick={() => detacher(c)}>Pas la même personne</button>
+                {/if}
+              </span>
             </th>
           {/each}
-          <th class="text-left px-4 py-3 align-bottom min-w-72 bg-papier text-[#2a211c] rounded-tr-xl">
-            <span class="titre text-lg">Fiche retenue</span>
+          <th class="text-left px-3 py-2 align-bottom bg-papier text-[#2a211c]">
+            <span class="titre text-base">Fiche retenue</span>
           </th>
         </tr>
       </thead>
       <tbody>
         {#each lignes as l (l.cle)}
           {#if l.type === 'entete'}
-            <tr class="border-t border-couture">
-              <td class="px-4 pt-4 pb-1.5 text-sm text-mine" colspan={colonnes.length + 1}>{l.libelle}{#if l.vide}<span class="ml-2 text-xs">aucun</span>{/if}</td>
-              <td class="px-4 pt-4 pb-1.5 bg-papier text-right">
-                <button class="text-xs text-[#6b5a48] hover:text-[#2a211c] underline underline-offset-2"
-                  onclick={() => ajouter(l.champ)}>Ajouter un {l.unite}</button>
-              </td>
-            </tr>
+            {#if !l.vide}
+              <tr class="border-t border-couture">
+                <td class="px-3 pt-2 pb-0.5 text-xs text-mine" colspan={colonnes.length + 1}>{l.libelle}</td>
+                <td class="px-3 pt-2 pb-0.5 bg-papier text-right">
+                  <button class="text-xs text-[#6b5a48] hover:text-[#2a211c] underline underline-offset-2"
+                    onclick={() => ajouter(l.champ)}>Ajouter</button>
+                </td>
+              </tr>
+            {/if}
           {:else}
             {@const i = navigables.indexOf(l)}
             {@const estActive = ligneActive?.cle === l.cle}
             <tr data-ligne={l.cle} class="border-t border-couture/60 {estActive ? 'bg-onglet-sombre/35' : ''}"
               onclick={() => (actif = i)}>
-              <td class="px-4 py-2 text-sm text-mine align-top relative">
+              <td class="px-3 py-1 text-mine align-top relative truncate">
                 {#if estActive}<span class="absolute left-0 top-1 bottom-1 w-1 rounded-r bg-onglet"></span>{/if}
                 {l.type === 'simple' ? l.libelle : ''}
               </td>
@@ -439,78 +451,82 @@
               {#if l.type === 'simple'}
                 {#each l.valeurs as v, ci}
                   {@const choisie = v && (l.champ === 'photo' ? fiche.photo === v : egal(fiche[l.champ], v))}
-                  <td class="px-2 py-1 border-l border-couture/60 align-top">
+                  <td class="px-1.5 py-0.5 border-l border-couture/60 align-top">
                     {#if v}
-                      <button class="w-full text-left rounded-md px-2 py-1 border transition-colors
+                      <button class="w-full min-w-0 text-left rounded-md px-1.5 py-0.5 border transition-colors
                           {choisie ? 'border-onglet/70 text-papier' : 'border-transparent text-mine hover:text-papier hover:border-tranche'}"
+                        title={l.champ === 'photo' ? undefined : affichage(l.champ, v)}
                         onclick={(e) => { e.stopPropagation(); actif = i; choisir(l, v) }}>
                         {#if l.champ === 'photo'}
-                          <img src={`/api/photos/${v}`} alt={`Photo ${colonnes[ci].libelle}`} class="w-12 h-12 rounded-full object-cover" />
+                          <img src={`/api/photos/${v}`} alt={`Photo ${colonnes[ci].libelle}`} class="w-9 h-9 rounded-full object-cover" />
                         {:else}
-                          <span class="whitespace-pre-line break-words {l.champ === 'notes' ? 'line-clamp-3' : ''}">{affichage(l.champ, v)}</span>
+                          <span class="block {l.champ === 'notes' ? 'line-clamp-2 whitespace-pre-line break-words' : 'truncate'}">{affichage(l.champ, v)}</span>
                         {/if}
                       </button>
                     {/if}
                   </td>
                 {/each}
-                <td class="px-4 py-1.5 bg-papier text-[#2a211c] align-top" data-edition={edition === l.cle ? '' : undefined}>
+                <td class="px-3 py-0.5 bg-papier text-[#2a211c] align-top" data-edition={edition === l.cle ? '' : undefined}>
                   {#if edition === l.cle}
                     {#if l.champ === 'notes'}
-                      <textarea rows="4" class="w-full !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={fiche.notes}
+                      <textarea rows="3" class="w-full !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={fiche.notes}
                         onblur={() => (edition = null)}></textarea>
                     {:else}
-                      <input class="w-full !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={fiche[l.champ]}
-                        placeholder={l.champ === 'anniversaire' ? 'AAAA-MM-JJ ou --MM-JJ' : ''}
+                      <input class="w-full !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={fiche[l.champ]}
+                        placeholder={l.champ === 'anniversaire' ? '15/03/1985 ou 15 mars' : ''}
                         onblur={() => (edition = null)} />
                     {/if}
                   {:else if l.champ === 'photo'}
-                    {#if fiche.photo}<img src={`/api/photos/${fiche.photo}`} alt="Retenue" class="w-12 h-12 rounded-full object-cover" />{:else}<span class="text-[#9a8a76] italic">aucune</span>{/if}
+                    {#if fiche.photo}<img src={`/api/photos/${fiche.photo}`} alt="Retenue" class="w-9 h-9 rounded-full object-cover" />{:else}<span class="text-[#9a8a76] italic">aucune</span>{/if}
                   {:else}
-                    <button class="w-full text-left min-h-7 {l.champ === 'nom' ? 'tracking-wide' : ''}"
-                      ondblclick={() => editer(i)} title="Double-clic ou E pour modifier">
+                    <button class="w-full min-w-0 text-left py-0.5 {l.champ === 'nom' ? 'tracking-wide' : ''}"
+                      ondblclick={() => editer(i)} title={fiche[l.champ] ? `${affichage(l.champ, fiche[l.champ])}\n(double-clic ou E pour modifier)` : 'Double-clic ou E pour modifier'}>
                       {#if fiche[l.champ]}
-                        <span class="whitespace-pre-line break-words {l.champ === 'prenom' || l.champ === 'nom' ? 'titre text-lg' : ''}">{affichage(l.champ, fiche[l.champ])}</span>
+                        <span class="block {l.champ === 'notes' ? 'line-clamp-2 whitespace-pre-line break-words' : 'truncate'} {l.champ === 'prenom' || l.champ === 'nom' ? 'titre text-base' : ''}">{affichage(l.champ, fiche[l.champ])}</span>
                       {:else}<span class="text-[#9a8a76] italic">vide</span>{/if}
                     </button>
                   {/if}
                 </td>
               {:else}
-                {#each l.presence as p, ci}
-                  <td class="px-4 py-1.5 border-l border-couture/60 align-top text-mine">
+                {#each l.presence as p}
+                  <td class="px-3 py-1 border-l border-couture/60 align-top text-mine">
                     {#if p}
-                      <span class="block break-words {l.inclus ? 'text-papier' : ''}">{texteItem(l.champ, p)}</span>
-                      <span class="text-xs">{p.type}{p.valide === false ? ' · numéro non reconnu' : ''}</span>
+                      <span class="flex items-baseline gap-2 min-w-0" title={`${texteItem(l.champ, p)} (${p.type})`}>
+                        <span class="truncate {l.inclus ? 'text-papier' : ''}">{texteItem(l.champ, p)}</span>
+                        <span class="shrink-0 ml-auto text-xs">{p.valide === false ? 'non reconnu' : p.type}</span>
+                      </span>
                     {/if}
                   </td>
                 {/each}
-                <td class="px-4 py-1.5 bg-papier text-[#2a211c] align-top" data-edition={edition === l.cle ? '' : undefined}>
-                  <div class="flex items-start gap-2.5">
-                    <input type="checkbox" class="mt-1.5 accent-[#8a5a12] w-4 h-4 shrink-0" checked={l.inclus}
+                <td class="px-3 py-0.5 bg-papier text-[#2a211c] align-top" data-edition={edition === l.cle ? '' : undefined}>
+                  <div class="flex items-center gap-2 min-w-0">
+                    <input type="checkbox" class="accent-[#8a5a12] w-4 h-4 shrink-0" checked={l.inclus}
                       onchange={() => basculer(l)} aria-label="Garder cette valeur" />
                     <div class="flex-1 min-w-0">
                       {#if edition === l.cle && l.inclus}
                         {@const item = fiche[l.champ][l.index]}
                         {#if l.champ === 'adresses'}
-                          <div class="grid gap-1.5">
+                          <div class="grid gap-1 py-1">
                             <textarea rows="2" class="!bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Rue (plusieurs lignes possibles)" bind:value={item.rue}></textarea>
-                            <div class="flex gap-1.5">
-                              <input class="w-24 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Code postal" bind:value={item.cp} />
-                              <input class="flex-1 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Ville" bind:value={item.ville} />
+                            <div class="flex gap-1">
+                              <input class="w-20 !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="CP" bind:value={item.cp} />
+                              <input class="flex-1 min-w-0 !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Ville" bind:value={item.ville} />
+                              <input class="w-24 !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Pays" bind:value={item.pays}
+                                onblur={() => (edition = null)} />
                             </div>
-                            <input class="!bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Pays" bind:value={item.pays}
-                              onblur={() => (edition = null)} />
                           </div>
                         {:else}
-                          <input class="w-full !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={item.valeur}
+                          <input class="w-full !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={item.valeur}
                             oninput={() => { if (l.champ === 'telephones') { item.affichage = item.valeur; item.valide = true } }}
                             onblur={() => (edition = null)} />
                         {/if}
                       {:else}
-                        <button class="block w-full text-left break-words {l.inclus ? '' : 'text-[#9a8a76] line-through decoration-[#b9a68f]'}"
-                          ondblclick={() => editer(i)}>{texteItem(l.champ, l.inclus ? fiche[l.champ][l.index] : l.item) || '…'}</button>
+                        {@const texte = texteItem(l.champ, l.inclus ? fiche[l.champ][l.index] : l.item) || '…'}
+                        <button class="block w-full min-w-0 text-left truncate py-0.5 {l.inclus ? '' : 'text-[#9a8a76] line-through decoration-[#b9a68f]'}"
+                          title={texte} ondblclick={() => editer(i)}>{texte}</button>
                       {/if}
                     </div>
-                    <select class="!py-0.5 !px-1.5 text-sm !bg-transparent !text-[#2a211c] !border-[#c9b9a3]"
+                    <select class="shrink-0 w-24 !py-0 !px-1 text-xs !bg-transparent !text-[#2a211c] !border-[#c9b9a3]"
                       value={l.inclus ? fiche[l.champ][l.index].type : l.item.type}
                       onchange={(e) => changerType(l, e.currentTarget.value)} aria-label="Type">
                       {#each ref.types[l.champ] ?? [] as t}<option value={t}>{t}</option>{/each}
@@ -522,21 +538,35 @@
           {/if}
         {/each}
 
+        {#if vides.length}
+          <tr class="border-t border-couture">
+            <td class="px-3 py-1.5 text-xs text-mine" colspan={colonnes.length + 1}>
+              Aucune valeur : {vides.map((v) => v.libelle.toLowerCase()).join(', ')}
+            </td>
+            <td class="px-3 py-1.5 bg-papier text-xs text-[#6b5a48]">
+              Ajouter :
+              {#each vides as v, k}
+                <button class="underline underline-offset-2 hover:text-[#2a211c]" onclick={() => ajouter(v.champ)}>{v.unite}</button>{k < vides.length - 1 ? ', ' : ''}
+              {/each}
+            </td>
+          </tr>
+        {/if}
+
         <tr class="border-t border-couture">
-          <td class="px-4 py-3 text-sm text-mine align-top">Groupes</td>
-          <td colspan={colonnes.length} class="px-4 py-3 text-sm text-mine align-top">
+          <td class="px-3 py-2 text-mine align-top">Groupes</td>
+          <td colspan={colonnes.length} class="px-3 py-2 text-xs text-mine align-top">
             {#each colonnes as c}
               {#if c.donnees.groupes?.length}<span class="mr-3">{c.libelle} : {c.donnees.groupes.join(', ')}</span>{/if}
             {/each}
           </td>
-          <td class="px-4 py-3 bg-papier rounded-br-xl">
-            <div class="flex flex-wrap gap-1.5">
+          <td class="px-3 py-2 bg-papier">
+            <div class="flex flex-wrap gap-1">
               {#each ref.groupes as g}
                 {@const dedans = fiche.groupes.includes(g)}
-                <button class="text-sm rounded-full px-2.5 py-0.5 border transition-colors
+                <button class="text-xs rounded-full px-2 py-0.5 border transition-colors
                     {dedans ? 'bg-[#2a211c] text-papier border-[#2a211c]' : 'border-[#c9b9a3] text-[#6b5a48] hover:border-[#2a211c]'}"
                   aria-pressed={dedans} onclick={() => basculerGroupe(g)}>
-                  {g} <span class="opacity-60 text-xs">{LETTRE_GROUPE[g]?.toUpperCase()}</span>
+                  {g} <span class="opacity-60">{LETTRE_GROUPE[g]?.toUpperCase()}</span>
                 </button>
               {/each}
             </div>
@@ -546,7 +576,7 @@
     </table>
   </div>
 
-  <div class="flex flex-wrap items-center gap-4 mt-4 text-sm text-mine">
+  <div class="flex flex-wrap items-center gap-4 mt-3 text-sm text-mine">
     <button class="hover:text-papier underline underline-offset-2" onclick={() => (tousLesChamps = !tousLesChamps)}>
       {tousLesChamps ? 'Masquer les champs vides' : 'Afficher tous les champs'}
     </button>
