@@ -804,3 +804,31 @@ def test_icloud_photo_par_lien(client, monkeypatch):
     c.post("/api/icloud/ecriture", json={"essai": True})
     _attendre(c)
     assert base64.b64encode(image).decode() in serveur.texte("BBBB-2222").replace("\r\n ", "")
+
+
+def test_icloud_photo_signalee_par_hash(client, monkeypatch):
+    """iCloud signale parfois la photo sans la fournir (X-IMAGEHASH) : carnet réécrit celle des
+    exports importés au lieu de la laisser disparaître, et retire les anciens repères."""
+    from app.main import etat
+    from tests.faux_icloud import FauxICloud
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    texte = (DONNEES / "icloud.vcf").read_text()
+    debut = texte.index("PHOTO;")
+    texte = texte[:debut] + "X-IMAGETYPE:PHOTO\r\nX-IMAGEHASH:04Wgk79BgmezunyrbGM64g==\r\n" + texte[texte.index("UID:AAAA-1111"):]
+    serveur = FauxICloud(texte)
+    cn = etat["carnet"]
+    monkeypatch.setattr(cn, "transport_icloud", serveur.transport())
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "icloud_user": "moi@icloud.com",
+                                                        "icloud_password": "abcd-efgh-ijkl-mnop"}))
+    claire = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    f["groupes"], f["photo"] = ["Moi"], None          # pas de photo retenue dans carnet
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/icloud/simulation")
+    _attendre(c)
+    c.post("/api/icloud/ecriture", json={"essai": True})
+    _attendre(c)
+    carte = serveur.texte("AAAA-1111")
+    assert "PHOTO;ENCODING=b" in carte and "X-IMAGEHASH" not in carte and "X-IMAGETYPE" not in carte

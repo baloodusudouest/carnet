@@ -38,6 +38,10 @@ MOTS_SOCIETE_VIDES = {"sa", "sas", "sasu", "sarl", "eurl", "sci", "scop", "gmbh"
                       "group", "groupe", "la", "le", "les", "de", "des", "du", "et", "the", "and", "france"}
 
 
+# Changer cette valeur fait réécrire toutes les fiches à la prochaine synchro (correctif d'écriture)
+VERSION_SYNCHRO = ":2"
+
+
 class ErreurCarnet(Exception):
     """Erreur à afficher telle quelle à l'utilisateur."""
 
@@ -868,18 +872,24 @@ class Carnet:
         actions, essai, cibles = [], None, {}
         membres: dict[str, set[str]] = defaultdict(set)
         a_supprimer: dict[str, dict] = {}
-        for pid, fiche, _ in self._verifiees():
+        for pid, fiche, sources in self._verifiees():
             candidats = list(dict.fromkeys(([suivi[pid]["uid"]] if pid in suivi else []) + uids_de[pid]))
             presents = [u for u in candidats if u in contacts]
             uid = presents[0] if presents else (candidats[0] if candidats else f"carnet-{pid}")
             cibles[pid] = uid
             distante = contacts.get(uid)
             image = self.photo(fiche["photo"]) if fiche.get("photo") else self._photo_icloud(uid, distante, dav)
+            if image is None and (synchro.a_une_photo(distante.texte if distante else None)
+                                  or synchro.a_une_photo(self._photos_sauvegardees().get(uid))):
+                # iCloud a une photo mais ne la fournit pas (X-IMAGEHASH seul) : celle des exports
+                # importés est réécrite, sinon iCloud l'effacerait
+                avec = sorted((s for s in sources if s["a_photo"]), key=lambda s: s["uid"] != uid)
+                image = self.photo(avec[0]["id"]) if avec else None
             nouvelle = export.vcard(fiche, uid, image)
             texte = synchro.assembler(nouvelle, distante.texte if distante else None)
             nom = nom_affiche(fiche)
             base = {"cible": "contact", "pid": pid, "nom": nom, "uid": uid, "texte": texte,
-                    "empreinte_carnet": synchro.empreinte(nouvelle)}
+                    "empreinte_carnet": synchro.empreinte(nouvelle) + VERSION_SYNCHRO}
             if distante:
                 action = {**base, "action": "modifier", "href": distante.href, "etag": distante.etag}
                 s = suivi.get(pid, {})
@@ -967,7 +977,7 @@ class Carnet:
             photos: dict[str, str] = {}
             for f in sorted(self.cfg.archives.glob("*_icloud-sauvegarde.vcf")):
                 for bloc in f.read_text(encoding="utf-8", errors="replace").split("END:VCARD"):
-                    if "PHOTO" in bloc:
+                    if "PHOTO" in bloc or "X-IMAGEHASH" in bloc:
                         c = synchro.analyser("", "", bloc + "END:VCARD")
                         if c.uid:
                             photos[c.uid] = bloc
