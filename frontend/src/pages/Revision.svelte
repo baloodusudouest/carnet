@@ -117,6 +117,8 @@
     const res = []
     for (const s of SIMPLES) {
       const valeurs = colonnes.map((c) => (s.champ === 'photo' ? (c.a_photo ? c.id : null) : c.donnees[s.champ] || ''))
+        // une note faite seulement de symboles (« ***** ») compte pour vide
+        .map((v) => (s.champ === 'notes' && !/[\p{L}\p{N}]/u.test(v) ? '' : v))
       const utile = valeurs.some(Boolean) || (fiche[s.champ] ?? '') !== '' && fiche[s.champ] !== null
       if (s.toujours || utile || tousLesChamps) res.push({ type: 'simple', cle: s.champ, ...s, valeurs })
     }

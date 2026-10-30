@@ -287,3 +287,13 @@ def test_depot_sans_ecrasement_et_securite(client):
     assert c.post("/api/export", headers={"X-Carnet": ""}).status_code == 403
     c.post("/api/deconnexion")
     assert c.get("/api/contacts").status_code == 401
+
+
+def test_notes_sans_texte():
+    assert n.note("***** ***** *****") == ""
+    assert n.note(" --- ") == ""
+    assert n.note("Code portail : 1234") == "Code portail : 1234"
+    from app.fusion import proposer
+    f = proposer([{"id": 1, "source": "icloud", "a_photo": False, "donnees": {"notes": "*****"}},
+                  {"id": 2, "source": "gmail", "a_photo": False, "donnees": {"notes": "Voisine"}}])
+    assert f["notes"] == "Voisine"
