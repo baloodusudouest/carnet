@@ -19,7 +19,7 @@ from .db import Base
 from .modele import (GROUPE_A_CLASSER, GROUPE_MOI, GROUPE_URGENCE, GROUPES_TRAVAIL, LIBELLES_SOURCES,
                      completer, nom_affiche)
 from .normalisation import (MESSAGERIES, ValeurInvalide, cle_texte, domaine_pro, regle_proches,
-                            emojis_sans_groupe, reseau_detecte, type_pro_attendu, nettoyer, normaliser_fiche,
+                            emojis_sans_groupe, nature, reseau_detecte, type_pro_attendu, nettoyer, normaliser_fiche,
                             societe_depuis_domaine)
 from .sources import detecter_source, lire_texte, linkedin, outlook, vcard
 
@@ -495,7 +495,7 @@ class Carnet:
             groupes = set(f["groupes"])
             if groupes & {"Famille", "Amis"} and not f["anniversaire"]:
                 sections["anniversaires"].append(resume(pid, f))
-            portables = [t for t in f["telephones"] if t["valeur"].startswith(("+336", "+337"))]
+            portables = [t for t in f["telephones"] if nature(t["valeur"]) == "mobile"]
             if groupes & {"Famille", "Amis", "Jardin secret"} and len(portables) >= 2 and pid not in tries:
                 sections["deux_portables"].append(resume(pid, f, numeros=[
                     {"valeur": t["valeur"], "affichage": t.get("affichage"), "type": t["type"]} for t in portables]))

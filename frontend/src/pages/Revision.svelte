@@ -207,14 +207,14 @@
     })
   }
 
-  // Famille, Amis, Jardin secret : un portable français (+33 6, +33 7) est « mobile »
+  // Famille, Amis, Jardin secret : un portable (nature « mobile », tous pays) est « mobile »
   const PROCHES = ['Famille', 'Amis', 'Jardin secret']
   function regleProches() {
-    // Artisans et services, Collègues, Clients : portable → travail, fixe → bureau
+    // Artisans et services, Collègues, Clients : portable → travail, fixe → bureau (tous pays)
     // (les proches restent prioritaires)
     if (fiche.groupes.some((g) => ['Artisans et services', 'Collègues', 'Clients'].includes(g))) {
       for (const t of fiche.telephones) {
-        if (t.valeur.startsWith('+33')) t.type = /^\+33[67]/.test(t.valeur) ? 'travail' : 'bureau'
+        if (t.nature) t.type = t.nature === 'mobile' ? 'travail' : 'bureau'
       }
     }
     // Clients : les adresses sont celles du travail
@@ -223,13 +223,13 @@
     const pros = ['Artisans et services', 'Clients', 'Collègues']
     if (fiche.groupes.some((g) => pros.includes(g)) && fiche.societe && !fiche.prenom && !fiche.nom) {
       for (const t of fiche.telephones) {
-        const portable = /^\+33[67]/.test(t.valeur) || (!t.valeur.startsWith('+33') && t.mobile)
+        const portable = t.nature === 'mobile'
         t.type = portable ? 'travail' : 'principal'
       }
     }
     if (!fiche.groupes.some((g) => PROCHES.includes(g))) return
     // un seul portable : mobile ; deux ou plus : la Revue demande lequel est celui du travail
-    const portables = fiche.telephones.filter((t) => /^\+33[67]/.test(t.valeur))
+    const portables = fiche.telephones.filter((t) => t.nature === 'mobile')
     if (portables.length === 1) portables[0].type = 'mobile'
   }
 

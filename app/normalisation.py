@@ -105,54 +105,76 @@ def telephone(brut: str, type_: str | None, region: str = "FR") -> dict | None:
             "mobile": False}
 
 
-def portable_fr(valeur: str) -> bool:
-    return str(valeur).startswith(("+336", "+337"))
+def nature(valeur: str) -> str | None:
+    """« mobile » ou « fixe » selon le plan de numérotation du pays (+33 6, +32 4… sont des mobiles).
+    None si le numéro est illisible ou si le pays ne permet pas de trancher (États-Unis, Canada…).
+    Numéros verts, VoIP, numéros spéciaux : comptés comme « fixe »."""
+    v = str(valeur or "").split(";")[0]
+    if not v.startswith("+"):
+        return None
+    try:
+        num = phonenumbers.parse(v, None)
+    except phonenumbers.NumberParseException:
+        return None
+    if not phonenumbers.is_valid_number(num):
+        return None
+    sorte = phonenumbers.number_type(num)
+    if sorte == PhoneNumberType.MOBILE:
+        return "mobile"
+    if sorte in (PhoneNumberType.FIXED_LINE_OR_MOBILE, PhoneNumberType.UNKNOWN):
+        return None
+    return "fixe"
+
+
+def portable(valeur: str) -> bool:
+    return nature(valeur) == "mobile"
 
 
 def type_pro_attendu(t: dict) -> str | None:
-    """Règle bureau / travail pour un numéro français professionnel : un portable (+33 6, +33 7)
-    est « travail », un fixe (+33 1 à 5, 8, 9) est « bureau ». None si la règle ne s'applique pas."""
-    v = str(t.get("valeur", ""))
-    if t.get("type") not in ("bureau", "travail") or not v.startswith("+33"):
+    """Règle bureau / travail pour un numéro professionnel (tous pays) : un portable est
+    « travail », un fixe est « bureau ». None si la règle ne s'applique pas."""
+    if t.get("type") not in ("bureau", "travail"):
         return None
-    return "travail" if portable_fr(v) else "bureau"
+    n = nature(t.get("valeur", ""))
+    return {"mobile": "travail", "fixe": "bureau"}.get(n) if n else None
 
 
 GROUPES_PROCHES = {"Famille", "Amis", "Jardin secret"}
 
 
 def regle_proches(fiche: dict) -> dict:
-    """Artisans et services, Collègues, Clients : portable français → « travail », fixe → « bureau ».
-    Famille, Amis, Jardin secret (prioritaires) : un portable français (+33 6, +33 7) est « mobile ».
-    Avec deux portables ou plus, rien n'est forcé : la Revue demande lequel est celui du travail."""
+    """Règles de type par groupe (tous pays, d'après la nature mobile / fixe du numéro) :
+    - Artisans et services, Collègues, Clients : portable → « travail », fixe → « bureau » ;
+    - fiche d'entreprise (société sans prénom ni nom) de ces groupes : fixe → « principal » ;
+    - Famille, Amis, Jardin secret (prioritaires) : un seul portable → « mobile » ; avec deux
+      portables ou plus, rien n'est forcé : la Revue demande lequel est celui du travail.
+    Ajoute aussi « nature » à chaque téléphone, pour l'interface."""
+    telephones = fiche.get("telephones", [])
+    for t in telephones:
+        t["nature"] = nature(t.get("valeur", ""))
     groupes = set(fiche.get("groupes", []))
     if "Clients" in groupes:  # l'adresse d'un client (personne ou société) est celle de son travail
         for a in fiche.get("adresses", []):
             a["type"] = "travail"
-    if groupes & {"Artisans et services", "Collègues", "Clients"}:
-        # Contacts professionnels : portable français → « travail », fixe français → « bureau »
-        for t in fiche.get("telephones", []):
-            if str(t.get("valeur", "")).startswith("+33"):
-                t["type"] = "travail" if portable_fr(t["valeur"]) else "bureau"
-    # Fiche d'entreprise (société sans prénom ni nom) d'un artisan, client ou collègue :
-    # le standard est « principal », un portable reste « travail »
-    if (groupes & {"Artisans et services", "Clients", "Collègues"} and fiche.get("societe")
-            and not fiche.get("prenom") and not fiche.get("nom")):
-        for t in fiche.get("telephones", []):
-            v = str(t.get("valeur", ""))
-            portable = portable_fr(v) or (not v.startswith("+33") and t.get("mobile"))
-            t["type"] = "travail" if portable else "principal"
-    if GROUPES_PROCHES & set(fiche.get("groupes", [])):
-        portables = [t for t in fiche.get("telephones", []) if portable_fr(t.get("valeur", ""))]
+    pros = groupes & {"Artisans et services", "Collègues", "Clients"}
+    if pros:
+        for t in telephones:
+            if t["nature"]:
+                t["type"] = "travail" if t["nature"] == "mobile" else "bureau"
+    if pros and fiche.get("societe") and not fiche.get("prenom") and not fiche.get("nom"):
+        for t in telephones:
+            t["type"] = "travail" if t["nature"] == "mobile" else "principal"
+    if GROUPES_PROCHES & groupes:
+        portables = [t for t in telephones if t["nature"] == "mobile"]
         if len(portables) == 1:
             portables[0]["type"] = "mobile"
     return fiche
 
 
 def type_telephone_propose(t: dict) -> dict:
-    """Propositions de type : un portable français noté « domicile » ou « autre » devient « mobile » ;
+    """Propositions de type : un portable noté « domicile » ou « autre » devient « mobile » ;
     entre « bureau » et « travail », la règle de type_pro_attendu s'applique."""
-    if t.get("type") in ("domicile", "autre") and portable_fr(t.get("valeur", "")):
+    if t.get("type") in ("domicile", "autre") and portable(t.get("valeur", "")):
         return {**t, "type": "mobile"}
     attendu = type_pro_attendu(t)
     if attendu and attendu != t.get("type"):
