@@ -127,7 +127,7 @@ def _lire_carte(brut: str, region: str) -> tuple[FicheLue | None, dict | None]:
             elif nom == "TITLE":
                 f["fonction"] = _texte(ligne.value)
             elif nom == "NOTE":
-                f["notes"] = _texte(ligne.value)
+                f["notes"] = n.note(_texte(ligne.value))
             elif nom == "BDAY":
                 omet = "X-APPLE-OMIT-YEAR" in {k.upper() for k in ligne.params}
                 f["anniversaire"] = n.anniversaire(_texte(ligne.value), sans_annee=omet)

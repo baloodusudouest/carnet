@@ -7,7 +7,7 @@ LinkedIn n'apporte que ce qui manque : société, fonction, profil, courriel.
 from __future__ import annotations
 
 from .modele import CHAMPS_MULTIPLES, PRIORITE_SOURCES, completer, fiche_vide
-from .normalisation import CLES
+from .normalisation import CLES, note
 
 
 def _ordre(source: dict) -> tuple[int, int]:
@@ -30,7 +30,7 @@ def proposer(sources: list[dict]) -> dict:
                 fiche[champ] = valeur
     notes = []
     for s in rangees:
-        texte = (s["donnees"].get("notes") or "").strip()
+        texte = note(s["donnees"].get("notes"))
         if texte and texte not in notes:
             notes.append(texte)
     fiche["notes"] = "\n\n".join(notes)
@@ -62,6 +62,7 @@ def reunir(base: dict, ajout: dict) -> dict:
             f[champ] = a[champ]
     if f["photo"] is None:
         f["photo"] = a["photo"]
+    f["notes"], a["notes"] = note(f["notes"]), note(a["notes"])
     if a["notes"] and a["notes"] not in f["notes"]:
         f["notes"] = "\n\n".join(x for x in (f["notes"], a["notes"]) if x)
     for champ in CHAMPS_MULTIPLES:

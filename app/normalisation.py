@@ -179,6 +179,12 @@ CLES = {
 }
 
 
+def note(texte: str) -> str:
+    """Une note sans aucune lettre ni chiffre (« ***** ***** », « --- ») est considérée vide."""
+    t = str(texte or "").strip()
+    return t if any(c.isalnum() for c in t) else ""
+
+
 # ---------------------------------------------------------------- dates
 
 MOIS = {"janvier": 1, "janv": 1, "fevrier": 2, "fevr": 2, "fev": 2, "mars": 3, "avril": 4, "avr": 4,
@@ -254,7 +260,7 @@ def normaliser_fiche(fiche: dict, region: str = "FR") -> dict:
     f["nom"] = formater_nom(f["nom"])
     for cle in ("surnom", "societe", "fonction"):
         f[cle] = " ".join(str(f[cle] or "").split())
-    f["notes"] = str(f["notes"] or "").strip()
+    f["notes"] = note(f["notes"])
     saisi = str(f["anniversaire"] or "").strip()
     f["anniversaire"] = anniversaire(saisi) if saisi else ""
     if saisi and not f["anniversaire"]:

@@ -62,7 +62,7 @@ def lire(texte: str, region: str = "FR") -> tuple[list[FicheLue], list[str]]:
         f["surnom"] = v.get("Nickname", "")
         f["societe"] = v.get("Company", "")
         f["fonction"] = v.get("Job Title", "")
-        f["notes"] = v.get("Notes", "")
+        f["notes"] = n.note(v.get("Notes", ""))
         f["anniversaire"] = n.anniversaire(v.get("Birthday", ""), ordre=ordre)
         for colonne, type_ in TELEPHONES:
             t = n.telephone(v.get(colonne, ""), type_, region)
