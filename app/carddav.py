@@ -44,7 +44,7 @@ def _corps_propfind(props: str) -> str:
 
 class CardDAV:
     def __init__(self, url: str, utilisateur: str, mot_de_passe: str,
-                 transport: httpx.BaseTransport | None = None):
+                 transport: httpx.BaseTransport | None = None, nom_carnet: str | None = None):
         if not utilisateur or not mot_de_passe:
             raise ErreurICloud("Identifiant iCloud absent : renseigne CARNET_ICLOUD_USER et "
                                "CARNET_ICLOUD_PASSWORD dans les variables de la stack.")
@@ -52,6 +52,7 @@ class CardDAV:
         self.client = httpx.Client(auth=(utilisateur, mot_de_passe), timeout=60, follow_redirects=True,
                                    transport=transport, headers={"User-Agent": "carnet (CardDAV)"})
         self.carnet: str | None = None
+        self.nom_carnet = nom_carnet   # carnet d'adresses voulu (nom affiché) ; None : le premier
 
     def fermer(self) -> None:
         self.client.close()
@@ -115,12 +116,24 @@ class CardDAV:
         if not maison:
             raise ErreurICloud("iCloud n'a pas indiqué le dossier des contacts (addressbook-home-set).")
         url_maison = self._url(maison.strip(), url_principal)
-        for href, prop in self._propfind(url_maison, "<d:resourcetype/>", 1):
+        carnets = []
+        for href, prop in self._propfind(url_maison, "<d:resourcetype/><d:displayname/>", 1):
             rt = prop.find(f"{{{D}}}resourcetype")
             if rt is not None and rt.find(f"{{{C}}}addressbook") is not None:
-                self.carnet = self._url(href, url_maison)
-                return self.carnet
-        raise ErreurICloud("Aucun carnet d'adresses trouvé dans ce compte iCloud.")
+                carnets.append(((prop.findtext(f"{{{D}}}displayname") or "").strip(), self._url(href, url_maison)))
+        if not carnets:
+            raise ErreurICloud("Aucun carnet d'adresses trouvé dans ce compte.")
+        if self.nom_carnet:
+            # Jamais de choix par défaut quand un nom est demandé : écrire dans un carnet partagé
+            # (« Contacts de l'équipe ») effacerait les contacts des autres
+            choisi = next((u for n, u in carnets if n.casefold() == self.nom_carnet.casefold()), None)
+            if not choisi:
+                raise ErreurICloud(f"Carnet d'adresses « {self.nom_carnet} » introuvable. Carnets du compte : "
+                                   + ", ".join(f"« {n or '(sans nom)'} »" for n, _ in carnets) + ".")
+            self.carnet = choisi
+        else:
+            self.carnet = carnets[0][1]
+        return self.carnet
 
     def lister(self) -> list[Brute]:
         carnet = self.decouvrir()

@@ -1507,7 +1507,7 @@ class Carnet:
         """Synology Contacts à l'identique des fiches vérifiées et de leurs groupes. Arrêt sans
         rien écrire si plus de 5 % des fiches déjà copiées seraient supprimées ou modifiées."""
         dav = CardDAV(self.cfg.synology_url, self.cfg.synology_user, self.cfg.synology_password,
-                      transport=getattr(self, "transport_synology", None))
+                      transport=getattr(self, "transport_synology", None), nom_carnet=self.cfg.synology_carnet)
         bilan = {"crees": 0, "modifies": 0, "supprimes": 0, "groupes": 0, "erreurs": []}
         try:
             distantes = {c.uid: c for c in (synchro.analyser(b.href, b.etag, b.texte) for b in dav.lister())}
