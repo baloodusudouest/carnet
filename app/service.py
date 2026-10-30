@@ -27,7 +27,7 @@ from .config import Config
 from .db import Base
 from .modele import (CHAMPS_MULTIPLES, GROUPE_A_CLASSER, GROUPE_MOI, GROUPE_URGENCE, GROUPE_VERIFIES, GROUPES, GROUPES_PERSO,
                      GROUPES_TRAVAIL, LIBELLES_SOURCES, REGLES_GROUPES, completer, fiche_vide, groupes_reconnus, nom_affiche)
-from .normalisation import (CLES, GROUPES_PROCHES, MESSAGERIES, note, configurer_groupes, ValeurInvalide, cle_texte, domaine_pro, regle_proches,
+from .normalisation import (CLES, GROUPES_PROCHES, MESSAGERIES, formater_nom, formater_prenom, note, configurer_groupes, ValeurInvalide, cle_texte, domaine_pro, regle_proches,
                             emojis_sans_groupe, nature, reseau_detecte, type_pro_attendu, nettoyer, normaliser_fiche,
                             societe_depuis_domaine)
 from .sources import detecter_source, lire_texte, linkedin, outlook, vcard
@@ -1548,8 +1548,12 @@ class Carnet:
             ligne = {"pid": pid, "nom": nom, "groupes": fiche["groupes"], "anniversaire": fiche["anniversaire"]}
             if lien:
                 im, tm = immich_par_id.get(lien.get("immich") or ""), tree_par_id.get(lien.get("treemich") or "")
+                mots = sorted(cle_texte(f"{fiche['prenom']} {fiche['nom']}").split())
+                ecart = any(x and sorted(cle_texte(x["nom"]).split()) != mots for x in (im, tm))
                 liees.append({**ligne, "immich": im and {"id": im["id"], "nom": im["nom"]},
-                              "treemich": tm and {"id": tm["id"], "nom": tm["nom"]}})
+                              "treemich": tm and {"id": tm["id"], "nom": tm["nom"]},
+                              "ecart_nom": ecart and bool(fiche["prenom"] or fiche["nom"]),
+                              "nom_immich_propose": self._nom_pour_immich(fiche)})
                 continue
             cles = {cle_texte(f"{fiche['prenom']} {fiche['nom']}"), cle_texte(fiche["surnom"] or "")} - {""}
             candidats = [p for c in cles for p in immich_noms.get(c, [])
@@ -1575,8 +1579,10 @@ class Carnet:
                                             for p in candidats[:5]],
                                  "treemich": tree and {"id": tree["id"], "nom": tree["nom"]}})
         propositions.sort(key=lambda x: (not x["exacte"], x["nom"].lower()))
+        verifiees = {pid: f for pid, f, _ in self._verifiees()}
         return {"immich": bool(self.cfg.immich_cle), "treemich": bool(self.cfg.treemich_email),
                 "erreurs": d["erreurs"], "liees": liees, "propositions": propositions,
+                "a_formater": self.immich_a_formater(d, liens, verifiees),
                 "nb_immich": len(d["immich"]), "nb_treemich": len(d["treemich"]),
                 "dernier_passage": self.base.etat("liens_journal", [None])[0]}
 
@@ -1588,6 +1594,92 @@ class Carnet:
         self.base.ecrire_etat("liaisons", liens)
         pids = [l["pid"] for l in liaisons]
         return self._lancer("liens", lambda: self._appliquer_liens(pids))
+
+    @staticmethod
+    def _nom_pour_immich(fiche: dict) -> str:
+        """Même format partout : « Prénom NOM », comme dans carnet."""
+        return " ".join(x for x in (fiche["prenom"], fiche["nom"]) if x)
+
+    @staticmethod
+    def _format_prenom_nom(nom: str) -> str:
+        """Nom Immich sans contact lié : « jean dupont » / « Jean Dupont » → « Jean DUPONT ».
+        Un mot déjà en majuscules marque le début du nom de famille, sinon c'est le dernier mot."""
+        mots = nom.split()
+        if len(mots) < 2:
+            return formater_prenom(nom)
+        debut = next((i for i, m in enumerate(mots) if i > 0 and m.isupper() and len(m) > 1), len(mots) - 1)
+        return f"{formater_prenom(' '.join(mots[:debut]))} {formater_nom(' '.join(mots[debut:]))}"
+
+    def immich_a_formater(self, d: dict, liens: dict, verifiees: dict) -> list[dict]:
+        """Personnes Immich dont le nom n'est pas au format « Prénom NOM »."""
+        par_immich = {l["immich"]: pid for pid, l in liens.items() if l.get("immich")}
+        res = []
+        for p in d["immich"]:
+            pid = par_immich.get(p["id"])
+            propose = self._nom_pour_immich(verifiees[pid]) if pid in verifiees else self._format_prenom_nom(p["nom"])
+            if propose and propose != p["nom"]:
+                res.append({"id": p["id"], "nom": p["nom"], "propose": propose, "lie": pid in verifiees})
+        return sorted(res, key=lambda x: (not x["lie"], x["nom"].lower()))
+
+    def renommer_immich(self, immich_id: str, nom: str) -> dict:
+        """Renomme une personne Immich (et la personne Treemich qui lui correspond)."""
+        nom = " ".join((nom or "").split())
+        if not nom:
+            raise ErreurCarnet("Nom vide.")
+        immich = self._immich()
+        try:
+            immich.renommer(immich_id, nom)
+        finally:
+            immich.fermer()
+        d = self._donnees_liens()
+        liens = self.base.etat("liaisons", {})
+        tid = next((l.get("treemich") for l in liens.values() if l.get("immich") == immich_id and l.get("treemich")),
+                   None) or next((p["id"] for p in d["treemich"] if p["immich"] == immich_id), None)
+        if tid and self.cfg.treemich_email:
+            mots = nom.split()
+            debut = next((i for i, m in enumerate(mots) if i > 0 and m.isupper() and len(m) > 1), len(mots) - 1)
+            tm = self._treemich()
+            try:
+                tm.renommer(tid, " ".join(mots[:debut]), " ".join(mots[debut:]))
+            finally:
+                tm.fermer()
+        self._cache_liens = None
+        return {"nom": nom}
+
+    def corriger_nom(self, pid: str, garder: str) -> dict:
+        """Écart d'orthographe entre carnet et Immich / Treemich : on garde l'une des deux."""
+        lien = self.base.etat("liaisons", {}).get(pid)
+        if not lien:
+            raise ErreurCarnet("Ce contact n'est pas lié.")
+        fiche = completer(json.loads(self._personne(pid)["fiche"] or "{}"))
+        d = self._donnees_liens(rafraichir=True)
+        im = next((p for p in d["immich"] if p["id"] == lien.get("immich")), None)
+        if garder == "immich":
+            if not im:
+                raise ErreurCarnet("Personne Immich introuvable.")
+            mots = im["nom"].split()
+            n = max(1, min(len(fiche["prenom"].split()) or 1, len(mots) - 1))  # Immich écrit « Prénom Nom »
+            fiche["prenom"], fiche["nom"] = formater_prenom(" ".join(mots[:n])), formater_nom(" ".join(mots[n:]))
+            self._remplacer_fiche_validee(pid, fiche)
+            prenom, nom = fiche["prenom"], fiche["nom"]
+        elif garder == "carnet":
+            prenom, nom = fiche["prenom"], fiche["nom"]
+            if im:
+                immich = self._immich()
+                try:
+                    immich.renommer(im["id"], " ".join(x for x in (prenom, nom) if x))
+                finally:
+                    immich.fermer()
+        else:
+            raise ErreurCarnet("Choix inconnu.")
+        if lien.get("treemich") and self.cfg.treemich_email:  # Treemich prend l'orthographe retenue
+            tm = self._treemich()
+            try:
+                tm.renommer(lien["treemich"], prenom, nom)
+            finally:
+                tm.fermer()
+        self._cache_liens = None
+        return {"nom": " ".join(x for x in (prenom, nom) if x)}
 
     def refuser_liaison(self, pid: str, immich: str) -> dict:
         refus = set(self.base.etat("liaisons_refusees", []))

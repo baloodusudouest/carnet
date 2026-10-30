@@ -60,6 +60,14 @@ class Immich:
             return None
         return r.content, (r.headers.get("content-type") or "image/jpeg").split(";")[0]
 
+    def renommer(self, pid: str, nom: str) -> None:
+        try:
+            r = self.client.put(f"{self.api}/people/{pid}", json={"name": nom})
+        except httpx.HTTPError as exc:
+            raise ErreurLien(f"Immich injoignable ({exc.__class__.__name__}).") from exc
+        if r.status_code >= 400:
+            raise ErreurLien(f"Immich a refusé le nouveau nom ({r.status_code}).")
+
     def maj_naissance(self, pid: str, date: str) -> None:
         try:
             r = self.client.put(f"{self.api}/people/{pid}", json={"birthDate": date})
@@ -119,6 +127,16 @@ class Treemich:
             if not curseur:
                 break
         return res
+
+    def renommer(self, pid: str, prenom: str, nom: str) -> None:
+        corps = {"givenName": prenom or None, "surname": nom or None,
+                 "displayNameOverride": " ".join(x for x in (prenom, nom) if x) or None}
+        try:
+            r = self.client.patch(f"{self.api}/people/{pid}", json=corps)
+        except httpx.HTTPError as exc:
+            raise ErreurLien(f"Treemich injoignable ({exc.__class__.__name__}).") from exc
+        if r.status_code >= 400:
+            raise ErreurLien(f"Treemich a refusé le nouveau nom ({r.status_code}).")
 
     def maj_naissance(self, pid: str, date: str) -> None:
         try:

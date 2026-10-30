@@ -1087,12 +1087,16 @@ def test_sauvegarde_synology(client, monkeypatch, tmp_path):
     assert syno.texte("carnet-x0") is None
 
 
-def _faux_immich_treemich():
+def _faux_immich_treemich(ecrits=None):
     import httpx, json as _json
+    ecrits = ecrits if ecrits is not None else []
     visages = {"im-claire": b"\xff\xd8\xff\xe0visage-claire", "im-paul": b"\xff\xd8\xff\xe0visage-paul"}
 
     def immich(r):
         assert r.headers["x-api-key"] == "cle"
+        if r.method == "PUT":
+            ecrits.append(("immich", r.url.path, _json.loads(r.content)))
+            return httpx.Response(200, json={})
         if r.url.path == "/api/people":
             return httpx.Response(200, json={"people": [
                 {"id": "im-claire", "name": "Claire Martin", "birthDate": None, "isHidden": False},
@@ -1108,6 +1112,9 @@ def _faux_immich_treemich():
             assert _json.loads(r.content) == {"email": "moi@x.fr", "password": "tm"}
             return httpx.Response(200, json={"user": {}}, headers={"set-cookie": "treemich_session=s1; Path=/"})
         assert "treemich_session=s1" in r.headers.get("cookie", "")
+        if r.method == "PATCH":
+            ecrits.append(("treemich", r.url.path, _json.loads(r.content)))
+            return httpx.Response(200, json={})
         if r.url.path == "/people":
             return httpx.Response(200, json={"people": [
                 {"id": "t-claire", "name": "Claire Martin", "profile": {"gender": "FEMALE"},
@@ -1190,3 +1197,43 @@ def test_relations_treemich_contradiction(client, monkeypatch):
     noms = {(n["valeur"], n["type"]) for n in c.get(f"/api/personnes/{p['id']}").json()["fiche"]["noms_associes"]}
     assert noms == {("Paul Martin", "conjoint"), ("Léa Martin", "enfant")}
     assert c.get("/api/revue").json()["relations_treemich"] == []
+
+
+def test_corriger_orthographe(client, monkeypatch):
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    ecrits = []
+    t_im, t_tm = _faux_immich_treemich(ecrits)
+    monkeypatch.setattr(cn, "transport_immich", t_im, raising=False)
+    monkeypatch.setattr(cn, "transport_treemich", t_tm, raising=False)
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "immich_cle": "cle",
+                                                        "treemich_email": "moi@x.fr", "treemich_password": "tm"}))
+    jp, claire = _personne(c, "Jean-Pierre"), _personne(c, "Claire")
+    for p in (jp, claire):
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/liaisons/valider", json={"liaisons": [{"pid": jp["id"], "immich": "im-jp"},
+                                                         {"pid": claire["id"], "immich": "im-claire", "treemich": "t-claire"}]})
+    _attendre(c)
+    liees = {x["nom"]: x for x in c.get("/api/liaisons").json()["liees"]}
+    assert liees["Jean-Pierre DUBOIS"]["ecart_nom"] and not liees["Claire MARTIN"]["ecart_nom"]
+    # Garder carnet : Immich prend « Jean-Pierre Dubois »
+    assert c.post("/api/liaisons/nom", json={"pid": jp["id"], "garder": "carnet"}).json()["nom"] == "Jean-Pierre DUBOIS"
+    assert ecrits == [("immich", "/api/people/im-jp", {"name": "Jean-Pierre DUBOIS"})]
+    # Garder Immich : carnet prend « Jean-Pierre DUBOISS »
+    c.post("/api/liaisons/nom", json={"pid": jp["id"], "garder": "immich"})
+    f = c.get(f"/api/personnes/{jp['id']}").json()["fiche"]
+    assert (f["prenom"], f["nom"]) == ("Jean-Pierre", "DUBOISS")
+    # Treemich suit l'orthographe retenue
+    c.post("/api/liaisons/nom", json={"pid": claire["id"], "garder": "carnet"})
+    assert ecrits[-2:] == [("immich", "/api/people/im-claire", {"name": "Claire MARTIN"}),
+                           ("treemich", "/people/t-claire", {"givenName": "Claire", "surname": "MARTIN",
+                                                             "displayNameOverride": "Claire MARTIN"})]
+    # Revue des noms Immich : format « Prénom NOM » proposé, liés d'après carnet
+    a_formater = {x["id"]: x for x in c.get("/api/liaisons?rafraichir=true").json()["a_formater"]}
+    assert a_formater["im-paul"]["propose"] == "Paul MARTIN" and not a_formater["im-paul"]["lie"]
+    c.post("/api/immich/renommer", json={"id": "im-paul", "nom": "Paul MARTIN"})
+    assert ecrits[-1] == ("immich", "/api/people/im-paul", {"name": "Paul MARTIN"})

@@ -58,6 +58,41 @@
     await charger()
   }
 
+  // Orthographe : garder celle de carnet (écrite dans Immich et Treemich) ou celle d'Immich (écrite dans carnet)
+  let occupe = $state(null)
+  async function corrigerNom(p, garder) {
+    occupe = p.pid
+    try {
+      const r = await api.post('/api/liaisons/nom', { pid: p.pid, garder })
+      annoncer(`Nom retenu partout : ${r.nom}.`)
+      await charger(true)
+    } catch (e) {
+      annoncer(e.message, true)
+    } finally {
+      occupe = null
+    }
+  }
+
+  // Noms Immich au format « Prénom NOM »
+  let noms = $state({})
+  async function renommer(liste) {
+    occupe = 'renommage'
+    let n = 0
+    try {
+      for (const x of liste) {
+        await api.post('/api/immich/renommer', { id: x.id, nom: noms[x.id] ?? x.propose })
+        n++
+      }
+      annoncer(`${pluriel(n, 'personne renommée', 'personnes renommées')} dans Immich.`)
+    } catch (e) {
+      annoncer(e.message, true)
+    } finally {
+      occupe = null
+      await charger(true)
+    }
+  }
+  const ecarts = $derived(donnees ? donnees.liees.filter((p) => p.ecart_nom) : [])
+
   async function actualiser() {
     try {
       await api.post('/api/liaisons/actualiser')
@@ -150,6 +185,54 @@
           <p class="text-sm text-mine">Aucune proposition : chaque contact au nom connu d'Immich ou de Treemich est déjà lié.</p>
         {/if}
       </section>
+
+      {#if ecarts.length}
+        <section class="mb-10">
+          <h2 class="titre text-xl">Orthographes différentes <span class="text-mine text-base font-normal">({ecarts.length})</span></h2>
+          <p class="text-sm text-mine mb-3">Choisis l'orthographe juste : elle est écrite dans carnet, Immich et Treemich, au format « Prénom NOM ».
+            Pense à corriger aussi une réservation en cours qui utiliserait l'ancien nom.</p>
+          <ul class="rounded-xl border border-couture divide-y divide-couture overflow-hidden">
+            {#each ecarts as p (p.pid)}
+              <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2.5 {occupe === p.pid ? 'opacity-60' : ''}">
+                {@render visage(p.immich?.id, p.nom)}
+                <span class="text-sm text-mine w-64 truncate">Immich : {p.immich?.nom ?? '—'} · Treemich : {p.treemich?.nom ?? '—'}</span>
+                <span class="ml-auto flex flex-wrap gap-2">
+                  <button class="bouton !py-1" disabled={occupe !== null} onclick={() => corrigerNom(p, 'carnet')}>Garder « {p.nom_immich_propose} »</button>
+                  {#if p.immich}<button class="bouton !py-1" disabled={occupe !== null} onclick={() => corrigerNom(p, 'immich')}>Garder « {p.immich.nom} »</button>{/if}
+                </span>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
+
+      {#if donnees.a_formater?.length}
+        {@const lies = donnees.a_formater.filter((x) => x.lie)}
+        <section class="mb-10">
+          <div class="flex flex-wrap items-center gap-4 mb-2">
+            <h2 class="titre text-xl">Noms Immich au format « Prénom NOM » <span class="text-mine text-base font-normal">({donnees.a_formater.length})</span></h2>
+            {#if lies.length}
+              <button class="bouton bouton-principal ml-auto" disabled={occupe !== null} onclick={() => renommer(lies)}>
+                Renommer les {lies.length} personnes liées</button>
+            {/if}
+          </div>
+          <p class="text-sm text-mine mb-3">Pour une personne liée, le nom vient de carnet ; sinon carnet le devine (vérifie les noms composés).
+            La personne Treemich correspondante est renommée aussi.</p>
+          <ul class="rounded-xl border border-couture divide-y divide-couture overflow-hidden">
+            {#each donnees.a_formater as x (x.id)}
+              <li class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
+                {@render visage(x.id, x.nom)}
+                <span class="w-56 truncate">{x.nom}</span>
+                <span class="text-mine">→</span>
+                <input class="w-64" value={noms[x.id] ?? x.propose} oninput={(e) => (noms[x.id] = e.currentTarget.value)}
+                  aria-label={`Nouveau nom de ${x.nom}`} />
+                {#if x.lie}<span class="text-xs text-mine">lié</span>{/if}
+                <button class="bouton !py-1 ml-auto" disabled={occupe !== null} onclick={() => renommer([x])}>Renommer</button>
+              </li>
+            {/each}
+          </ul>
+        </section>
+      {/if}
 
       <section>
         <div class="flex flex-wrap items-center gap-4 mb-2">
