@@ -592,3 +592,11 @@ def test_groupe_moi_unique(client):
     assert "Moi" not in c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["groupes"]
     assert c.get(f"/api/personnes/{jp['id']}").json()["fiche"]["groupes"] == ["Moi"]
     assert jp["id"] not in [x["id"] for x in c.get("/api/revue").json()["sans_groupe"]]
+
+
+def test_collegues_et_clients_travail_bureau():
+    for groupe in ("Collègues", "Clients"):
+        f = n.normaliser_fiche({"prenom": "Paul", "groupes": [groupe],
+                                "telephones": [{"valeur": "06 12 34 56 78", "type": "mobile"},
+                                               {"valeur": "05 53 11 22 33", "type": "domicile"}]})
+        assert [t["type"] for t in f["telephones"]] == ["travail", "bureau"], groupe

@@ -122,14 +122,15 @@ GROUPES_PROCHES = {"Famille", "Amis", "Jardin secret"}
 
 
 def regle_proches(fiche: dict) -> dict:
-    """Artisans et services : portable français → « travail », fixe français → « bureau ».
+    """Artisans et services, Collègues, Clients : portable français → « travail », fixe → « bureau ».
     Famille, Amis, Jardin secret (prioritaires) : un portable français (+33 6, +33 7) est « mobile ».
     Avec deux portables ou plus, rien n'est forcé : la Revue demande lequel est celui du travail."""
     groupes = set(fiche.get("groupes", []))
     if "Clients" in groupes:  # l'adresse d'un client (personne ou société) est celle de son travail
         for a in fiche.get("adresses", []):
             a["type"] = "travail"
-    if "Artisans et services" in groupes:
+    if groupes & {"Artisans et services", "Collègues", "Clients"}:
+        # Contacts professionnels : portable français → « travail », fixe français → « bureau »
         for t in fiche.get("telephones", []):
             if str(t.get("valeur", "")).startswith("+33"):
                 t["type"] = "travail" if portable_fr(t["valeur"]) else "bureau"
