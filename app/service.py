@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections import Counter
 import json
 import logging
 import shutil
@@ -14,8 +15,10 @@ import httpx
 from . import doublons, export, fusion
 from .config import Config
 from .db import Base
-from .modele import GROUPE_URGENCE, LIBELLES_SOURCES, completer, nom_affiche
-from .normalisation import ValeurInvalide, nettoyer, normaliser_fiche
+from .modele import (GROUPE_A_CLASSER, GROUPE_URGENCE, GROUPES_TRAVAIL, LIBELLES_SOURCES,
+                     completer, nom_affiche)
+from .normalisation import (ValeurInvalide, domaine_pro, nettoyer, normaliser_fiche,
+                            societe_depuis_domaine)
 from .sources import detecter_source, lire_texte, linkedin, outlook, vcard
 
 log = logging.getLogger("carnet")
@@ -288,10 +291,16 @@ class Carnet:
     def dossier(self, pid: str) -> dict:
         ligne = self._personne(pid)
         sources = self._sources_de(pid)
+        courante = self._fiche_courante(ligne, sources)
+        # Société déduite des courriels pro (toutes sources), proposée quand la fiche n'en a pas
+        tous = completer({"courriels": [c for s in sources for c in s["donnees"]["courriels"]]
+                          + courante["courriels"]})
+        valeur, origine = self._proposer_societe(tous, self._societes_par_domaine())
         return {
             "id": pid, "statut": ligne["statut"], "a_revoir": ligne["a_revoir"],
             "brouillon": ligne["brouillon"] is not None, "verifie_le": ligne["verifie_le"],
-            "fiche": self._fiche_courante(ligne, sources),
+            "fiche": courante,
+            "societe_deduite": {"valeur": valeur, "origine": origine} if valeur else None,
             "proposition": fusion.proposer(sources),
             "sources": sources,
             "raisons": json.loads(ligne["raisons"] or "[]"),
@@ -425,6 +434,100 @@ class Carnet:
                        (json.dumps(raisons, ensure_ascii=False), json.dumps(reunie, ensure_ascii=False),
                         quand, pid))
         return self.dossier(pid)
+
+    # ================================================================ revue des contacts vérifiés
+
+    def revue(self) -> dict:
+        """Contrôles sur les contacts vérifiés, regroupés par section."""
+        personnes = []
+        for p in self.base.lire("SELECT * FROM personnes WHERE statut = 'verifie'"):
+            sources = self._sources_de(p["id"])
+            personnes.append((p["id"], self._fiche_courante(p, sources)))
+        par_domaine = self._societes_par_domaine()
+
+        def resume(pid: str, f: dict, **extra) -> dict:
+            return {"id": pid, "nom": nom_affiche(f), "groupes": f["groupes"],
+                    "telephone": f["telephones"][0].get("affichage") if f["telephones"] else "",
+                    "courriel": f["courriels"][0]["valeur"] if f["courriels"] else "", **extra}
+
+        sections = {k: [] for k in ("anniversaires", "societes", "travail_a_classer", "urgence_sans_mobile",
+                                    "sans_groupe", "numeros_non_reconnus", "injoignables")}
+        for pid, f in sorted(personnes, key=lambda x: nom_affiche(x[1]).lower()):
+            groupes = set(f["groupes"])
+            if groupes & {"Famille", "Amis"} and not f["anniversaire"]:
+                sections["anniversaires"].append(resume(pid, f))
+            if groupes & set(GROUPES_TRAVAIL + [GROUPE_A_CLASSER]) and not f["societe"]:
+                proposition, origine = self._proposer_societe(f, par_domaine)
+                sections["societes"].append(resume(pid, f, proposition=proposition, origine=origine))
+            if GROUPE_A_CLASSER in groupes:
+                sections["travail_a_classer"].append(resume(pid, f, societe=f["societe"]))
+            if GROUPE_URGENCE in groupes and not any(t.get("mobile") for t in f["telephones"]):
+                sections["urgence_sans_mobile"].append(resume(pid, f))
+            if not groupes:
+                sections["sans_groupe"].append(resume(pid, f))
+            invalides = [t["valeur"] for t in f["telephones"] if not t.get("valide")]
+            if invalides:
+                sections["numeros_non_reconnus"].append(resume(pid, f, numeros=invalides))
+            if not f["telephones"] and not f["courriels"]:
+                sections["injoignables"].append(resume(pid, f))
+        return sections
+
+    def _societes_par_domaine(self) -> dict[str, Counter]:
+        """Société déjà connue pour un domaine (chez un autre contact) : la meilleure proposition."""
+        par_domaine: dict[str, Counter] = {}
+        for _, f in self.base_toutes_fiches():
+            if f["societe"]:
+                for c in f["courriels"]:
+                    d = domaine_pro(c["valeur"])
+                    if d:
+                        par_domaine.setdefault(d, Counter())[f["societe"]] += 1
+        return par_domaine
+
+    @staticmethod
+    def _proposer_societe(fiche: dict, par_domaine: dict[str, Counter]) -> tuple[str, str]:
+        """(société proposée, explication) d'après les courriels professionnels de la fiche."""
+        proposition, origine = "", ""
+        for c in fiche.get("courriels", []):
+            d = domaine_pro(c["valeur"])
+            if d and d in par_domaine:
+                return par_domaine[d].most_common(1)[0][0], f"déjà utilisée pour @{d}"
+            if d and not proposition:
+                proposition, origine = societe_depuis_domaine(d), f"déduite de @{d}"
+        return proposition, origine
+
+    def base_toutes_fiches(self) -> list[tuple[str, dict]]:
+        res = []
+        for p in self.base.lire("SELECT * FROM personnes WHERE fiche IS NOT NULL OR brouillon IS NOT NULL"):
+            res.append((p["id"], self._fiche_courante(p, [])))
+        return res
+
+    def retoucher(self, pid: str, anniversaire: str | None = None, societe: str | None = None,
+                  ajouter: list[str] | None = None, retirer: list[str] | None = None) -> dict:
+        """Correction rapide depuis l'onglet Revue : appliquée à la fiche validée (et au brouillon
+        s'il y en a un), sans repasser par la révision."""
+        ligne = self._personne(pid)
+        if ligne["statut"] != "verifie" or not ligne["fiche"]:
+            raise ErreurCarnet("Ce contact n'est pas encore vérifié : complète-le dans la révision.")
+        nouvelles = {}
+        for colonne in ("fiche", "brouillon"):
+            if not ligne[colonne]:
+                continue
+            f = completer(json.loads(ligne[colonne]))
+            if anniversaire is not None:
+                f["anniversaire"] = anniversaire
+            if societe is not None:
+                f["societe"] = societe
+            f["groupes"] = [g for g in f["groupes"] if g not in (retirer or [])]
+            f["groupes"] += [g for g in (ajouter or []) if g not in f["groupes"]]
+            try:
+                propre = normaliser_fiche(f, self.cfg.region)
+            except ValeurInvalide as exc:
+                raise ErreurCarnet(str(exc)) from exc
+            nouvelles[colonne] = json.dumps(propre, ensure_ascii=False)
+        with self.base.transaction() as cx:
+            cx.execute("UPDATE personnes SET fiche = ?, brouillon = ?, modifie_le = ? WHERE id = ?",
+                       (nouvelles["fiche"], nouvelles.get("brouillon"), _iso(maintenant()), pid))
+        return {"ok": True}
 
     # ================================================================ export et kit
 

@@ -17,7 +17,11 @@ from __future__ import annotations
 import copy
 
 GROUPE_VERIFIES = "✓ Vérifiés"
-GROUPES = ["Urgence", "Famille", "Amis", "Artisans et services", "Travail", "Jardin secret"]
+GROUPES = ["Urgence", "Famille", "Amis", "Artisans et services", "Collègues", "Clients", "Jardin secret"]
+GROUPES_TRAVAIL = ["Collègues", "Clients"]
+# Ancien groupe, remplacé par Collègues / Clients : gardé à l'import, à classer dans l'onglet Revue
+GROUPE_A_CLASSER = "Travail"
+GROUPES_RECONNUS = GROUPES + [GROUPE_A_CLASSER]
 GROUPE_URGENCE = "Urgence"
 
 CHAMPS_SIMPLES = ["prenom", "nom", "surnom", "societe", "fonction", "anniversaire", "notes"]

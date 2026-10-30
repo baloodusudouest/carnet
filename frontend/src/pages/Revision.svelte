@@ -23,7 +23,7 @@
     { champ: 'sites', libelle: 'Sites et réseaux', unite: 'site' },
     { champ: 'noms_associes', libelle: 'Noms associés', unite: 'nom associé' },
   ]
-  const RACCOURCIS_GROUPES = { u: 'Urgence', f: 'Famille', a: 'Amis', r: 'Artisans et services', t: 'Travail', j: 'Jardin secret' }
+  const RACCOURCIS_GROUPES = { u: 'Urgence', f: 'Famille', a: 'Amis', r: 'Artisans et services', o: 'Collègues', c: 'Clients', j: 'Jardin secret' }
   const LETTRE_GROUPE = Object.fromEntries(Object.entries(RACCOURCIS_GROUPES).map(([k, v]) => [v, k]))
   const ORDRE = ['icloud', 'gmail', 'outlook', 'linkedin']
 
@@ -55,6 +55,10 @@
     }
     fiche = $state.snapshot(dossier.fiche)
     chargeLe = JSON.stringify(fiche)
+    // Société absente : la proposition déduite des courriels pro est pré-remplie (en couleur)
+    if (dossier.statut !== 'verifie' && !fiche.societe && dossier.societe_deduite) {
+      fiche.societe = dossier.societe_deduite.valeur
+    }
     actif = 0
     edition = null
   }
@@ -330,7 +334,7 @@
       if (ligne.type === 'simple') choisir(ligne, ligne.champ === 'photo' ? null : '')
       else if (ligne.inclus) basculer(ligne)
     } else if (k === ' ' && ligne?.type === 'multiple') basculer(ligne)
-    else if (k === 'c' && ligne?.type === 'multiple') typeSuivant(ligne)
+    else if (k === 'y' && ligne?.type === 'multiple') typeSuivant(ligne)
     else traite = false
     if (traite) e.preventDefault()
   }
@@ -340,6 +344,12 @@
     const cle = ligneActive?.cle
     if (cle) document.querySelector(`[data-ligne="${CSS.escape(cle)}"]`)?.scrollIntoView({ block: 'nearest' })
   })
+
+  // La société retenue est-elle la proposition déduite (et pas une valeur venue d'une source) ?
+  function estDeduite(l) {
+    const d = dossier?.societe_deduite?.valeur
+    return !!d && fiche.societe === d && !l.valeurs.includes(d)
+  }
 
   function egal(a, b) {
     return (a ?? '') === (b ?? '')
@@ -478,6 +488,20 @@
                     {/if}
                   {:else if l.champ === 'photo'}
                     {#if fiche.photo}<img src={`/api/photos/${fiche.photo}`} alt="Retenue" class="w-9 h-9 rounded-full object-cover" />{:else}<span class="text-[#9a8a76] italic">aucune</span>{/if}
+                  {:else if l.champ === 'societe' && estDeduite(l)}
+                    <!-- Proposition déduite de l'adresse e-mail : fond ocre jusqu'à ce que tu la modifies -->
+                    <button class="w-full min-w-0 flex items-baseline gap-2 text-left py-0.5"
+                      ondblclick={() => editer(i)}
+                      title={`Société ${dossier.societe_deduite.origine} : vérifie-la (E pour modifier, 0 pour vider)`}>
+                      <span class="truncate rounded px-1.5 bg-[#f3d797] border border-dashed border-[#b07d1c]">{fiche.societe}</span>
+                      <span class="shrink-0 text-xs text-[#8a5a12] truncate">{dossier.societe_deduite.origine}</span>
+                    </button>
+                  {:else if l.champ === 'societe' && !fiche.societe && dossier.societe_deduite}
+                    <button class="w-full min-w-0 text-left py-0.5 text-[#8a5a12]"
+                      onclick={() => (fiche.societe = dossier.societe_deduite.valeur)}
+                      title={`Société ${dossier.societe_deduite.origine}`}>
+                      <span class="rounded px-1.5 border border-dashed border-[#b07d1c]">Proposer « {dossier.societe_deduite.valeur} »</span>
+                    </button>
                   {:else}
                     <button class="w-full min-w-0 text-left py-0.5 {l.champ === 'nom' ? 'tracking-wide' : ''}"
                       ondblclick={() => editer(i)} title={fiche[l.champ] ? `${affichage(l.champ, fiche[l.champ])}\n(double-clic ou E pour modifier)` : 'Double-clic ou E pour modifier'}>
@@ -561,6 +585,11 @@
           </td>
           <td class="px-3 py-2 bg-papier">
             <div class="flex flex-wrap gap-1">
+              {#each fiche.groupes.filter((g) => !ref.groupes.includes(g)) as ancien}
+                <button class="text-xs rounded-full px-2 py-0.5 border border-dashed border-[#8a5a12] text-[#8a5a12]"
+                  title="Ancien groupe : choisis Collègues ou Clients, puis clique ici pour le retirer"
+                  onclick={() => basculerGroupe(ancien)}>{ancien} (à classer) ×</button>
+              {/each}
               {#each ref.groupes as g}
                 {@const dedans = fiche.groupes.includes(g)}
                 <button class="text-xs rounded-full px-2 py-0.5 border transition-colors

@@ -233,6 +233,25 @@ def photo(source_id: int):
     return Response(p[0], media_type=p[1], headers={"Cache-Control": "private, max-age=86400"})
 
 
+# ------------------------------------------------------------------ revue
+
+@app.get("/api/revue")
+def revue():
+    return carnet().revue()
+
+
+class Retouche(BaseModel):
+    anniversaire: str | None = None
+    societe: str | None = None
+    ajouter: list[str] = []
+    retirer: list[str] = []
+
+
+@app.post("/api/personnes/{pid}/retoucher")
+def retoucher(pid: str, corps: Retouche):
+    return carnet().retoucher(pid, corps.anniversaire, corps.societe, corps.ajouter, corps.retirer)
+
+
 # ------------------------------------------------------------------ export, kit, archives
 
 @app.post("/api/export")
