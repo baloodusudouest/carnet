@@ -89,8 +89,13 @@ CARNET_ICLOUD_PASSWORD=xxxx-xxxx-xxxx-xxxx</pre>
         <h2 class="titre text-xl mb-1">Simulation du {dateCourte(plan.le)}</h2>
         <p class="text-sm text-mine mb-4">
           {pluriel(plan.icloud, 'contact lu', 'contacts lus')} dans iCloud, {pluriel(plan.groupes_icloud, 'groupe', 'groupes')}.
-          {pluriel(plan.identiques, 'fiche est déjà à jour', 'fiches sont déjà à jour')}. Valable 30 minutes.
+          {pluriel(plan.identiques, 'fiche est déjà à jour', 'fiches sont déjà à jour')}.
+          {#if plan.reconnues}{pluriel(plan.reconnues, 'fiche iCloud reconnue', 'fiches iCloud reconnues')} par leur contenu (UID différent de l'export).{/if}
+          Valable 30 minutes.
         </p>
+        {#if plan.alerte}
+          <p class="rounded-xl border border-alerte text-alerte px-4 py-3 mb-4 text-sm">{plan.alerte}</p>
+        {/if}
         <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {#each [
             ['À mettre à jour', plan.modifier, (x) => x.nom],

@@ -832,3 +832,39 @@ def test_icloud_photo_signalee_par_hash(client, monkeypatch):
     _attendre(c)
     carte = serveur.texte("AAAA-1111")
     assert "PHOTO;ENCODING=b" in carte and "X-IMAGEHASH" not in carte and "X-IMAGETYPE" not in carte
+
+
+def test_icloud_uid_differents(client, monkeypatch, tmp_path):
+    """Exports faits depuis l'iPhone : pas d'UID, ou pas celui d'iCloud. Les fiches iCloud sont
+    reconnues par leur contenu ; un doublon « carnet-… » créé à tort est supprimé, l'original gardé."""
+    from app.main import etat
+    from tests.faux_icloud import FauxICloud
+    c = client
+    _connecter(c)
+    import re as _re
+    sans_uid = _re.sub(r"^UID:(AAAA|BBBB|CCCC).*\r?\n", "", (DONNEES / "icloud.vcf").read_text(), flags=_re.M)
+    r = c.post("/api/depot", files=[("fichiers", ("iphone.vcf", sans_uid.encode()))])
+    assert c.post("/api/importer", json={"nom": r.json()[0]["nom"], "source": "icloud"}).status_code == 200
+    claire, dubois, plombier = _personne(c, "Claire"), _personne(c, "Jean-Pierre"), _personne(c, "Plomberie")
+    for p in (claire, dubois):
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    c.post(f"/api/personnes/{plombier['id']}/ecarter")
+
+    distant = (DONNEES / "icloud.vcf").read_text().replace("TEL;type=HOME;type=VOICE:+33 5 53 11 22 33",
+                                                           "TEL;type=HOME;type=VOICE:+33 5 53 11 22 33\r\nNOTE:vu à Agen")
+    distant += f"BEGIN:VCARD\r\nVERSION:3.0\r\nN:MARTIN;Claire;;;\r\nFN:Claire MARTIN\r\nUID:carnet-{claire['id']}\r\nEND:VCARD\r\n"
+    serveur = FauxICloud(distant)
+    cn = etat["carnet"]
+    monkeypatch.setattr(cn, "transport_icloud", serveur.transport())
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "icloud_user": "moi@icloud.com",
+                                                        "icloud_password": "abcd-efgh-ijkl-mnop"}))
+    c.post("/api/icloud/simulation")
+    plan = _attendre(c)["plan"]
+    assert plan["creer"] == [] and plan["inconnus"] == [] and "alerte" not in plan
+    assert {x["nom"] for x in plan["modifier"]} == {"Claire MARTIN", "Jean-Pierre DUBOIS"}
+    assert sorted(x["motif"] for x in plan["supprimer"]) == ["doublon créé par carnet, la fiche d'origine est gardée", "mis de côté"]
+    c.post("/api/icloud/ecriture", json={"confirme": True})
+    _attendre(c)
+    assert serveur.texte(f"carnet-{claire['id']}") is None and serveur.texte("CCCC-3333") is None
+    assert "NOTE:vu à Agen" not in serveur.texte("BBBB-2222")      # mise à jour de l'original
