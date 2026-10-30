@@ -416,3 +416,9 @@ def test_societes_a_uniformiser(client):
     assert r.json()["modifies"] == 2
     c.post("/api/societes/ignorer", json={"variantes": ["Pierre Fabre", "Pierre Fabre Dermo-Cosmétique"]})
     assert c.get("/api/revue").json()["societes_a_uniformiser"] == []
+
+
+def test_portables_en_mobile():
+    f = n.nettoyer({"telephones": [n.telephone("06 12 34 56 78", "domicile"), n.telephone("07 12 34 56 78", "autre"),
+                                   n.telephone("06 98 76 54 32", "travail"), n.telephone("05 53 11 22 33", "domicile")]})
+    assert [t["type"] for t in f["telephones"]] == ["mobile", "mobile", "travail", "domicile"]
