@@ -845,6 +845,7 @@ class Carnet:
             brutes = dav.lister()
             self._tache["message"] = "Comparaison avec carnet…"
             cartes = [synchro.analyser(b.href, b.etag, b.texte) for b in brutes]
+            self._cache_sauvegardes = None
             self._plan = self._preparer(cartes, dav)
         finally:
             dav.fermer()
@@ -872,8 +873,9 @@ class Carnet:
             presents = [u for u in candidats if u in contacts]
             uid = presents[0] if presents else (candidats[0] if candidats else f"carnet-{pid}")
             cibles[pid] = uid
-            nouvelle = export.vcard(fiche, uid, self.photo(fiche["photo"]) if fiche.get("photo") else None)
             distante = contacts.get(uid)
+            image = self.photo(fiche["photo"]) if fiche.get("photo") else self._photo_icloud(uid, distante, dav)
+            nouvelle = export.vcard(fiche, uid, image)
             texte = synchro.assembler(nouvelle, distante.texte if distante else None)
             nom = nom_affiche(fiche)
             base = {"cible": "contact", "pid": pid, "nom": nom, "uid": uid, "texte": texte,
@@ -953,9 +955,39 @@ class Carnet:
             "identiques": len(cibles) - len(noms("creer")) - len(noms("modifier")),
             "essai": essai["nom"] if essai else None,
         }
-        return {"instant": time.monotonic(), "actions": actions, "essai": essai, "inconnus": inconnus,
+        essai_groupe = next((g for g in groupes if g["nom"] == GROUPE_MOI and g["action"] != "supprimer"), None)
+        return {"instant": time.monotonic(), "actions": actions, "essai": essai, "essai_groupe": essai_groupe,
+                "inconnus": inconnus,
                 "sauvegarde": "".join(c.texte if c.texte.endswith("\n") else c.texte + "\r\n" for c in cartes),
                 "resume": resume}
+
+    def _photos_sauvegardees(self) -> dict[str, str]:
+        """Dernière photo connue de chaque UID dans les sauvegardes iCloud (la plus récente gagne)."""
+        if getattr(self, "_cache_sauvegardes", None) is None:
+            photos: dict[str, str] = {}
+            for f in sorted(self.cfg.archives.glob("*_icloud-sauvegarde.vcf")):
+                for bloc in f.read_text(encoding="utf-8", errors="replace").split("END:VCARD"):
+                    if "PHOTO" in bloc:
+                        c = synchro.analyser("", "", bloc + "END:VCARD")
+                        if c.uid:
+                            photos[c.uid] = bloc
+            self._cache_sauvegardes = photos
+        return self._cache_sauvegardes
+
+    def _photo_icloud(self, uid: str, distante, dav: CardDAV) -> tuple[bytes, str] | None:
+        """Sans photo dans carnet : celle d'iCloud, incluse dans la carte écrite. iCloud ne donne
+        parfois qu'un lien : l'image est alors téléchargée, sinon elle disparaîtrait à l'écriture.
+        Une photo perdue lors d'une écriture précédente est reprise dans les sauvegardes."""
+        for texte in ((distante.texte if distante else None), self._photos_sauvegardees().get(uid)):
+            trouvee = synchro.photo(texte) if texte else None
+            if not trouvee:
+                continue
+            if trouvee[0] == "image":
+                return trouvee[1]
+            donnees = dav.telecharger(trouvee[1])
+            if donnees:
+                return donnees, synchro.type_image(donnees)
+        return None
 
     def icloud_ecrire(self, essai: bool) -> dict:
         plan = self._plan
@@ -972,7 +1004,8 @@ class Carnet:
         # Sauvegarde complète d'iCloud tel qu'il a été lu, avant la moindre écriture
         sauvegarde = f"{quand:%Y-%m-%d_%H%M%S}_icloud-sauvegarde.vcf"
         export.ecrire_atomique(self.cfg.archives / sauvegarde, plan["sauvegarde"])
-        actions = [plan["essai"]] if essai else plan["actions"]
+        # L'essai écrit ta fiche et le groupe Moi (pour vérifier aussi les groupes sur l'iPhone)
+        actions = [a for a in (plan["essai"], plan["essai_groupe"]) if a] if essai else plan["actions"]
         self._plan = None  # les ETag lus ne valent plus après écriture
         bilan = {"le": _iso(quand), "essai": essai, "sauvegarde": sauvegarde, "crees": 0, "modifies": 0,
                  "supprimes": 0, "groupes": 0, "conflits": [], "erreurs": [], "importes": 0}

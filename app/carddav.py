@@ -141,6 +141,14 @@ class CardDAV:
                     cartes.append(Brute(href, etag, texte))
         return cartes
 
+    def telecharger(self, url: str) -> bytes | None:
+        """Image d'une carte que iCloud ne fournit que sous forme de lien (avec authentification)."""
+        try:
+            r = self.client.get(url)
+        except httpx.HTTPError:
+            return None
+        return r.content if r.status_code == 200 and r.content else None
+
     # ------------------------------------------------------------ écriture
 
     def href_nouveau(self, uid: str) -> str:
