@@ -965,3 +965,29 @@ def test_veille_icloud(client, monkeypatch):
     v = _attendre(c)["veille"]["journal"][0]
     assert v["importes"] == 2
     assert _personne(c, "Claire")["statut"] == "a_reviser" and _personne(c, "Nina")["statut"] == "a_reviser"
+
+
+def test_linkedin_par_api(client, monkeypatch):
+    import httpx
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    vus = []
+
+    def repondre(r):
+        vus.append(r)
+        assert r.headers["authorization"] == "Bearer abc" and r.headers["linkedin-version"] == "202312"
+        start = int(r.url.params["start"])
+        if start == 0:
+            return httpx.Response(200, json={"paging": {"start": 0}, "elements": [{"snapshotDomain": "CONNECTIONS",
+                "snapshotData": [{"First Name": "Claire", "Last Name": "Martin", "URL": "https://www.linkedin.com/in/claire-martin",
+                                  "Email Address": "", "Company": "Boulangerie du Port", "Position": "Gérante",
+                                  "Connected On": "12 Mar 2020"}]}]})
+        return httpx.Response(404, text='{"message":"No data found for this memberId"}')
+    monkeypatch.setattr(etat["carnet"], "transport_linkedin", httpx.MockTransport(repondre), raising=False)
+    r = c.post("/api/linkedin", json={"jeton": "abc"})
+    assert r.status_code == 200, r.text
+    assert r.json()["enrichies"] == 1 and len(vus) == 2
+    claire = c.get(f"/api/personnes/{_personne(c, 'Claire')['id']}").json()
+    assert any(s["source"] == "linkedin" for s in claire["sources"])
