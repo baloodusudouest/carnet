@@ -2429,7 +2429,30 @@ class Carnet:
         log.info("HA anniversaires : %d entrée(s) renvoyée(s), %d date(s) illisible(s) ignorée(s)", len(liste), ignores)
         return {"genere_le": _iso(maintenant()), "nombre": len(liste), "anniversaires": liste}
 
-    def ha_portrait(self, immich_id: str, cadre: str | None = None) -> tuple[bytes, str, tuple | None] | None:
+    def _pid_immich(self, immich_id: str) -> tuple[str, dict] | None:
+        """Contact vérifié lié à cette personne Immich."""
+        liens = self.base.etat("liaisons", {})
+        for pid, fiche, _ in self._verifiees():
+            if (liens.get(pid) or {}).get("immich") == immich_id:
+                return pid, fiche
+        return None
+
+    def ha_candidats(self, immich_id: str, nombre: int = 3) -> dict:
+        """Meilleurs candidats Photos HD de la personne Immich (choix des cadres de Home
+        Assistant, qui garde lui-même le choix : rien n'est modifié ici)."""
+        immich_id = (immich_id or "").strip().lower()
+        trouve = self._pid_immich(immich_id) if immich_id else None
+        if not trouve:
+            return {"candidats": [], "actuel": None}
+        pid = trouve[0]
+        hd = self.base.etat("photos_hd", {}).get(pid) or {}
+        actuel = hd.get("asset") if hd.get("immich") == immich_id else None
+        cands = self.base.etat("photos_hd_candidats", {}).get(pid, [])[:max(1, min(nombre, 6))]
+        return {"candidats": [{"asset": c["asset"], "score": c.get("score"), "le": c.get("le")} for c in cands],
+                "actuel": actuel}
+
+    def ha_portrait(self, immich_id: str, cadre: str | None = None,
+                    asset: str | None = None) -> tuple[bytes, str, tuple | None] | None:
         """Portrait HD (Photos HD) de la personne Immich, pour les cadres et dashboards de Home
         Assistant : (image, type, cadre du visage dans l'image ou None). None si le contact n'a
         pas de portrait HD en service (pas de liaison, photo iCloud gardée, aucun visage assez
@@ -2437,10 +2460,21 @@ class Carnet:
 
         ``cadre="centre"`` : visage entier au milieu d'un carré, découpé dans l'aperçu Immich
         de la même photo (plus de place autour que le portrait « tête et épaules ») ; gardé en
-        mémoire. Immich injoignable : le portrait enregistré, avec son cadre du visage."""
+        mémoire. Immich injoignable : le portrait enregistré, avec son cadre du visage.
+
+        ``asset`` : un des candidats Photos HD (choix fait dans Home Assistant), toujours découpé
+        « centré » ; None s'il n'est pas (ou plus) parmi les candidats."""
         immich_id = (immich_id or "").strip().lower()
         if not immich_id:
             return None
+        if asset:
+            trouve = self._pid_immich(immich_id)
+            cand = next((c for c in self.base.etat("photos_hd_candidats", {}).get(trouve[0], [])
+                         if c["asset"] == asset), None) if trouve else None
+            if not cand or not cand.get("boite"):
+                return None
+            centre = self._portrait_centre(asset, tuple(cand["boite"]))
+            return (centre[0], "image/jpeg", centre[1]) if centre else None
         liens = self.base.etat("liaisons", {})
         hd = self.base.etat("photos_hd", {})
         for pid, fiche, _ in self._verifiees():

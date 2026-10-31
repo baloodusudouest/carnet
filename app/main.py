@@ -488,12 +488,20 @@ def ha_anniversaires():
     return carnet().ha_anniversaires()
 
 
+@app.get("/ha/portraits/candidats")
+def ha_portraits_candidats(immich: str, nombre: int = 3):
+    """Carte de réservation : meilleurs candidats Photos HD d'une personne Immich
+    (``{"candidats": [{"asset", "score", "le"}], "actuel": asset ou null}``)."""
+    return carnet().ha_candidats(immich, nombre)
+
+
 @app.get("/ha/portrait")
-def ha_portrait(immich: str, cadre: str | None = None):
+def ha_portrait(immich: str, cadre: str | None = None, asset: str | None = None):
     """Cadres PicPak et dashboards : portrait HD de la personne Immich (JPEG carré), avec le cadre
     du visage dans l'en-tête X-Visage (« x1,y1,x2,y2 », de 0 à 1). ``cadre=centre`` : visage
-    entier au milieu du carré (losange du cadre de porte, avatars ronds). 404 sans portrait HD."""
-    trouve = carnet().ha_portrait(immich, cadre)
+    entier au milieu du carré (losange du cadre de porte, avatars ronds). ``asset`` : un candidat
+    précis (choix fait dans Home Assistant), découpé centré. 404 sans portrait HD."""
+    trouve = carnet().ha_portrait(immich, cadre, asset)
     if not trouve:
         raise HTTPException(404, "Pas de portrait HD pour cette personne.")
     image, type_, visage = trouve
