@@ -144,6 +144,7 @@ Copie `homeassistant/carnet.yaml` dans `/config/packages/`, ajoute `carnet_statu
 ```sh
 pip install -r requirements-dev.txt && python -m pytest -q
 cd frontend && npm ci && npm run build      # écrit app/static
+python -m playwright install chromium && python -m pytest -q tests/interface   # interface, PC et iPhone
 CARNET_PASSWORD=x CARNET_DB_KEY=y CARNET_DATA=./data CARNET_STATE=./state CARNET_KIT_CONFIG= \
   uvicorn app.main:app --port 8096
 ```
