@@ -610,7 +610,7 @@ if (STATIC / "assets").is_dir():
 
 @app.get("/{chemin:path}", include_in_schema=False)
 def interface(chemin: str):
-    if chemin.startswith("api/"):
+    if chemin.startswith(("api/", "ha/")):
         raise HTTPException(404, "Route inconnue.")
     fichier = STATIC / chemin
     if chemin and fichier.is_file() and STATIC in fichier.resolve().parents:
