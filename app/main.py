@@ -666,12 +666,22 @@ def forcer_sauvegarde():
     return carnet().forcer_synology()
 
 
+class TestRestauration(BaseModel):
+    cle: str | None = None
+
+
+@app.post("/api/sauvegardes/restauration")
+def tester_restauration(corps: TestRestauration):
+    return carnet().tester_restauration((corps.cle or "").strip() or None)
+
+
 @app.get("/api/sauvegardes/{nom}")
 def telecharger_sauvegarde(nom: str):
     chemin = etat["cfg"].archives / "sauvegardes" / Path(nom).name
     if not chemin.is_file():
         raise HTTPException(404, "Sauvegarde introuvable.")
-    return FileResponse(chemin, media_type="text/vcard", filename=chemin.name)
+    media = "application/octet-stream" if chemin.suffix == ".db" else "text/vcard"
+    return FileResponse(chemin, media_type=media, filename=chemin.name)
 
 
 @app.post("/api/icloud/veille")
@@ -717,7 +727,8 @@ def telecharger(nom: str):
     chemin = etat["cfg"].export / Path(nom).name
     if not chemin.is_file():
         raise HTTPException(404, "Export introuvable.")
-    return FileResponse(chemin, media_type="text/vcard", filename=chemin.name)
+    media = "application/octet-stream" if chemin.suffix == ".db" else "text/vcard"
+    return FileResponse(chemin, media_type=media, filename=chemin.name)
 
 
 @app.get("/api/kit")

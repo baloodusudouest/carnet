@@ -68,6 +68,7 @@ class Base:
         self._cx = sqlcipher3.connect(str(chemin), check_same_thread=False, isolation_level=None)
         # La clé est passée en paramètre lié impossible avec PRAGMA : on échappe les apostrophes.
         self._cx.execute("PRAGMA key = '" + cle.replace("'", "''") + "'")
+        self._cle = cle   # en mémoire seulement : sert à chiffrer les copies de sauvegarde
         try:
             self._cx.execute("SELECT count(*) FROM sqlite_master").fetchone()
         except sqlcipher3.DatabaseError as exc:  # mauvaise clé ou fichier abîmé
@@ -107,6 +108,41 @@ class Base:
                 "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
                 (cle, json.dumps(valeur, ensure_ascii=False)),
             )
+
+    def copier(self, destination: Path) -> None:
+        """Copie complète et cohérente de la base, chiffrée avec la même clé (sqlcipher_export).
+        Écrite à côté puis renommée : une copie interrompue ne remplace jamais la précédente."""
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        tmp = destination.with_suffix(".tmp")
+        tmp.unlink(missing_ok=True)
+        cle = self._cle.replace("'", "''")
+        with self._verrou:
+            self._cx.execute("ATTACH DATABASE ? AS copie KEY '" + cle + "'", (str(tmp),))
+            try:
+                self._cx.execute("SELECT sqlcipher_export('copie')").fetchone()
+            finally:
+                self._cx.execute("DETACH DATABASE copie")
+        tmp.replace(destination)
+
+    @staticmethod
+    def verifier(chemin: Path, cle: str) -> dict:
+        """Ouvre une copie avec une clé donnée et la contrôle (sans rien modifier)."""
+        cx = sqlcipher3.connect(f"file:{chemin}?mode=ro", uri=True)
+        try:
+            cx.execute("PRAGMA key = '" + cle.replace("'", "''") + "'")
+            try:
+                cx.execute("SELECT count(*) FROM sqlite_master").fetchone()
+            except sqlcipher3.DatabaseError:
+                return {"ok": False, "motif": "cette clé n'ouvre pas la sauvegarde"}
+            integrite = cx.execute("PRAGMA integrity_check").fetchone()[0]
+            compte = {t: cx.execute(f"SELECT count(*) FROM {t}").fetchone()[0]
+                      for t in ("personnes", "sources", "imports", "etat")}
+            compte["verifies"] = cx.execute("SELECT count(*) FROM personnes WHERE statut = 'verifie'").fetchone()[0]
+            compte["photos"] = cx.execute("SELECT count(*) FROM sources WHERE photo IS NOT NULL").fetchone()[0]
+            return {"ok": integrite == "ok", "motif": None if integrite == "ok" else f"base abîmée : {integrite}",
+                    "comptes": compte}
+        finally:
+            cx.close()
 
     def fermer(self) -> None:
         with self._verrou:
