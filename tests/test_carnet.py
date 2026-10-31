@@ -1339,3 +1339,114 @@ def test_treemich_patiente_sur_429():
     tm = Treemich("http://tm:4000", "a@b.c", "x", transport=httpx.MockTransport(repondre))
     tm.maj_naissance("t1", "1985-03-14")          # deux refus, puis accepté
     assert appels["n"] == 3
+
+
+def _jpeg(largeur, hauteur, boite, net=True):
+    """Photo de test : fond uni et damier fin (net) ou flou à l'emplacement du visage."""
+    import io as _io
+    from PIL import Image, ImageFilter
+    img = Image.new("RGB", (largeur, hauteur), (90, 110, 130))
+    x1, y1, x2, y2 = (int(boite[0] * largeur), int(boite[1] * hauteur), int(boite[2] * largeur), int(boite[3] * hauteur))
+    damier = Image.new("RGB", (x2 - x1, y2 - y1), (230, 200, 180))
+    px = damier.load()
+    for x in range(damier.width):
+        for y in range(damier.height):
+            if (x // 6 + y // 6) % 2:
+                px[x, y] = (40, 30, 20)
+    if not net:
+        damier = damier.filter(ImageFilter.GaussianBlur(12))
+    img.paste(damier, (x1, y1))
+    sortie = _io.BytesIO()
+    img.save(sortie, "JPEG", quality=92)
+    return sortie.getvalue()
+
+
+def test_portraits_hd(client, monkeypatch):
+    import httpx, json as _json
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    ecrits = []
+    t_im, t_tm = _faux_immich_treemich(ecrits)
+    # a1 : visage net, assez grand ; a2 : plus grand mais flou ; a3 : coupé au bord ; a4 : trop petit
+    photos = {
+        "a1": ((0.40, 0.30, 0.60, 0.56), True, 4000, 3000),
+        "a2": ((0.30, 0.20, 0.62, 0.62), False, 4000, 3000),
+        "a3": ((0.00, 0.30, 0.25, 0.60), True, 4000, 3000),
+        "a4": ((0.45, 0.45, 0.48, 0.49), True, 4000, 3000),
+    }
+    images = {a: _jpeg(1200, 900, b, net) for a, (b, net, _, _) in photos.items()}
+    lus = {"faces": 0}
+
+    def immich(r):
+        chemin = r.url.path
+        if chemin == "/api/search/metadata":
+            corps = _json.loads(r.content)
+            assert corps["personIds"] == ["im-claire"] and corps["type"] == "IMAGE"
+            nouvelles = [] if corps.get("createdAfter") else list(photos)
+            return httpx.Response(200, json={"albums": {}, "assets": {"items": [
+                {"id": a, "width": photos[a][2], "height": photos[a][3], "originalMimeType": "image/jpeg",
+                 "fileCreatedAt": "2025-06-01T10:00:00Z"} for a in nouvelles], "nextCursor": None, "nextPage": None}})
+        if chemin == "/api/faces":
+            lus["faces"] += 1
+            a = r.url.params["id"]
+            b = photos[a][0]
+            return httpx.Response(200, json=[
+                {"id": "f-autre", "boundingBoxX1": 10, "boundingBoxY1": 10, "boundingBoxX2": 600, "boundingBoxY2": 600,
+                 "imageWidth": 1440, "imageHeight": 1080, "person": {"id": "im-paul"}},
+                {"id": f"f-{a}", "boundingBoxX1": int(b[0] * 1440), "boundingBoxY1": int(b[1] * 1080),
+                 "boundingBoxX2": int(b[2] * 1440), "boundingBoxY2": int(b[3] * 1080),
+                 "imageWidth": 1440, "imageHeight": 1080, "person": {"id": "im-claire"}}])
+        if chemin.startswith("/api/assets/"):
+            return httpx.Response(200, content=images[chemin.split("/")[3]], headers={"content-type": "image/jpeg"})
+        return t_im.handler(r)
+
+    monkeypatch.setattr(cn, "transport_immich", httpx.MockTransport(immich), raising=False)
+    monkeypatch.setattr(cn, "transport_treemich", t_tm, raising=False)
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "immich_cle": "cle",
+                                                        "treemich_email": "moi@x.fr", "treemich_password": "tm"}))
+    p = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+    c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/liaisons/valider", json={"liaisons": [{"pid": p["id"], "immich": "im-claire", "treemich": "t-claire"}]})
+    _attendre(c)
+    l = c.get("/api/portraits").json()
+    assert [x["pid"] for x in l["lignes"]] == [p["id"]] and l["lignes"][0]["hd"] is None and l["prochaine"] is None
+
+    c.post("/api/portraits/recherche")
+    t = _attendre(c)
+    assert t["tache"]["etat"] == "termine", t["tache"]
+    ligne = c.get("/api/portraits").json()["lignes"][0]
+    assert ligne["hd"]["asset"] == "a1" and not ligne["hd"]["manuel"]       # le flou, le coupé et le petit sont écartés
+    assert {x["asset"] for x in ligne["candidats"]} == {"a1"}
+    from PIL import Image
+    import io as _io
+    fiche = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+    img = Image.open(_io.BytesIO(c.get(f"/api/photos/{fiche['photo']}").content))
+    assert img.format == "JPEG" and img.width == img.height and img.width > 500
+    assert ("immich", "/api/people/im-claire", {"featureFaceAssetId": "a1"}) in ecrits
+    assert c.get(f"/api/portraits/apercu/{p['id']}/a1").headers["content-type"] == "image/jpeg"
+
+    # La mise à jour des liaisons ne remet pas la vignette à la place du portrait
+    c.post("/api/liaisons/actualiser")
+    _attendre(c)
+    assert not c.get(f"/api/photos/{fiche['photo']}").content.endswith(b"visage-claire")
+
+    # Recherche suivante : seules les nouvelles photos sont lues ; un choix manuel est gardé
+    c.post("/api/portraits/choix", json={"pid": p["id"], "asset": "a1"})
+    assert c.get("/api/portraits").json()["lignes"][0]["hd"]["manuel"]
+    avant = lus["faces"]
+    c.post("/api/portraits/recherche")
+    _attendre(c)
+    assert lus["faces"] == avant
+    assert c.get("/api/portraits").json()["lignes"][0]["hd"]["manuel"]
+    assert c.post("/api/portraits/choix", json={"pid": p["id"], "asset": "zz"}).status_code == 400
+
+    # Une fois par mois pendant la nuit
+    assert not cn._portraits_dus()
+    j = cn.base.etat("photos_hd_journal", [])
+    j[0]["le"] = "2020-01-01T00:00:00+01:00"
+    cn.base.ecrire_etat("photos_hd_journal", j)
+    assert cn._portraits_dus()

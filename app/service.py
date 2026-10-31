@@ -22,7 +22,7 @@ import httpx
 from fastapi import HTTPException
 from rapidfuzz import fuzz
 
-from . import doublons, export, fusion, synchro
+from . import doublons, export, fusion, portraits, synchro
 from .carddav import CardDAV, Conflit, ErreurICloud
 from .liens import TYPES_FAMILLE, ErreurLien, Immich, Treemich, relations_de
 from .config import Config
@@ -1741,6 +1741,7 @@ class Carnet:
         noms_tree = {p["id"]: p["nom"] for p in d["treemich"]}
         a_revoir = self.base.etat("relations_treemich", {})
         gardees = self.base.etat("relations_gardees", {})   # « Garder le contact » : pas redemandé
+        portraits_hd = {p for p, x in self.base.etat("photos_hd", {}).items() if x.get("immich") == (liens.get(p) or {}).get("immich")}
         immich = None
         try:
             if self.cfg.immich_cle and any(l.get("immich") for l in cibles.values()):
@@ -1751,7 +1752,7 @@ class Carnet:
                 if fiche is None:
                     continue
                 maj = False
-                if immich and lien.get("immich"):
+                if immich and lien.get("immich") and pid not in portraits_hd:   # un portrait HD n'est pas remplacé par la vignette
                     try:
                         image = immich.visage(lien["immich"])
                     except ErreurLien as exc:
@@ -1840,6 +1841,211 @@ class Carnet:
             return im.visage(immich_id)
         finally:
             im.fermer()
+
+    # ================================================================ portraits HD depuis Immich
+
+    PORTRAITS_PAR_PERSONNE = 120   # photos les plus récentes examinées par personne (1er passage)
+    PORTRAITS_A_MESURER = 8        # meilleurs visages (par taille) dont la netteté est mesurée
+    PORTRAITS_GARDES = 6           # choix proposés par contact
+    PORTRAITS_JOURS = 30           # recherche automatique une fois par mois (pendant la tâche de nuit)
+
+    def _source_immich_id(self, pid: str) -> int | None:
+        l = self.base.un("SELECT id FROM sources WHERE source = 'immich' AND personne_id = ?", (pid,))
+        return l["id"] if l else None
+
+    def _portrait_eligible(self, pid: str, fiche: dict) -> bool:
+        """Contact sans photo, ou dont la photo vient d'Immich (vignette ou portrait HD) :
+        une photo d'iCloud, de Gmail ou choisie à la main dans la révision est gardée."""
+        return not fiche.get("photo") or fiche["photo"] == self._source_immich_id(pid)
+
+    def photos_hd(self) -> dict:
+        liens = self.base.etat("liaisons", {})
+        hd = self.base.etat("photos_hd", {})
+        candidats = self.base.etat("photos_hd_candidats", {})
+        journal = self.base.etat("photos_hd_journal", [])
+        lignes = []
+        for pid, fiche, _ in self._verifiees():
+            immich = (liens.get(pid) or {}).get("immich")
+            if not immich or not self._portrait_eligible(pid, fiche):
+                continue
+            h = hd.get(pid) if (hd.get(pid) or {}).get("immich") == immich else None
+            lignes.append({"pid": pid, "nom": nom_affiche(fiche), "photo": fiche.get("photo"),
+                           "hd": h and {k: h[k] for k in ("asset", "taille", "nettete", "manuel", "le")},
+                           "candidats": [{k: c[k] for k in ("asset", "taille", "nettete", "le")}
+                                         for c in candidats.get(pid, [])]})
+        lignes.sort(key=lambda x: (x["hd"] is not None, x["nom"].lower()))
+        prochaine = None
+        if journal:
+            prochaine = _iso(datetime.fromisoformat(journal[0]["le"]) + timedelta(days=self.PORTRAITS_JOURS))
+        return {"immich": bool(self.cfg.immich_cle), "lignes": lignes, "journal": journal[:10],
+                "prochaine": prochaine}
+
+    def chercher_portraits(self) -> dict:
+        return self._lancer("portraits", lambda: self._chercher_portraits(None))
+
+    def _portraits_dus(self) -> bool:
+        journal = self.base.etat("photos_hd_journal", [])
+        if not journal or not self.cfg.immich_cle:
+            return False   # le premier passage se lance d'un clic
+        return maintenant() - datetime.fromisoformat(journal[0]["le"]) >= timedelta(days=self.PORTRAITS_JOURS)
+
+    def _chercher_portraits(self, pids: list[str] | None) -> None:
+        """Pour chaque contact lié : meilleurs visages Immich (entiers, grands, nets) ; le meilleur
+        devient la photo du contact (sauf choix manuel) et la photo de la personne dans Immich."""
+        quand = maintenant()
+        liens = self.base.etat("liaisons", {})
+        hd = self.base.etat("photos_hd", {})
+        tous_candidats = self.base.etat("photos_hd_candidats", {})
+        journal = self.base.etat("photos_hd_journal", [])
+        depuis = journal[0]["le"] if journal else None
+        cibles = [(pid, fiche, liens[pid]["immich"]) for pid, fiche, _ in self._verifiees()
+                  if (pids is None or pid in pids) and (liens.get(pid) or {}).get("immich")
+                  and self._portrait_eligible(pid, fiche)]
+        bilan = {"le": _iso(quand), "contacts": len(cibles), "changees": 0, "sans_photo_hd": 0, "erreurs": []}
+        self._tache.update(total=len(cibles), fait=0, message="Portraits : lecture des photos Immich…")
+        immich = self._immich()
+        try:
+            for pid, fiche, immich_id in cibles:
+                self._tache["fait"] += 1
+                self._tache["message"] = f"Portraits : {nom_affiche(fiche)}…"
+                actuel = hd.get(pid) if (hd.get(pid) or {}).get("immich") == immich_id else None
+                anciens = tous_candidats.get(pid, []) if actuel or pid in tous_candidats else []
+                try:
+                    trouves = self._candidats_portrait(immich, immich_id, depuis if anciens else None, anciens)
+                except ErreurLien as exc:
+                    bilan["erreurs"].append(str(exc))
+                    if "droits" in str(exc):
+                        break   # clé sans les droits nécessaires : inutile d'insister
+                    continue
+                tous_candidats[pid] = trouves
+                if not trouves:
+                    bilan["sans_photo_hd"] += 1
+                    continue
+                if actuel and actuel.get("manuel"):
+                    continue
+                meilleur = trouves[0]
+                if actuel and (actuel["asset"] == meilleur["asset"] or meilleur["score"] < actuel.get("score", 0) * 1.1):
+                    continue
+                try:
+                    hd[pid] = self._poser_portrait(immich, pid, fiche, immich_id, meilleur, manuel=False)
+                    bilan["changees"] += 1
+                except ErreurLien as exc:
+                    bilan["erreurs"].append(f"{nom_affiche(fiche)} : {exc}")
+        finally:
+            immich.fermer()
+            self.base.ecrire_etat("photos_hd", hd)
+            self.base.ecrire_etat("photos_hd_candidats", tous_candidats)
+        bilan["erreurs"] = bilan["erreurs"][:20]
+        self.base.ecrire_etat("photos_hd_journal", ([bilan] + journal)[:24])
+        self._tache.update(etat="erreur" if bilan["erreurs"] and not bilan["changees"] else "termine", message=(
+            f"Portraits : {bilan['changees']} photo(s) HD posée(s) sur {bilan['contacts']} contact(s)"
+            + (f", {bilan['sans_photo_hd']} sans visage assez grand" if bilan["sans_photo_hd"] else "")
+            + (f" ; {bilan['erreurs'][0]}" if bilan["erreurs"] else "")
+            + (". Elles partiront dans iCloud à la prochaine écriture." if bilan["changees"] else ".")))
+
+    def _candidats_portrait(self, immich: Immich, immich_id: str, depuis: str | None, anciens: list[dict]) -> list[dict]:
+        """Visages entiers et assez grands de la personne, classés par taille et netteté.
+        Après le premier passage, seules les photos arrivées depuis sont examinées."""
+        connus = {c["asset"]: c for c in anciens}
+        for photo in immich.photos_de(immich_id, self.PORTRAITS_PAR_PERSONNE, depuis):
+            if photo["id"] in connus:
+                continue
+            visage = next((v for v in immich.visages_photo(photo["id"])
+                           if (v.get("person") or {}).get("id") == immich_id), None)
+            boite = portraits.boite_relative(visage) if visage else None
+            if not boite or not portraits.entier(boite):
+                continue
+            taille = portraits.taille_reelle(boite, photo["largeur"], photo["hauteur"], visage)
+            if taille < portraits.VISAGE_MIN:
+                continue
+            connus[photo["id"]] = {"asset": photo["id"], "boite": list(boite), "taille": taille, "nettete": None,
+                                   "type": photo["type"], "le": (photo["le"] or "")[:10]}
+        liste = sorted(connus.values(), key=lambda c: -c["taille"])
+        for c in liste[:self.PORTRAITS_A_MESURER]:
+            if c["nettete"] is None:
+                apercu = immich.image(c["asset"], "preview")
+                try:
+                    c["nettete"] = round(portraits.nettete(apercu, c["boite"]), 1) if apercu else None
+                except Exception:  # noqa: BLE001 — aperçu illisible : netteté inconnue
+                    c["nettete"] = None
+        for c in liste:
+            c["score"] = round(portraits.score(c["taille"], c["nettete"]), 1)
+        nets = [c for c in liste if c["nettete"] is None or c["nettete"] >= portraits.NETTETE_MIN]
+        liste = sorted(nets or liste, key=lambda c: -c["score"])
+        return liste[:self.PORTRAITS_GARDES]
+
+    def _poser_portrait(self, immich: Immich, pid: str, fiche: dict, immich_id: str, cand: dict, manuel: bool) -> dict:
+        """Découpe le portrait dans la meilleure version de la photo, puis l'installe partout."""
+        contenu = None
+        if cand.get("type", "").lower() in ("image/jpeg", "image/png", "image/webp", "image/tiff"):
+            contenu = immich.image(cand["asset"], "original")
+            if contenu and not portraits.lisible(contenu):
+                contenu = None
+        for taille in ("fullsize", "preview"):   # HEIC, RAW… : versions JPEG générées par Immich
+            if contenu:
+                break
+            contenu = immich.image(cand["asset"], taille)
+        if not contenu:
+            raise ErreurLien("photo introuvable dans Immich.")
+        image = portraits.portrait(contenu, cand["boite"])
+        with self.base.transaction() as cx:
+            sid = self._source_immich(cx, pid, immich_id, image)
+        fiche = dict(fiche, photo=sid)
+        self._remplacer_fiche_validee(pid, fiche)
+        try:
+            immich.definir_couverture(immich_id, cand["asset"])
+        except ErreurLien as exc:  # la photo du contact est posée quand même
+            log.warning("Photo de la personne Immich %s : %s", immich_id, exc)
+        return {"immich": immich_id, "asset": cand["asset"], "taille": cand["taille"], "nettete": cand["nettete"],
+                "score": cand.get("score", 0), "manuel": manuel, "le": _iso(maintenant())}
+
+    def choisir_portrait(self, pid: str, asset: str) -> dict:
+        """Choix manuel parmi les candidats : gardé lors des recherches suivantes."""
+        lien = self.base.etat("liaisons", {}).get(pid) or {}
+        cand = next((c for c in self.base.etat("photos_hd_candidats", {}).get(pid, []) if c["asset"] == asset), None)
+        if not lien.get("immich") or not cand:
+            raise ErreurCarnet("Cette photo n'est plus proposée : relance la recherche.")
+        ligne = self._personne(pid)
+        fiche = completer(json.loads(ligne["fiche"] or "{}"))
+        immich = self._immich()
+        try:
+            entree = self._poser_portrait(immich, pid, fiche, lien["immich"], cand, manuel=True)
+        finally:
+            immich.fermer()
+        hd = self.base.etat("photos_hd", {})
+        hd[pid] = entree
+        self.base.ecrire_etat("photos_hd", hd)
+        return {"ok": True}
+
+    def portrait_auto(self, pid: str) -> dict:
+        """Annule un choix manuel : la prochaine recherche choisira de nouveau la meilleure."""
+        hd = self.base.etat("photos_hd", {})
+        if pid in hd:
+            hd[pid]["manuel"] = False
+            hd[pid]["score"] = 0
+            self.base.ecrire_etat("photos_hd", hd)
+        return {"ok": True}
+
+    def apercu_portrait(self, pid: str, asset: str) -> tuple[bytes, str] | None:
+        """Petit aperçu d'un candidat, cadré comme le portrait final (gardé en mémoire)."""
+        cache = self.__dict__.setdefault("_cache_apercus", {})
+        if (pid, asset) in cache:
+            return cache[(pid, asset)]
+        cand = next((c for c in self.base.etat("photos_hd_candidats", {}).get(pid, []) if c["asset"] == asset), None)
+        if not cand:
+            return None
+        immich = self._immich()
+        try:
+            contenu = immich.image(asset, "preview")
+        finally:
+            immich.fermer()
+        if not contenu:
+            return None
+        image = portraits.portrait(contenu, cand["boite"], taille=320)
+        if len(cache) > 400:
+            cache.clear()
+        cache[(pid, asset)] = image
+        return image
 
     # ================================================================ Home Assistant : réservations et journal de naissance
 
@@ -1994,6 +2200,11 @@ class Carnet:
                     self._appliquer_liens(None)
                 except Exception:  # noqa: BLE001 — la sauvegarde passe quand même
                     log.exception("Liaisons de nuit")
+            if self._portraits_dus():   # une fois par mois, pour ménager le NAS
+                try:
+                    self._chercher_portraits(None)
+                except Exception:  # noqa: BLE001
+                    log.exception("Portraits de nuit")
             self._sauvegarder()
         return self._lancer("veille", travail)
 
