@@ -1460,7 +1460,15 @@ def test_portraits_hd(client, monkeypatch):
     assert img2.width == img2.height
     x1, y1, x2, y2 = map(float, r2.headers["x-visage"].split(","))
     assert abs((x1 + x2) / 2 - 0.5) < 0.03 and abs((y1 + y2) / 2 - 0.5) < 0.1
-    assert (x2 - x1) + (y2 - y1) <= 1.0                    # tient dans un losange inscrit
+    assert (x2 - x1) + (y2 - y1) <= 0.7                    # tient largement dans un losange inscrit
+    # Candidats proposés à Home Assistant, et portrait d'un candidat précis
+    cands = c.get("/ha/portraits/candidats", params={"immich": "im-claire"}, headers=h).json()
+    assert cands["actuel"] == "a1" and [x["asset"] for x in cands["candidats"]] == ["a1"]
+    r3 = c.get("/ha/portrait", params={"immich": "im-claire", "asset": "a1"}, headers=h)
+    assert r3.status_code == 200 and r3.content == r2.content
+    assert c.get("/ha/portrait", params={"immich": "im-claire", "asset": "a3"}, headers=h).status_code == 404
+    assert c.get("/ha/portraits/candidats", params={"immich": "im-x"}, headers=h).json() == {
+        "candidats": [], "actuel": None}
     # Portrait posé avant la v1.1 (sans cadre mémorisé) : cadre retrouvé dans les candidats
     hd = cn.base.etat("photos_hd", {})
     for v in hd.values():

@@ -192,9 +192,10 @@ def visage_dans_portrait(boite, ratio: float) -> tuple[float, float, float, floa
 
 # Portrait « centré » (Home Assistant) : visage entier au milieu d'un carré, pour un losange ou
 # un cercle. Un rectangle w × h tient dans un losange de diagonale c si w + h <= c : côté du carré
-# = (w + h) × MARGE_CENTRE (front, cheveux, menton compris), centre remonté de REMONTE_CENTRE × h.
-MARGE_CENTRE = 1.3
-REMONTE_CENTRE = 0.1
+# = (w + h) × MARGE_CENTRE, centre remonté de REMONTE_CENTRE × h. Le cadre Immich du visage
+# s'arrête aux sourcils et au menton : v1.2, marge élargie pour garder cheveux, menton et cou.
+MARGE_CENTRE = 1.65
+REMONTE_CENTRE = 0.15
 TAILLE_CENTRE = 600
 
 
