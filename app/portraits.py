@@ -178,6 +178,54 @@ def cadre_portrait(boite, l: int, h: int) -> tuple[int, int, int, int]:
     return int(gauche), int(haut), int(gauche + cote), int(haut + cote)
 
 
+def visage_dans_portrait(boite, ratio: float) -> tuple[float, float, float, float]:
+    """Cadre du visage (0 à 1) dans le portrait découpé par ``cadre_portrait`` sur une photo de
+    rapport largeur/hauteur ``ratio`` : Home Assistant centre ainsi le visage sur un cadre e-ink."""
+    h = 10_000.0                                  # taille virtuelle : seul le rapport compte
+    l = ratio * h
+    g, t, d, b = cadre_portrait(boite, int(l), int(h))
+    cote = max(d - g, 1)
+    x1, y1, x2, y2 = boite[0] * l, boite[1] * h, boite[2] * l, boite[3] * h
+    rel = [(x1 - g) / cote, (y1 - t) / cote, (x2 - g) / cote, (y2 - t) / cote]
+    return tuple(round(min(max(v, 0.0), 1.0), 4) for v in rel)
+
+
+# Portrait « centré » (Home Assistant) : visage entier au milieu d'un carré, pour un losange ou
+# un cercle. Un rectangle w × h tient dans un losange de diagonale c si w + h <= c : côté du carré
+# = (w + h) × MARGE_CENTRE (front, cheveux, menton compris), centre remonté de REMONTE_CENTRE × h.
+MARGE_CENTRE = 1.3
+REMONTE_CENTRE = 0.1
+TAILLE_CENTRE = 600
+
+
+def cadre_centre(boite, l: int, h: int) -> tuple[int, int, int, int]:
+    """Carré centré sur le visage, gardé dans la photo (réduit puis décalé s'il le faut)."""
+    x1, y1, x2, y2 = boite[0] * l, boite[1] * h, boite[2] * l, boite[3] * h
+    fw, fh = max(x2 - x1, 1.0), max(y2 - y1, 1.0)
+    cote = min((fw + fh) * MARGE_CENTRE, l, h)
+    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2 - REMONTE_CENTRE * fh
+    gauche = min(max(cx - cote / 2, 0), l - cote)
+    haut = min(max(cy - cote / 2, 0), h - cote)
+    return int(gauche), int(haut), int(gauche + cote), int(haut + cote)
+
+
+def portrait_centre(contenu: bytes, boite, taille: int = TAILLE_CENTRE) -> tuple[bytes, tuple]:
+    """Portrait carré centré sur le visage (JPEG) et cadre du visage dedans (0 à 1)."""
+    img = _ouvrir(contenu)
+    l, h = img.size
+    g, t, d, b = cadre_centre(boite, l, h)
+    carre = img.crop((g, t, d, b))
+    if carre.width > taille:
+        carre = carre.resize((taille, taille), Image.Resampling.LANCZOS)
+    cote = max(d - g, 1)
+    x1, y1, x2, y2 = boite[0] * l, boite[1] * h, boite[2] * l, boite[3] * h
+    visage = tuple(round(min(max(v, 0.0), 1.0), 4)
+                   for v in ((x1 - g) / cote, (y1 - t) / cote, (x2 - g) / cote, (y2 - t) / cote))
+    sortie = io.BytesIO()
+    carre.save(sortie, "JPEG", quality=88, optimize=True)
+    return sortie.getvalue(), visage
+
+
 def portrait(contenu: bytes, boite, taille: int = TAILLE_SORTIE) -> tuple[bytes, str]:
     """Portrait carré en JPEG, à partir de n'importe quelle taille de la photo."""
     img = _ouvrir(contenu)
