@@ -41,6 +41,7 @@ class Config:
     treemich_url: str = "http://treemich-api:4000"
     treemich_email: str = ""
     treemich_password: str = ""
+    ha_token: str = ""                # jeton des appels de Home Assistant (/ha/…)
     linkedin_client_id: str = ""      # app LinkedIn Developers (portabilité des données)
     linkedin_client_secret: str = ""
     linkedin_redirect: str = "https://localhost/carnet-linkedin"
@@ -102,6 +103,7 @@ def charger() -> Config:
         treemich_url=os.environ.get("CARNET_TREEMICH_URL", "http://treemich-api:4000").strip(),
         treemich_email=os.environ.get("CARNET_TREEMICH_EMAIL", "").strip(),
         treemich_password=os.environ.get("CARNET_TREEMICH_PASSWORD", "").strip(),
+        ha_token=os.environ.get("CARNET_HA_TOKEN", "").strip(),
         linkedin_client_id=os.environ.get("CARNET_LINKEDIN_CLIENT_ID", "").strip(),
         linkedin_client_secret=os.environ.get("CARNET_LINKEDIN_CLIENT_SECRET", "").strip(),
         linkedin_redirect=os.environ.get("CARNET_LINKEDIN_REDIRECT", "https://localhost/carnet-linkedin").strip(),

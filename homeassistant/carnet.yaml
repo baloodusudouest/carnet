@@ -2,7 +2,58 @@
 # À placer dans /config/packages/carnet.yaml (les packages sont déjà activés pour le kit d'urgence).
 # Dans secrets.yaml :
 #   carnet_status_url: "http://<IP_DU_NAS>:8096/status"
+#   carnet_personnes_url: "http://<IP_DU_NAS>:8096/ha/personnes"
+#   carnet_invite_url: "http://<IP_DU_NAS>:8096/ha/invite?nom={{ nom | urlencode }}"
+#   carnet_ha_auth: "Bearer <même valeur que CARNET_HA_TOKEN dans la stack>"
 # /status ne renvoie que des compteurs, aucune donnée personnelle : pas de jeton nécessaire.
+# /ha/… renvoie des noms et des dates de naissance : jeton obligatoire, et rien n'est gardé
+# dans les états de Home Assistant (réponses lues par les scripts seulement).
+
+rest_command:
+  # Noms proposés pendant la saisie d'une réservation (chambre-reservation-card)
+  carnet_personnes:
+    url: !secret carnet_personnes_url
+    method: get
+    headers:
+      authorization: !secret carnet_ha_auth
+    timeout: 20
+  # Fiche d'un invité d'après le nom écrit dans la réservation (journal de naissance)
+  carnet_invite:
+    url: !secret carnet_invite_url
+    method: get
+    headers:
+      authorization: !secret carnet_ha_auth
+    timeout: 20
+
+script:
+  carnet_invite_info:
+    alias: "Carnet – fiche d'un invité"
+    description: >-
+      Renvoie la date de naissance (et la personne Immich) de l'invité écrit dans une
+      réservation. Exemple : nom = états de input_text.invite_chambre_ami_1, au format
+      « Nom (AAAA-MM-JJ → AAAA-MM-JJ) » ; les dates sont ignorées.
+    fields:
+      nom:
+        description: "Nom de l'invité, ou contenu du champ invité de la réservation"
+        example: "Claire MARTIN (2026-08-16 → 2026-08-23)"
+        required: true
+        selector:
+          text:
+    sequence:
+      - action: rest_command.carnet_invite
+        data:
+          nom: "{{ nom }}"
+        response_variable: reponse
+      - variables:
+          resultat: >-
+            {% if reponse.status == 200 %}
+              {{ {'ok': true, 'fiche': reponse.content} }}
+            {% else %}
+              {{ {'ok': false, 'statut': reponse.status,
+                  'erreur': reponse.content.detail if reponse.content is mapping else reponse.content} }}
+            {% endif %}
+      - stop: "Fiche lue"
+        response_variable: resultat
 
 rest:
   - resource: !secret carnet_status_url

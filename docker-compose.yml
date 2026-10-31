@@ -25,6 +25,7 @@ services:
       - CARNET_IMMICH_CLE=${CARNET_IMMICH_CLE:-}                 # clé d'API Immich (person.read, person.update)
       - CARNET_TREEMICH_EMAIL=${CARNET_TREEMICH_EMAIL:-}         # compte Treemich
       - CARNET_TREEMICH_PASSWORD=${CARNET_TREEMICH_PASSWORD:-}
+      - CARNET_HA_TOKEN=${CARNET_HA_TOKEN:-}                     # jeton des appels de Home Assistant (/ha/…)
       - LOG_LEVEL=INFO
     volumes:
       # Dépôt des exports, archives, export propre : visibles depuis le PC
