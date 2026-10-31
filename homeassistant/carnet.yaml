@@ -46,8 +46,11 @@ script:
         response_variable: reponse
       - variables:
           resultat: >-
-            {% if reponse.status == 200 %}
+            {% if reponse.status == 200 and reponse.content is mapping %}
               {{ {'ok': true, 'fiche': reponse.content} }}
+            {% elif reponse.status == 200 %}
+              {{ {'ok': false, 'statut': 200,
+                  'erreur': "Réponse inattendue : vérifie carnet_invite_url dans secrets.yaml (…/ha/invite?nom=…)"} }}
             {% else %}
               {{ {'ok': false, 'statut': reponse.status,
                   'erreur': reponse.content.detail if reponse.content is mapping else reponse.content} }}
