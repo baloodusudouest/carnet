@@ -7,6 +7,8 @@ POST /auth/login. Les personnes Treemich liées à Immich portent une identité 
 """
 from __future__ import annotations
 
+import time
+
 import httpx
 
 
@@ -88,6 +90,8 @@ class Treemich:
         self._identifiants = {"email": courriel, "password": mot_de_passe}
         self.client = _client(transport)
         self.connecte = False
+        self._dernier = 0.0
+        self.facteur_attente = 1.0 if transport is None else 0.0   # tests : pas d'attente réelle
 
     def _connecter(self) -> None:
         try:
@@ -103,21 +107,37 @@ class Treemich:
     def fermer(self) -> None:
         """Rien : la session reste ouverte pour les appels suivants."""
 
+    INTERVALLE = 0.3   # Treemich accepte ~300 requêtes par minute : carnet reste en dessous
+    ATTENTES_429 = 4   # sur « trop de requêtes », carnet patiente puis réessaie (au plus 4 fois)
+
     def _appel(self, methode: str, chemin: str, **kw) -> httpx.Response:
-        for essai in range(2):
+        reconnecte, attentes = False, 0
+        while True:
             if not self.connecte:
                 self._connecter()
+            ecart = time.monotonic() - self._dernier
+            if ecart < self.INTERVALLE * self.facteur_attente:
+                time.sleep(self.INTERVALLE * self.facteur_attente - ecart)
             try:
                 r = self.client.request(methode, self.api + chemin, **kw)
             except httpx.HTTPError as exc:
                 raise ErreurLien(f"Treemich injoignable ({exc.__class__.__name__}).") from exc
-            if r.status_code == 401 and essai == 0:  # session expirée : une reconnexion
-                self.connecte = False
+            finally:
+                self._dernier = time.monotonic()
+            if r.status_code == 401 and not reconnecte:  # session expirée : une reconnexion
+                self.connecte, reconnecte = False, True
+                continue
+            if r.status_code == 429 and attentes < self.ATTENTES_429:
+                attentes += 1
+                try:
+                    delai = float(r.headers.get("retry-after", "") or 30)
+                except ValueError:
+                    delai = 30
+                time.sleep(min(max(delai, 1), 65) * self.facteur_attente)
                 continue
             if r.status_code == 429:
                 raise ErreurLien("Treemich limite le nombre de requêtes : réessaie dans quelques minutes.")
             return r
-        return r
 
     def _get(self, chemin: str, **params) -> dict:
         r = self._appel("GET", chemin, params=params or None)
