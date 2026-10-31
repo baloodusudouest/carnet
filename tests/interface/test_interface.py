@@ -189,3 +189,21 @@ def test_pc_quatre_onglets_et_sous_onglets(navigateur, serveur):
     expect(page.get_by_role("navigation", name="Pages de l'onglet").get_by_role("link", name="Archives")).to_be_visible()
     assert erreurs == []
     page.context.close()
+
+
+def test_pc_fusion_depuis_contacts_reste_sur_la_liste(navigateur, serveur):
+    page, erreurs = _page(navigateur, serveur, "pc")
+    page.goto(f"{serveur}/#/contacts")
+    lignes = page.locator("tbody tr")
+    expect(lignes.first).to_be_visible()
+    noms = [lignes.nth(i).locator("td").nth(1).inner_text().split("\n")[0] for i in (0, 1)]
+    lignes.nth(0).click()                                   # un clic sur la ligne la coche
+    lignes.nth(1).locator("input[type=checkbox]").check()
+    page.once("dialog", lambda d: d.accept())
+    page.get_by_role("button", name="Fusionner").click()
+    expect(page.get_by_text("Fusion à réviser")).to_have_count(1)
+    assert page.url.endswith("#/contacts")                  # on reste sur la liste
+    expect(page.locator("tbody input[type=checkbox]:checked")).to_have_count(0)
+    assert any(page.get_by_text(n, exact=True).count() for n in noms)
+    assert erreurs == []
+    page.context.close()
