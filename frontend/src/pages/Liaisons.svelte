@@ -154,6 +154,20 @@
     filtrePortraits === 'tous' || (filtrePortraits === 'sans' ? !l.hd : l.hd?.manuel)) : [])
   const netteteLisible = (n) => n == null ? 'netteté inconnue' : n >= 120 ? 'net' : n >= 50 ? 'assez net' : 'un peu flou'
 
+  // Sommaire (comme dans la Revue) : nombre d'éléments qui demandent une action
+  const sommaire = $derived(donnees ? [
+    { cle: 'a-valider', titre: 'À valider', n: donnees.propositions.length },
+    { cle: 'orthographes', titre: 'Orthographes différentes', n: ecarts.length },
+    { cle: 'noms-immich', titre: 'Noms Immich « Prénom NOM »', n: donnees.a_formater?.length ?? 0 },
+    { cle: 'naissances', titre: 'Dates de naissance', n: naissances?.plan
+      ? ['immich', 'treemich'].reduce((t, c) => t + naissances.plan.resume[c].ajouter, 0) : 0 },
+    { cle: 'photos-hd', titre: 'Photos HD', n: portraits?.lignes.filter((l) => !l.hd && l.candidats.length).length ?? 0 },
+    { cle: 'liees', titre: 'Contacts liés', n: donnees.liees.length, info: true },
+  ] : [])
+  function allerA(cle) {
+    document.getElementById(cle)?.scrollIntoView({ behavior: 'smooth' })
+  }
+
   async function actualiser() {
     try {
       await api.post('/api/liaisons/actualiser')
@@ -172,7 +186,7 @@
   </span>
 {/snippet}
 
-<div class="max-w-5xl">
+<div class="max-w-7xl">
   <div class="flex flex-wrap items-end gap-4 mb-2">
     <div>
       <h1 class="titre text-3xl">Liaisons Immich et Treemich</h1>
@@ -200,7 +214,19 @@
         {pluriel(donnees.nb_treemich, 'personne', 'personnes')} dans Treemich ;
         {pluriel(donnees.liees.length, 'contact lié', 'contacts liés')}.</p>
 
-      <section class="mb-10">
+      <div class="flex gap-8">
+      <!-- Sommaire, comme dans la Revue -->
+      <nav class="sticky top-6 self-start w-64 shrink-0 hidden lg:flex flex-col gap-0.5" aria-label="Sections">
+        {#each sommaire as x}
+          <a href="#/liaisons" onclick={(e) => { e.preventDefault(); allerA(x.cle) }}
+            class="flex items-center gap-2 px-3 py-1.5 rounded-l-md text-sm {x.n ? 'text-papier hover:bg-couture' : 'text-mine/60'}">
+            <span class="flex-1 truncate">{x.titre}</span>
+            <span class="tabular-nums text-xs rounded-full px-1.5 {x.n && !x.info ? 'bg-onglet text-onglet-sombre font-semibold' : ''}">{x.n}</span>
+          </a>
+        {/each}
+      </nav>
+      <div class="flex-1 min-w-0">
+      <section id="a-valider" class="mb-10 scroll-mt-6">
         <div class="flex flex-wrap items-center gap-4 mb-2">
           <h2 class="titre text-xl">À valider <span class="text-mine text-base font-normal">({donnees.propositions.length})</span></h2>
           {#if exactes.length}
@@ -248,7 +274,7 @@
       </section>
 
       {#if ecarts.length}
-        <section class="mb-10">
+        <section id="orthographes" class="mb-10 scroll-mt-6">
           <h2 class="titre text-xl">Orthographes différentes <span class="text-mine text-base font-normal">({ecarts.length})</span></h2>
           <p class="text-sm text-mine mb-3">Choisis l'orthographe juste : elle est écrite dans carnet, Immich et Treemich, au format « Prénom NOM ».
             Pense à corriger aussi une réservation en cours qui utiliserait l'ancien nom.</p>
@@ -269,7 +295,7 @@
 
       {#if donnees.a_formater?.length}
         {@const lies = donnees.a_formater.filter((x) => x.lie)}
-        <section class="mb-10">
+        <section id="noms-immich" class="mb-10 scroll-mt-6">
           <div class="flex flex-wrap items-center gap-4 mb-2">
             <h2 class="titre text-xl">Noms Immich au format « Prénom NOM » <span class="text-mine text-base font-normal">({donnees.a_formater.length})</span></h2>
             {#if lies.length}
@@ -297,7 +323,7 @@
 
       {#if naissances}
         {@const plan = naissances.plan}
-        <section class="mb-10">
+        <section id="naissances" class="mb-10 scroll-mt-6">
           <div class="flex flex-wrap items-end gap-4 mb-2">
             <div>
               <h2 class="titre text-xl">Dates de naissance vers Immich et Treemich</h2>
@@ -374,7 +400,10 @@
                     <details class="text-xs text-mine"><summary class="cursor-pointer">Anciennes valeurs</summary>
                       {#each j.ecrites as e}<span class="block">{e.nom} : {e.avant || '—'} → {e.apres}</span>{/each}</details>
                   {/if}
-                  {#if j.erreurs.length}<span class="block text-xs text-alerte">{j.erreurs.join(' · ')}</span>{/if}
+                  {#if j.erreurs.length}
+                    <details class="text-xs text-alerte"><summary class="cursor-pointer">{j.erreurs.length} erreur(s)</summary>
+                      {#each j.erreurs as e}<span class="block">{e}</span>{/each}</details>
+                  {/if}
                 </li>
               {/each}
             </ul>
@@ -384,7 +413,7 @@
 
       {#if portraits?.immich}
         {@const avecHd = portraits.lignes.filter((l) => l.hd).length}
-        <section class="mb-10">
+        <section id="photos-hd" class="mb-10 scroll-mt-6">
           <div class="flex flex-wrap items-end gap-4 mb-2">
             <div>
               <h2 class="titre text-xl">Photos HD depuis Immich <span class="text-mine text-base font-normal">({avecHd}/{portraits.lignes.length})</span></h2>
@@ -451,7 +480,7 @@
         </section>
       {/if}
 
-      <section>
+      <section id="liees" class="scroll-mt-6">
         <div class="flex flex-wrap items-center gap-4 mb-2">
           <h2 class="titre text-xl">Contacts liés <span class="text-mine text-base font-normal">({donnees.liees.length})</span></h2>
           <input class="ml-auto w-56" placeholder="Filtrer" bind:value={filtre} aria-label="Filtrer les contacts liés" />
@@ -474,6 +503,8 @@
             {donnees.dernier_passage.a_revoir} à revoir.</p>
         {/if}
       </section>
+      </div>
+      </div>
     {/if}
   {:else}
     <p class="text-mine mt-6">Lecture d'Immich et de Treemich…</p>
