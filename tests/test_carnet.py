@@ -1674,3 +1674,12 @@ def test_fusion_manuelle_de_plusieurs_fiches_avec_linkedin(client):
     assert "linkedin" in sources and any(s["source"] == "linkedin" and not s["enrichissement"] for s in d["sources"])
     restants = {p["id"] for p in c.get("/api/contacts?tout=true").json()}
     assert li["id"] not in restants and len({a["id"], b["id"]} & restants) == 1
+
+
+def test_bilan_de_l_accueil(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    b = c.get("/api/bilan").json()
+    assert b["statut"]["a_reviser"] > 0 and b["revue"] is not None and b["restauration"] is None
+    assert b["liaisons"] is None and b["photos"] == {"hd": 0, "affiches": 0}

@@ -2727,6 +2727,38 @@ class Carnet:
         return {"le": v["le"], "ok": not v["erreur"], "erreur": v["erreur"], "revision": v["revision"],
                 "modifies": len(v["modifies"]), "nouveaux": len(v["nouveaux"]), "supprimes": len(v["supprimes"])}
 
+    def bilan(self) -> dict:
+        """Accueil : tout ce qui attend une action, en nombres (chaque partie est indépendante :
+        un service injoignable n'empêche pas le reste)."""
+        res = {"statut": self.statut()}
+        try:
+            r = self.revue()
+            res["revue"] = sum(len(v) for v in r.values() if isinstance(v, list))
+        except Exception:  # noqa: BLE001
+            log.exception("Bilan : revue")
+            res["revue"] = None
+        res["liaisons"] = None
+        if self.cfg.immich_cle or self.cfg.treemich_email:
+            try:
+                l = self.liaisons()
+                res["liaisons"] = {"propositions": len(l["propositions"]),
+                                   "orthographes": sum(1 for x in l["liees"] if x["ecart_nom"]),
+                                   "noms_immich": len(l["a_formater"]), "erreurs": l["erreurs"]}
+            except Exception:  # noqa: BLE001
+                log.exception("Bilan : liaisons")
+        try:
+            ph, af = self.photos_hd(), self.affiches()
+            res["photos"] = {"hd": sum(1 for x in ph["lignes"] if not x["hd"] and x["candidats"]),
+                             "affiches": sum(1 for x in af["lignes"] if not x["manuel"] and x["propositions"])}
+        except Exception:  # noqa: BLE001
+            log.exception("Bilan : photos")
+            res["photos"] = None
+        restaurations = self.base.etat("restauration_journal", [])
+        res["restauration"] = restaurations[0] and {k: restaurations[0].get(k) for k in ("le", "ok", "cle")} \
+            if restaurations else None
+        res["tache"] = dict(self._tache)
+        return res
+
     def statut(self) -> dict:
         compte = {l["statut"]: l["n"] for l in
                   self.base.lire("SELECT statut, count(*) AS n FROM personnes GROUP BY statut")}

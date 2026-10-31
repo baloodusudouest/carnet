@@ -45,3 +45,6 @@ export function choisirVue(pc) {
     /* navigation privée : préférence non gardée */
   }
 }
+
+// Bilan des actions en attente (Accueil et compteurs des sous-onglets), rechargé à la navigation
+export const bilan = $state({ donnees: null })

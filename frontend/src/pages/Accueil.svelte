@@ -1,210 +1,117 @@
 <script>
+  // Accueil : chercher un contact, et le bilan de tout ce qui attend une action.
   import { api } from '../lib/api.js'
-  import { ref, statut, annoncer, aller } from '../lib/etat.svelte.js'
-  import { dateCourte, pluriel } from '../lib/cles.js'
+  import { bilan, ecran } from '../lib/etat.svelte.js'
+  import { cleTexte, dateCourte, pluriel } from '../lib/cles.js'
 
-  let depot = $state([])
-  let choix = $state({})
-  let enCours = $state(null)
-  let bilan = $state(null)
-  let survol = $state(false)
+  let contacts = $state([])
+  let recherche = $state('')
+  api.get('/api/contacts').then((l) => (contacts = l.filter((p) => p.statut !== 'ecarte')))
+  api.get('/api/bilan').then((b) => (bilan.donnees = b)).catch(() => {})
 
-  async function rafraichir() {
-    depot = await api.get('/api/depot')
-    for (const f of depot) if (!(f.nom in choix)) choix[f.nom] = f.source ?? ''
-    Object.assign(statut, await api.get('/api/statut'))
-  }
-  rafraichir()
+  const resultats = $derived.by(() => {
+    const q = cleTexte(recherche)
+    const chiffres = recherche.replace(/\D/g, '')
+    if (!q) return []
+    return contacts.filter((p) => cleTexte(`${p.nom} ${p.societe} ${p.courriel}`).includes(q)
+      || (chiffres.length >= 3 && (p.telephone ?? '').replace(/\D/g, '').includes(chiffres))).slice(0, 8)
+  })
 
-  async function envoyer(fichiers) {
-    if (!fichiers?.length) return
-    const fd = new FormData()
-    for (const f of fichiers) fd.append('fichiers', f)
-    try {
-      await api.post('/api/depot', fd)
-      await rafraichir()
-    } catch (e) {
-      annoncer(e.message, true)
+  const JOURS_TEST = 90   // un test de restauration de plus de 3 mois est à refaire
+  const cartes = $derived.by(() => {
+    const b = bilan.donnees
+    if (!b) return []
+    const s = b.statut
+    const c = []
+    c.push({ titre: 'Fiches à réviser', n: s.a_reviser, lien: '#/revision',
+      texte: s.a_reviser ? `dont ${pluriel(s.doublons_a_reviser, 'doublon', 'doublons')} à fusionner` : 'Tout est relu.' })
+    if (b.revue != null) c.push({ titre: 'Points à compléter', n: b.revue, lien: '#/revue',
+      texte: b.revue ? 'Anniversaires, sociétés, numéros… sur les contacts vérifiés' : 'Rien à compléter.' })
+    if (b.liaisons) {
+      const n = b.liaisons.propositions + b.liaisons.orthographes + b.liaisons.noms_immich
+      c.push({ titre: 'Liaisons Immich et Treemich', n, lien: '#/liaisons', erreur: b.liaisons.erreurs?.[0],
+        texte: n ? [b.liaisons.propositions && `${b.liaisons.propositions} à valider`, b.liaisons.orthographes && `${b.liaisons.orthographes} orthographe(s)`,
+          b.liaisons.noms_immich && `${b.liaisons.noms_immich} nom(s) Immich`].filter(Boolean).join(', ') : 'Tout est lié.' })
     }
-  }
-
-  async function importer(nom) {
-    if (!choix[nom]) return annoncer('Choisis la source de ce fichier.', true)
-    enCours = nom
-    try {
-      bilan = { nom, ...(await api.post('/api/importer', { nom, source: choix[nom] })) }
-      await rafraichir()
-    } catch (e) {
-      annoncer(e.message, true)
-    } finally {
-      enCours = null
+    if (b.photos) {
+      const n = b.photos.hd + b.photos.affiches
+      c.push({ titre: 'Photos à choisir', n, lien: '#/photos',
+        texte: n ? [b.photos.hd && `${b.photos.hd} photo(s) HD`, b.photos.affiches && `${b.photos.affiches} affiche(s)`].filter(Boolean).join(', ') : 'Rien en attente.' })
     }
-  }
-
-  // LinkedIn par l'API de portabilité : le jeton sert une fois, il n'est pas enregistré
-  let jetonLinkedin = $state('')
-  let adresseRetour = $state('')
-  let linkedin = $state({ oauth: false, retour: '' })
-  api.get('/api/linkedin/etat').then((r) => (linkedin = r))
-
-  async function connecterLinkedin() {
-    try {
-      const { url } = await api.post('/api/linkedin/autorisation')
-      window.open(url, '_blank', 'noopener')
-    } catch (e) {
-      annoncer(e.message, true)
-    }
-  }
-
-  async function importerLinkedin(parCode = false) {
-    enCours = 'linkedin'
-    try {
-      const r = parCode === 'reessayer'
-        ? await api.post('/api/linkedin/reessayer')
-        : parCode
-          ? await api.post('/api/linkedin/code', { adresse: adresseRetour })
-          : await api.post('/api/linkedin', { jeton: jetonLinkedin })
-      adresseRetour = ''
-      bilan = { nom: 'Relations LinkedIn (API)', ...r }
-      jetonLinkedin = ''
-      await rafraichir()
-    } catch (e) {
-      annoncer(e.message, true)
-    } finally {
-      enCours = null
-      linkedin = await api.get('/api/linkedin/etat')
-    }
-  }
-
-  function deposer(e) {
-    e.preventDefault()
-    survol = false
-    envoyer(e.dataTransfer.files)
-  }
+    if (s.linkedin_sans_contact) c.push({ titre: 'Relations LinkedIn sans contact', n: s.linkedin_sans_contact, lien: '#/contacts', info: true,
+      texte: 'À rattacher à la main (Contacts › LinkedIn uniquement), ou à ignorer' })
+    const v = s.veille
+    c.push({ titre: 'iCloud', n: v && !v.ok ? 1 : 0, lien: '#/icloud', erreur: v && !v.ok ? v.erreur : null,
+      texte: [s.derniere_ecriture_icloud ? `Dernière écriture le ${dateCourte(s.derniere_ecriture_icloud.le)}` : 'Jamais écrit',
+        v ? `veille du ${dateCourte(v.le)} : ${v.modifies + v.nouveaux + v.supprimes} écart(s)${v.revision ? '' : ' (journal)'}` : null].filter(Boolean).join(' · ') })
+    const sv = s.sauvegarde, r = b.restauration
+    const testVieux = !r || !r.ok || (Date.now() - new Date(r.le)) / 864e5 > JOURS_TEST
+    c.push({ titre: 'Sauvegarde', n: (sv && !sv.ok ? 1 : 0) + (testVieux ? 1 : 0), lien: '#/export', erreur: sv && !sv.ok ? sv.erreur : null,
+      texte: [sv ? `Nuit du ${dateCourte(sv.le)} : ${sv.ok ? 'réussie' : 'échec'}` : 'Aucune sauvegarde',
+        r ? `test de restauration ${r.ok ? 'réussi' : 'raté'} le ${dateCourte(r.le)}${testVieux && r.ok ? ' (à refaire)' : ''}` : 'test de restauration jamais fait'].join(' · ') })
+    if (s.archives_bientot) c.push({ titre: 'Archives bientôt supprimées', n: s.archives_bientot, lien: '#/archives',
+      texte: `${pluriel(s.contacts_archives_bientot, 'contact concerné', 'contacts concernés')}` })
+    return c.sort((a, z) => (z.n > 0 && !z.info) - (a.n > 0 && !a.info))
+  })
+  const enAttente = $derived(cartes.filter((c) => c.n > 0 && !c.info).length)
+  const tache = $derived(bilan.donnees?.tache)
 </script>
 
-<div class="grid gap-10 lg:grid-cols-[1fr_340px]">
-  <section>
-    <h1 class="titre text-3xl mb-2">Rassembler les carnets</h1>
-    <p class="text-mine max-w-2xl mb-6">
-      Dépose ici les exports d'iCloud, Gmail, Outlook et LinkedIn. Chaque fichier est archivé
-      avant d'être lu, puis les doublons sont regroupés pour la révision.
-    </p>
+<div class="max-w-5xl mx-auto">
+  <h1 class="titre text-3xl {ecran.etroit && !ecran.forcerPC ? 'text-2xl' : ''} mb-4">Bonjour</h1>
 
-    <label
-      class="block rounded-xl border border-dashed px-6 py-8 text-center cursor-pointer transition-colors
-        {survol ? 'border-onglet bg-onglet-sombre/40' : 'border-tranche hover:border-mine'}"
-      ondragover={(e) => { e.preventDefault(); survol = true }}
-      ondragleave={() => (survol = false)}
-      ondrop={deposer}
-    >
-      <input type="file" class="sr-only" accept=".vcf,.vcard,.csv" multiple
-        onchange={(e) => envoyer(e.currentTarget.files)} />
-      <span class="block text-papier">Glisse les fichiers .vcf ou .csv ici, ou clique pour les choisir</span>
-      <span class="block text-sm text-mine mt-1">Tu peux aussi les copier dans le dossier <code>carnet/depot</code> du NAS.</span>
-    </label>
-
-    <details class="mt-4 rounded-xl border border-couture bg-reliure px-5 py-3">
-      <summary class="cursor-pointer text-sm">LinkedIn sans archive : relations lues par l'API de portabilité</summary>
-      {#if linkedin.en_attente}
-        <p class="text-sm mt-2 rounded-md border border-onglet/60 px-3 py-2">Connexion LinkedIn faite : les données
-          sont en préparation chez LinkedIn (environ 30 minutes après la première autorisation).
-          <button class="bouton !py-1 ml-2" disabled={enCours !== null} onclick={() => importerLinkedin('reessayer')}>
-            {enCours === 'linkedin' ? 'Lecture…' : 'Réessayer'}</button></p>
-      {/if}
-      {#if linkedin.oauth}
-        <ol class="text-sm text-mine mt-2 list-decimal pl-5 space-y-2">
-          <li><button class="bouton !py-1" onclick={connecterLinkedin}>Se connecter à LinkedIn</button>
-            <span class="block mt-1">Un onglet s'ouvre : accepte l'accès. LinkedIn renvoie ensuite vers
-              <code>{linkedin.retour}</code>, une page qui ne s'affiche pas : c'est normal.</span></li>
-          <li>Copie l'adresse complète de cette page (elle contient <code>?code=</code>) et colle-la ici :
-            <div class="flex flex-wrap gap-2 mt-1">
-              <input class="flex-1 min-w-64" bind:value={adresseRetour} placeholder={`${linkedin.retour}?code=…&state=…`} autocomplete="off" />
-              <button class="bouton bouton-principal" disabled={!adresseRetour.trim() || enCours !== null} onclick={() => importerLinkedin(true)}>
-                {enCours === 'linkedin' ? 'Lecture…' : 'Importer les relations'}</button>
-            </div></li>
-        </ol>
-      {:else}
-        <p class="text-sm text-mine mt-2">Pour un bouton de connexion, ajoute <code>CARNET_LINKEDIN_CLIENT_ID</code> et
-          <code>CARNET_LINKEDIN_CLIENT_SECRET</code> (onglet Auth de l'app LinkedIn) dans les variables de la stack.</p>
-      {/if}
-      <p class="text-sm text-mine mt-3">Ou colle un jeton créé dans l'outil OAuth de LinkedIn (portée <code>r_dma_portability_self_serve</code>).
-        Rien n'est enregistré.</p>
-      <div class="flex flex-wrap gap-2 mt-2">
-        <input type="password" class="flex-1 min-w-64" bind:value={jetonLinkedin} placeholder="Jeton d'accès LinkedIn" autocomplete="off" />
-        <button class="bouton" disabled={!jetonLinkedin.trim() || enCours !== null} onclick={() => importerLinkedin(false)}>
-          Importer avec ce jeton</button>
-      </div>
-    </details>
-
-    {#if depot.length}
-      <ul class="mt-6 divide-y divide-couture border-y border-couture">
-        {#each depot as f (f.nom)}
-          <li class="flex items-center gap-4 py-3">
-            <span class="flex-1 truncate">{f.nom}
-              <span class="text-mine text-sm ml-2">{Math.max(1, Math.round(f.taille / 1024))} Ko</span>
-            </span>
-            <select bind:value={choix[f.nom]} aria-label={`Source de ${f.nom}`}>
-              <option value="" disabled>Source…</option>
-              {#each Object.entries(ref.sources).filter(([cle]) => cle !== 'immich') as [cle, nom]}
-                <option value={cle}>{nom}</option>
-              {/each}
-            </select>
-            <button class="bouton bouton-principal" disabled={enCours !== null} onclick={() => importer(f.nom)}>
-              {enCours === f.nom ? 'Import…' : 'Importer'}
-            </button>
+  <div class="relative mb-8">
+    <input class="w-full h-12 !rounded-xl !px-4 text-base" type="search" placeholder="Chercher : nom, société, numéro…"
+      bind:value={recherche} aria-label="Chercher un contact" autocomplete="off" />
+    {#if resultats.length}
+      <ul class="absolute z-20 inset-x-0 mt-1 rounded-xl border border-tranche bg-reliure shadow-2xl divide-y divide-couture overflow-hidden">
+        {#each resultats as p (p.id)}
+          <li>
+            <a href={`#/fiche/${p.id}`} class="flex items-center gap-3 px-3 py-2 hover:bg-couture">
+              <span class="relative w-9 h-9 shrink-0 rounded-full overflow-hidden bg-couture grid place-items-center text-mine text-sm">
+                {p.nom?.[0] ?? '?'}
+                {#if p.photo}<img class="absolute inset-0 w-full h-full object-cover" src={`/api/photos/${p.photo}?taille=72`} alt=""
+                  width="36" height="36" onerror={(e) => e.currentTarget.remove()} />{/if}
+              </span>
+              <span class="flex-1 min-w-0"><span class="block truncate">{p.nom}</span>
+                <span class="block truncate text-xs text-mine">{p.societe || p.telephone || p.courriel}</span></span>
+              {#if p.statut !== 'verifie'}<span class="text-xs text-onglet">à relire</span>{/if}
+            </a>
           </li>
         {/each}
       </ul>
+    {:else if recherche.trim()}
+      <p class="text-sm text-mine mt-2">Aucun contact ne correspond.</p>
     {/if}
+  </div>
 
-    {#if bilan}
-      <div class="mt-6 rounded-lg border border-couture bg-reliure px-5 py-4" role="status">
-        <p class="font-medium">{bilan.nom} importé ({ref.sources[bilan.source]})</p>
-        <p class="text-mine text-sm mt-1">
-          {pluriel(bilan.lus, 'fiche lue', 'fiches lues')}, {pluriel(bilan.ajoutes, 'ajoutée', 'ajoutées')}{bilan.identiques ? `, ${pluriel(bilan.identiques, 'déjà connue', 'déjà connues')}` : ''}.
-          {#if bilan.source === 'linkedin'}
-            {pluriel(bilan.enrichies, 'contact complété', 'contacts complétés')} ; les autres relations LinkedIn ne créent pas de contact.
-          {:else}
-            {pluriel(bilan.personnes_creees, 'nouveau contact', 'nouveaux contacts')}, {pluriel(bilan.personnes_completees, 'fiche rapprochée', 'fiches rapprochées')} d'un contact existant.
-          {/if}
-        </p>
-        {#if bilan.avertissements?.length}
-          <details class="mt-2 text-sm text-mine">
-            <summary class="cursor-pointer">{bilan.avertissements.length} avertissement(s)</summary>
-            <ul class="mt-1 list-disc pl-5">{#each bilan.avertissements as a}<li>{a}</li>{/each}</ul>
-          </details>
-        {/if}
-      </div>
-    {/if}
-  </section>
-
-  <aside class="space-y-6">
-    <div class="rounded-xl border border-couture bg-reliure p-6">
-      <h2 class="titre text-xl mb-4">Où tu en es</h2>
-      <dl class="space-y-3">
-        <div class="flex justify-between"><dt class="text-mine">Contacts</dt><dd class="tabular-nums">{statut.total}</dd></div>
-        <div class="flex justify-between"><dt class="text-mine">Vérifiés</dt><dd class="tabular-nums text-valide">{statut.verifies}</dd></div>
-        <div class="flex justify-between"><dt class="text-mine">À relire</dt><dd class="tabular-nums">{statut.a_reviser}</dd></div>
-        <div class="flex justify-between"><dt class="text-mine">dont doublons à fusionner</dt><dd class="tabular-nums">{statut.doublons_a_reviser ?? 0}</dd></div>
-        {#if statut.linkedin_sans_contact}
-          <div class="flex justify-between"><dt class="text-mine">Relations LinkedIn sans contact</dt><dd class="tabular-nums">{statut.linkedin_sans_contact}</dd></div>
-        {/if}
-      </dl>
-      <button class="bouton bouton-principal w-full justify-center mt-6" disabled={!statut.a_reviser}
-        onclick={() => aller('revision')}>
-        {statut.a_reviser ? 'Reprendre la révision' : 'Rien à relire'}
-      </button>
-    </div>
-
-    {#if statut.archives_bientot}
-      <a href="#/archives" class="block rounded-xl border border-onglet/60 bg-onglet-sombre/30 p-5">
-        <p class="font-medium text-onglet">Archives bientôt supprimées</p>
-        <p class="text-sm text-mine mt-1">
-          {statut.archives_bientot} export(s), soit {statut.contacts_archives_bientot} fiches,
-          seront effacés à partir du {dateCourte(statut.prochaine_suppression)}.
-        </p>
-      </a>
-    {/if}
-  </aside>
+  <div class="flex items-baseline gap-3 mb-3">
+    <h2 class="titre text-xl">En attente</h2>
+    {#if bilan.donnees}<span class="text-sm text-mine">{enAttente ? pluriel(enAttente, 'point demande', 'points demandent') + ' ton attention' : 'Tout est à jour.'}</span>{/if}
+  </div>
+  {#if tache && ['lecture', 'ecriture'].includes(tache.etat)}
+    <p class="text-sm text-mine mb-3">En cours : {tache.message}{tache.total ? ` (${tache.fait}/${tache.total})` : ''}</p>
+  {/if}
+  {#if !bilan.donnees}
+    <p class="text-mine">Chargement du bilan…</p>
+  {:else}
+    <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {#each cartes as c (c.titre)}
+        {@const actif = c.n > 0 && !c.info}
+        <li>
+          <a href={c.lien} class="flex h-full flex-col rounded-2xl border p-4 transition-colors
+            {c.erreur ? 'border-alerte/70 bg-[#2a1b1b]' : actif ? 'border-onglet/50 bg-reliure hover:border-onglet' : 'border-couture bg-reliure/50 hover:border-tranche'}">
+            <span class="flex items-start gap-3">
+              <span class="flex-1 text-sm {actif || c.erreur ? 'text-papier' : 'text-mine'}">{c.titre}</span>
+              {#if c.n > 0 && c.titre !== 'iCloud' && c.titre !== 'Sauvegarde'}
+                <span class="titre text-2xl leading-none tabular-nums {c.info ? 'text-mine' : 'text-onglet'}">{c.n}</span>
+              {:else if !c.n}<span class="text-valide" aria-label="à jour">✓</span>{/if}
+            </span>
+            <span class="mt-2 text-xs {c.erreur ? 'text-alerte' : 'text-mine'}">{c.erreur ?? c.texte}</span>
+            {#if c.erreur}<span class="mt-1 text-xs text-mine">{c.texte}</span>{/if}
+          </a>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 </div>
