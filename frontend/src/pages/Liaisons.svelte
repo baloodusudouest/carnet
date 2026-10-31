@@ -31,7 +31,8 @@
     if (['lecture', 'ecriture'].includes(tache.etat)) minuteur = setTimeout(suivre, 800)
     else if (['lecture', 'ecriture'].includes(avant)) {
       annoncer(tache.message, tache.etat === 'erreur')
-      await charger()
+      if (tache.operation === 'naissances') await chargerNaissances()
+      else await charger()
     }
   }
   onDestroy(() => clearTimeout(minuteur))
@@ -93,6 +94,29 @@
   }
   const ecarts = $derived(donnees ? donnees.liees.filter((p) => p.ecart_nom) : [])
 
+  // Dates de naissance → Immich et Treemich (étape 5)
+  let naissances = $state(null)
+  let remplacer = $state(false)
+  let confirmeDates = $state(false)
+  let essai = $state('')
+  async function chargerNaissances() {
+    naissances = await api.get('/api/naissances')
+  }
+  chargerNaissances()
+  async function lancerNaissances(chemin, corps) {
+    try {
+      await api.post(chemin, corps)
+      await suivre()
+      await chargerNaissances()
+      confirmeDates = false
+    } catch (e) {
+      annoncer(e.message, true)
+    }
+  }
+  const ETATS = { ajouter: 'à ajouter', differente: 'différente', identique: 'identique',
+    annee_inconnue: 'année inconnue', rien_dans_carnet: 'absente de carnet' }
+  const aEcrire = (l, c) => l[c] && (l[c].etat === 'ajouter' || (remplacer && l[c].etat === 'differente'))
+
   async function actualiser() {
     try {
       await api.post('/api/liaisons/actualiser')
@@ -122,7 +146,7 @@
     <button class="bouton ml-auto" disabled={enCours} onclick={actualiser}>Mettre à jour maintenant</button>
   </div>
 
-  {#if tache && tache.etat !== 'repos' && tache.operation === 'liens'}
+  {#if tache && tache.etat !== 'repos' && ['liens', 'naissances'].includes(tache.operation)}
     <p class="text-sm mb-3 {tache.etat === 'erreur' ? 'text-alerte' : 'text-mine'}">{tache.message}
       {#if enCours && tache.total}<span class="tabular-nums"> ({tache.fait}/{tache.total})</span>{/if}</p>
   {/if}
@@ -231,6 +255,93 @@
               </li>
             {/each}
           </ul>
+        </section>
+      {/if}
+
+      {#if naissances}
+        {@const plan = naissances.plan}
+        <section class="mb-10">
+          <div class="flex flex-wrap items-end gap-4 mb-2">
+            <div>
+              <h2 class="titre text-xl">Dates de naissance vers Immich et Treemich</h2>
+              <p class="text-sm text-mine max-w-3xl">carnet fait foi. Une date sans année ne peut pas être écrite. Une date
+                différente n'est remplacée que si tu le demandes ; avant d'écrire dans Treemich, l'arbre est exporté en GEDCOM
+                dans carnet/archives, et chaque ancienne valeur est notée dans le journal.</p>
+            </div>
+            <button class="bouton {plan ? '' : 'bouton-principal'} ml-auto" disabled={enCours}
+              onclick={() => lancerNaissances('/api/naissances/simulation')}>{plan ? 'Refaire la simulation' : 'Simuler'}</button>
+          </div>
+          {#if plan}
+            <div class="grid sm:grid-cols-2 gap-3 mb-3 text-sm">
+              {#each ['immich', 'treemich'] as c}
+                <div class="rounded-xl border border-couture bg-reliure px-4 py-3">
+                  <span class="text-papier">{c === 'immich' ? 'Immich' : 'Treemich'}</span> :
+                  <span class="text-mine">{plan.resume[c].ajouter} à ajouter, {plan.resume[c].differente} différente(s),
+                    {plan.resume[c].identique} identique(s), {plan.resume[c].annee_inconnue} sans année</span>
+                </div>
+              {/each}
+            </div>
+            <details class="mb-4">
+              <summary class="cursor-pointer text-sm text-mine">Détail par contact</summary>
+              <table class="mt-2 w-full text-sm">
+                <thead><tr class="text-mine text-xs text-left"><th class="py-1">Contact</th><th>carnet</th><th>Immich</th><th>Treemich</th></tr></thead>
+                <tbody>
+                  {#each plan.lignes.filter((l) => ['immich', 'treemich'].some((c) => l[c] && l[c].etat !== 'identique' && l[c].etat !== 'rien_dans_carnet')) as l (l.pid)}
+                    <tr class="border-t border-couture">
+                      <td class="py-1">{l.nom}</td>
+                      <td class="tabular-nums">{l.carnet}</td>
+                      {#each ['immich', 'treemich'] as c}
+                        <td class="tabular-nums {aEcrire(l, c) ? 'text-onglet' : 'text-mine'}">
+                          {#if l[c]}{l[c].actuelle || '—'} <span class="text-xs">({ETATS[l[c].etat]})</span>{:else}—{/if}</td>
+                      {/each}
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </details>
+            <label class="flex items-center gap-2 text-sm mb-3">
+              <input type="checkbox" bind:checked={remplacer} /> Remplacer aussi les dates différentes (sinon seules les dates absentes sont ajoutées)
+            </label>
+            <div class="grid gap-4 lg:grid-cols-2">
+              <div class="rounded-xl border border-couture bg-reliure p-4 text-sm">
+                <p class="mb-2">1. Essai sur une personne</p>
+                <div class="flex flex-wrap gap-2">
+                  <select class="flex-1" bind:value={essai} aria-label="Personne pour l'essai">
+                    <option value="">Choisir…</option>
+                    {#each plan.lignes.filter((l) => aEcrire(l, 'immich') || aEcrire(l, 'treemich')) as l}<option value={l.pid}>{l.nom}</option>{/each}
+                  </select>
+                  <button class="bouton !py-1" disabled={!essai || enCours} onclick={() => lancerNaissances('/api/naissances/ecriture', { cible: 'immich', essai, remplacer })}>Immich</button>
+                  <button class="bouton !py-1" disabled={!essai || enCours} onclick={() => lancerNaissances('/api/naissances/ecriture', { cible: 'treemich', essai, remplacer })}>Treemich</button>
+                </div>
+              </div>
+              <div class="rounded-xl border border-onglet/60 bg-reliure p-4 text-sm">
+                <p class="mb-2">2. Écriture complète</p>
+                <label class="flex items-start gap-2 mb-2"><input type="checkbox" class="mt-1" bind:checked={confirmeDates} />
+                  <span>J'ai vérifié la simulation.</span></label>
+                <div class="flex gap-2">
+                  <button class="bouton bouton-principal !py-1" disabled={!confirmeDates || enCours}
+                    onclick={() => lancerNaissances('/api/naissances/ecriture', { cible: 'immich', confirme: true, remplacer })}>Écrire dans Immich</button>
+                  <button class="bouton bouton-principal !py-1" disabled={!confirmeDates || enCours}
+                    onclick={() => lancerNaissances('/api/naissances/ecriture', { cible: 'treemich', confirme: true, remplacer })}>Écrire dans Treemich</button>
+                </div>
+              </div>
+            </div>
+          {/if}
+          {#if naissances.journal.length}
+            <ul class="mt-4 divide-y divide-couture border-y border-couture text-sm">
+              {#each naissances.journal as j}
+                <li class="py-2">
+                  <span class="text-papier">{dateCourte(j.le)}</span>
+                  <span class="text-mine">· {j.essai ? 'Essai' : 'Écriture'} {j.cible} : {j.ecrites.length} date(s){j.sauvegarde ? ` · export ${j.sauvegarde}` : ''}</span>
+                  {#if j.ecrites.length}
+                    <details class="text-xs text-mine"><summary class="cursor-pointer">Anciennes valeurs</summary>
+                      {#each j.ecrites as e}<span class="block">{e.nom} : {e.avant || '—'} → {e.apres}</span>{/each}</details>
+                  {/if}
+                  {#if j.erreurs.length}<span class="block text-xs text-alerte">{j.erreurs.join(' · ')}</span>{/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
         </section>
       {/if}
 

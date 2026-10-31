@@ -1121,6 +1121,12 @@ def _faux_immich_treemich(ecrits=None):
                  "externalIdentities": [{"provider": "IMMICH", "providerPersonId": "im-claire"}]},
                 {"id": "t-paul", "name": "Paul Martin", "profile": {"gender": "MALE"}, "externalIdentities": []},
                 {"id": "t-lea", "name": "Léa Martin", "profile": {"gender": "FEMALE"}, "externalIdentities": []}]})
+        if r.url.path == "/people/t-claire/life-events":
+            return httpx.Response(200, json={"lifeEvents": [{"eventType": "BIRTH", "year": 1984, "month": 3, "day": 14}]})
+        if r.url.path.endswith("/life-events"):
+            return httpx.Response(200, json={"lifeEvents": []})
+        if r.url.path == "/export/gedcom":
+            return httpx.Response(200, content=b"0 HEAD\n1 SOUR Treemich\n0 TRLR\n")
         if r.url.path == "/relationships":
             return httpx.Response(200, json={"relationships": [
                 {"fromPersonId": "t-claire", "toPersonId": "t-paul", "type": "SPOUSE_OF"},
@@ -1271,3 +1277,48 @@ def test_home_assistant_reservations(client, monkeypatch):
     r = c.get("/ha/invite", params={"nom": "jean-pierre dubois"}, headers=h).json()
     assert r["naissance"] == "--07-02" and not r["annee_connue"]
     assert c.get("/ha/invite", params={"nom": "Inconnu Total"}, headers=h).status_code == 404
+
+
+def test_naissances_vers_immich_et_treemich(client, monkeypatch):
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    ecrits = []
+    t_im, t_tm = _faux_immich_treemich(ecrits)
+    monkeypatch.setattr(cn, "transport_immich", t_im, raising=False)
+    monkeypatch.setattr(cn, "transport_treemich", t_tm, raising=False)
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "immich_cle": "cle",
+                                                        "treemich_email": "moi@x.fr", "treemich_password": "tm"}))
+    claire, jp = _personne(c, "Claire"), _personne(c, "Jean-Pierre")
+    for p in (claire, jp):
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/liaisons/valider", json={"liaisons": [
+        {"pid": claire["id"], "immich": "im-claire", "treemich": "t-claire"},
+        {"pid": jp["id"], "immich": "im-jp", "treemich": "t-paul"}]})
+    _attendre(c)
+    ecrits.clear()
+    assert c.post("/api/naissances/ecriture", json={"cible": "immich", "confirme": True}).status_code == 400   # pas de simulation
+    c.post("/api/naissances/simulation")
+    assert _attendre(c)["tache"]["etat"] == "termine"
+    plan = c.get("/api/naissances").json()["plan"]
+    lignes = {l["nom"]: l for l in plan["lignes"]}
+    assert lignes["Claire MARTIN"]["immich"]["etat"] == "ajouter"           # vide dans Immich
+    assert lignes["Claire MARTIN"]["treemich"]["etat"] == "differente"      # 1984 dans l'arbre, 1985 dans carnet
+    assert lignes["Jean-Pierre DUBOIS"]["immich"]["etat"] == "annee_inconnue"
+    assert ecrits == []                                                       # la simulation n'écrit rien
+    # Essai sur une personne, puis Treemich sans remplacer les dates différentes : rien à écrire
+    c.post("/api/naissances/ecriture", json={"cible": "immich", "essai": claire["id"]})
+    _attendre(c)
+    assert ecrits == [("immich", "/api/people/im-claire", {"birthDate": "1985-03-14"})]
+    c.post("/api/naissances/simulation")
+    _attendre(c)
+    assert c.post("/api/naissances/ecriture", json={"cible": "treemich", "confirme": True}).status_code == 400
+    c.post("/api/naissances/ecriture", json={"cible": "treemich", "confirme": True, "remplacer": True})
+    _attendre(c)
+    assert ecrits[-1] == ("treemich", "/people/t-claire", {"birthDate": "1985-03-14"})
+    j = c.get("/api/naissances").json()["journal"][0]
+    assert j["ecrites"] == [{"nom": "Claire MARTIN", "avant": "1984-03-14", "apres": "1985-03-14"}]
+    assert (etat["cfg"].archives / j["sauvegarde"]).read_bytes().startswith(b"0 HEAD")

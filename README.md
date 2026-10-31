@@ -35,7 +35,9 @@ LinkedIn complète des contacts existants (société, poste, profil) mais n'en c
 
 ### Liaisons Immich et Treemich (V3)
 
-Onglet Liaisons : carnet propose, pour chaque contact vérifié, la personne Immich et la personne Treemich du même nom (la personne Treemich liée à ce visage Immich si elle existe). Les correspondances exactes se valident d'un clic. Ensuite, chaque nuit : le visage Immich devient la photo du contact, et les relations Treemich (conjoint, parents, enfants, frères et sœurs) complètent ses noms associés ; une relation qui contredit un nom associé saisi est proposée dans la Revue. Rien n'est écrit dans Immich ni dans Treemich à ce stade.
+Onglet Liaisons : carnet propose, pour chaque contact vérifié, la personne Immich et la personne Treemich du même nom (la personne Treemich liée à ce visage Immich si elle existe). Les correspondances exactes se valident d'un clic. Ensuite, chaque nuit : le visage Immich devient la photo du contact, et les relations Treemich (conjoint, parents, enfants, frères et sœurs) complètent ses noms associés ; une relation qui contredit un nom associé saisi est proposée dans la Revue. Les orthographes différentes se tranchent ligne par ligne, et les noms Immich peuvent être mis au format « Prénom NOM ».
+
+Dates de naissance (même onglet) : simulation, essai sur une personne, puis écriture vers Immich ou Treemich. carnet fait foi ; une date différente n'est remplacée que sur demande ; l'arbre Treemich est exporté en GEDCOM dans `archives/` avant d'écrire, et le journal garde chaque ancienne valeur.
 
 ### Sauvegarde de nuit (V3)
 

@@ -157,6 +157,20 @@ class Treemich:
         if r.status_code >= 400:
             raise ErreurLien(f"Treemich a refusé le nouveau nom ({r.status_code}).")
 
+    def naissance(self, pid: str) -> str:
+        """Date de naissance enregistrée dans l'arbre (« AAAA-MM-JJ », partielle ou vide)."""
+        for e in self._get(f"/people/{pid}/life-events").get("lifeEvents", []):
+            if e.get("eventType") == "BIRTH" and e.get("year"):
+                return f"{e['year']:04d}" + (f"-{e['month']:02d}" if e.get("month") else "") + \
+                    (f"-{e['day']:02d}" if e.get("month") and e.get("day") else "")
+        return ""
+
+    def exporter_gedcom(self) -> bytes:
+        r = self._appel("GET", "/export/gedcom")
+        if r.status_code >= 400 or not r.content:
+            raise ErreurLien(f"Export GEDCOM de Treemich impossible ({r.status_code}) : rien n'a été écrit.")
+        return r.content
+
     def maj_naissance(self, pid: str, date: str) -> None:
         r = self._appel("PATCH", f"/people/{pid}", json={"birthDate": date})
         if r.status_code >= 400:
