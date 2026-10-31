@@ -1548,19 +1548,28 @@ def test_affiches_iphone(client, monkeypatch):
     c.post("/api/affiches/preparation")
     t = _attendre(c)
     assert t["tache"]["etat"] == "termine", t["tache"]
+    ligne = c.get("/api/affiches").json()["lignes"][0]
+    assert [x["asset"] for x in ligne["propositions"]] == ["b2"]          # b1 : visage trop serré
+    assert ligne["choisie"] is None and envoyes == []                     # rien n'est envoyé sans choix
+    assert c.get(f"/api/affiches/proposition/{p['id']}/b2").headers["content-type"] == "image/jpeg"
+    assert c.post("/api/affiches/choix", json={"pid": p["id"], "asset": "b1"}).status_code == 400
+    c.post("/api/affiches/choix", json={"pid": p["id"], "asset": "b2"})
     assert albums == {"al1": "Affiches de contacts"} and len(envoyes) == 1
-    assert cn.base.etat("affiches")[p["id"]]["source"] == "b2"           # de la place autour du visage
+    ligne = c.get("/api/affiches").json()["lignes"][0]
+    assert ligne["choisie"] == "b2" and ligne["manuel"]
     from PIL import Image
     import io as _io
     corps = envoyes[0]
     img = Image.open(_io.BytesIO(corps[corps.index(b"\xff\xd8\xff"):]))
     assert img.height > img.width * 2                                    # format écran d'iPhone
-    assert c.get(f"/api/affiches/apercu/{p['id']}").status_code == 200
-    # Deuxième passage : rien ne change ; contact sorti du groupe : affiche supprimée d'Immich
+    # Nouvelle recherche : le choix est gardé ; retirer ; contact sorti du groupe
     c.post("/api/affiches/preparation")
     _attendre(c)
-    assert len(envoyes) == 1
+    assert len(envoyes) == 1 and c.get("/api/affiches").json()["lignes"][0]["choisie"] == "b2"
+    c.post("/api/affiches/choix", json={"pid": p["id"], "asset": None})
+    assert supprimes == ["up1"] and cn.base.etat("affiches") == {}
+    c.post("/api/affiches/choix", json={"pid": p["id"], "asset": "b2"})
     c.post("/api/affiches/groupes", json={"groupes": ["Amis"]})
     c.post("/api/affiches/preparation")
     _attendre(c)
-    assert supprimes == ["up1"] and cn.base.etat("affiches") == {}
+    assert supprimes == ["up1", "up2"] and cn.base.etat("affiches") == {}

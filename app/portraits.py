@@ -27,7 +27,7 @@ VISAGE_MIN = 250         # côté minimal du visage sur la photo d'origine (pixe
 NETTETE_REF = 110.0      # détail des traits à partir duquel un visage est jugé net
 NETTETE_MIN = 45.0       # en dessous : flou, écarté s'il existe d'autres choix
 ECRAN_MAX = 0.5          # au-dessus : photo d'un écran ou image pixélisée, écartée s'il existe d'autres choix
-VERSION_MESURES = 2      # changer cette valeur fait remesurer les candidats déjà connus
+VERSION_MESURES = 3      # changer cette valeur fait remesurer les candidats déjà connus
 
 
 def boite_relative(visage: dict) -> tuple[float, float, float, float] | None:
@@ -249,7 +249,7 @@ def note_affiche(cand: dict, ratio: float) -> float:
     return score(cand["taille"], cand.get("nettete"), cand.get("face"), cand.get("ecran")) * place * (0.4 + 0.6 * definition)
 
 
-def affiche(contenu: bytes, boite) -> bytes:
+def affiche(contenu: bytes, boite, hauteur: int = HAUTEUR_AFFICHE) -> bytes:
     """Image verticale plein écran (JPEG), cadrée sur le visage."""
     img = _ouvrir(contenu)
     l, h = img.size
@@ -258,11 +258,11 @@ def affiche(contenu: bytes, boite) -> bytes:
         raise ValueError("visage trop serré pour une affiche")
     x1, y1, x2, y2 = cadre
     decoupe = img.crop((int(x1 * l), int(y1 * h), int(x2 * l), int(y2 * h)))
-    if decoupe.height > HAUTEUR_AFFICHE:
-        decoupe = decoupe.resize((int(HAUTEUR_AFFICHE * decoupe.width / decoupe.height), HAUTEUR_AFFICHE),
+    if decoupe.height > hauteur:
+        decoupe = decoupe.resize((max(int(hauteur * decoupe.width / decoupe.height), 1), hauteur),
                                  Image.Resampling.LANCZOS)
     sortie = io.BytesIO()
-    decoupe.save(sortie, "JPEG", quality=90, optimize=True)
+    decoupe.save(sortie, "JPEG", quality=90 if hauteur >= 1000 else 82, optimize=True)
     return sortie.getvalue()
 
 
