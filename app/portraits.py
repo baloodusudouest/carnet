@@ -269,3 +269,16 @@ def affiche(contenu: bytes, boite, hauteur: int = HAUTEUR_AFFICHE) -> bytes:
 def ratio_image(contenu: bytes) -> float:
     img = _ouvrir(contenu)
     return img.width / img.height
+
+
+def vignette(contenu: bytes, cote: int) -> tuple[bytes, str]:
+    """Petite image carrée (centrée) en WebP pour les avatars de l'interface."""
+    img = _ouvrir(contenu)
+    l, h = img.size
+    c = min(l, h)
+    img = img.crop(((l - c) // 2, (h - c) // 2, (l - c) // 2 + c, (h - c) // 2 + c))
+    if c > cote:
+        img = img.resize((cote, cote), Image.Resampling.LANCZOS)
+    sortie = io.BytesIO()
+    img.save(sortie, "WEBP", quality=82, method=4)
+    return sortie.getvalue(), "image/webp"

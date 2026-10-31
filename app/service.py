@@ -1521,12 +1521,19 @@ class Carnet:
                                                     transport=getattr(self, "transport_treemich", None)))
         return self._session_treemich[1]
 
+    LIENS_VALIDITE = timedelta(hours=26)   # relu chaque nuit ; au-delà, relu à la demande suivante
+
     def _donnees_liens(self, rafraichir: bool = False) -> dict:
-        """Personnes Immich et Treemich (gardées 10 minutes en mémoire)."""
-        cache = getattr(self, "_cache_liens", None)
-        if cache and not rafraichir and time.monotonic() - cache["t"] < 600:
-            return cache
-        d = {"t": time.monotonic(), "immich": [], "treemich": [], "relations": [], "erreurs": []}
+        """Personnes Immich et Treemich. Relues dans Immich et Treemich seulement sur demande
+        (bouton, tâche de nuit, après un renommage) ou si la dernière lecture date de plus de
+        26 h ; sinon la dernière lecture, gardée en base, est servie (les pages s'ouvrent sans
+        solliciter Treemich, limité en débit)."""
+        if not rafraichir:
+            cache = getattr(self, "_cache_liens", None) or self.base.etat("liens_cache")
+            if cache and cache.get("le") and maintenant() - datetime.fromisoformat(cache["le"]) < self.LIENS_VALIDITE:
+                self._cache_liens = cache
+                return cache
+        d = {"le": _iso(maintenant()), "immich": [], "treemich": [], "relations": [], "erreurs": []}
         if self.cfg.immich_cle:
             try:
                 im = self._immich()
@@ -1546,7 +1553,13 @@ class Carnet:
             except ErreurLien as exc:
                 d["erreurs"].append(str(exc))
         self._cache_liens = d
+        if not d["erreurs"]:   # une lecture ratée ne remplace pas la dernière bonne
+            self.base.ecrire_etat("liens_cache", d)
         return d
+
+    def _oublier_liens(self) -> None:
+        self._cache_liens = None
+        self.base.ecrire_etat("liens_cache", None)
 
     def liaisons(self, rafraichir: bool = False) -> dict:
         """Contacts vérifiés liés à Immich / Treemich, et propositions à valider."""
@@ -1607,7 +1620,7 @@ class Carnet:
         return {"immich": bool(self.cfg.immich_cle), "treemich": bool(self.cfg.treemich_email),
                 "erreurs": d["erreurs"], "liees": liees, "propositions": propositions,
                 "a_formater": self.immich_a_formater(d, liens, verifiees),
-                "nb_immich": len(d["immich"]), "nb_treemich": len(d["treemich"]),
+                "nb_immich": len(d["immich"]), "nb_treemich": len(d["treemich"]), "lu_le": d.get("le"),
                 "dernier_passage": self.base.etat("liens_journal", [None])[0]}
 
     def valider_liaisons(self, liaisons: list[dict]) -> dict:
@@ -1667,7 +1680,7 @@ class Carnet:
                 tm.renommer(tid, " ".join(mots[:debut]), " ".join(mots[debut:]))
             finally:
                 tm.fermer()
-        self._cache_liens = None
+        self._oublier_liens()
         return {"nom": nom}
 
     def corriger_nom(self, pid: str, garder: str) -> dict:
@@ -1702,7 +1715,7 @@ class Carnet:
                 tm.renommer(lien["treemich"], prenom, nom)
             finally:
                 tm.fermer()
-        self._cache_liens = None
+        self._oublier_liens()
         return {"nom": " ".join(x for x in (prenom, nom) if x)}
 
     def refuser_liaison(self, pid: str, immich: str) -> dict:

@@ -11,6 +11,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -79,6 +80,8 @@ async def cycle(app: FastAPI):
 
 
 app = FastAPI(title="carnet", version=__version__, lifespan=cycle, docs_url=None, redoc_url=None)
+# Pages, scripts et réponses JSON compressés (les images, déjà compressées, passent telles quelles)
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 
 def carnet() -> Carnet:
@@ -311,12 +314,41 @@ def fusionner(pid: str, corps: Fusion):
     return carnet().fusionner(pid, corps.autre)
 
 
+# Vignettes d'avatars : calculées une fois, gardées en mémoire (clé : contenu + taille)
+_vignettes: dict[tuple[str, int], tuple[bytes, str]] = {}
+
+
+def reponse_image(request: Request, image: tuple[bytes, str], taille: int | None) -> Response:
+    """Image (réduite si `taille` est demandée), avec ETag : le navigateur garde sa copie et
+    redemande seulement si la photo a changé (une photo HD remplace la vignette au même lien)."""
+    import hashlib
+    from . import portraits
+    empreinte = hashlib.sha1(image[0]).hexdigest()
+    if taille:
+        taille = max(32, min(int(taille), 400))
+        cle = (empreinte, taille)
+        if cle not in _vignettes:
+            try:
+                _vignettes[cle] = portraits.vignette(image[0], taille)
+            except Exception:  # noqa: BLE001 — format illisible : l'original est servi
+                _vignettes[cle] = image
+            if len(_vignettes) > 2000:
+                _vignettes.pop(next(iter(_vignettes)))
+        image = _vignettes[cle]
+        empreinte = f"{empreinte}-{taille}"
+    etag = f'"{empreinte}"'
+    entetes = {"ETag": etag, "Cache-Control": "private, no-cache"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=entetes)
+    return Response(image[0], media_type=image[1], headers=entetes)
+
+
 @app.get("/api/photos/{source_id}")
-def photo(source_id: int):
+def photo(source_id: int, request: Request, taille: int | None = None):
     p = carnet().photo(source_id)
     if not p:
         raise HTTPException(404, "Pas de photo.")
-    return Response(p[0], media_type=p[1], headers={"Cache-Control": "private, max-age=86400"})
+    return reponse_image(request, p, taille)
 
 
 # ------------------------------------------------------------------ revue
@@ -514,14 +546,14 @@ def trancher_relations(pid: str, corps: Tranche):
 
 
 @app.get("/api/immich/visage/{immich_id}")
-def visage_immich(immich_id: str):
+def visage_immich(immich_id: str, request: Request, taille: int | None = None):
     try:
         image = carnet().visage_immich(immich_id)
     except Exception:  # noqa: BLE001 — pas de visage : l'interface affiche une initiale
         image = None
     if not image:
         raise HTTPException(404, "Pas de visage.")
-    return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=3600"})
+    return reponse_image(request, image, taille)
 
 
 @app.get("/api/portraits")

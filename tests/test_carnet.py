@@ -1575,3 +1575,56 @@ def test_affiches_iphone(client, monkeypatch):
     c.post("/api/affiches/preparation")
     _attendre(c)
     assert supprimes == ["up1", "up2"] and cn.base.etat("affiches") == {}
+
+
+def test_liaisons_lisent_la_derniere_lecture(client, monkeypatch):
+    import httpx
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    t_im, t_tm = _faux_immich_treemich()
+    appels = {"immich": 0}
+
+    def compte(r):
+        if r.url.path == "/api/people":
+            appels["immich"] += 1
+        return t_im.handler(r)
+    monkeypatch.setattr(cn, "transport_immich", httpx.MockTransport(compte), raising=False)
+    monkeypatch.setattr(cn, "transport_treemich", t_tm, raising=False)
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "immich_cle": "cle",
+                                                        "treemich_email": "moi@x.fr", "treemich_password": "tm"}))
+    l = c.get("/api/liaisons").json()                     # rien en base : lu une fois
+    assert appels["immich"] == 1 and l["nb_immich"] == 3 and l["lu_le"]
+    cn._cache_liens = None                                # comme après un redémarrage du conteneur
+    c.get("/api/liaisons")
+    assert appels["immich"] == 1                          # servi depuis la base, Immich non sollicité
+    c.get("/api/liaisons?rafraichir=true")
+    assert appels["immich"] == 2                          # « Relire » : nouvelle lecture
+    vieux = cn.base.etat("liens_cache")
+    vieux["le"] = "2020-01-01T00:00:00+01:00"
+    cn.base.ecrire_etat("liens_cache", vieux)
+    cn._cache_liens = None
+    c.get("/api/liaisons")
+    assert appels["immich"] == 3                          # plus de 26 h : relu
+
+
+def test_vignettes_et_compression(client):
+    import io as _io
+    from PIL import Image
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    sortie = _io.BytesIO()
+    Image.new("RGB", (800, 600), (200, 100, 50)).save(sortie, "JPEG")
+    with cn.base.transaction() as cx:
+        sid = cx.execute("SELECT id FROM sources LIMIT 1").fetchone()["id"]
+        cx.execute("UPDATE sources SET photo = ?, photo_type = 'image/jpeg' WHERE id = ?", (sortie.getvalue(), sid))
+    r = c.get(f"/api/photos/{sid}?taille=88")
+    assert r.headers["content-type"] == "image/webp" and Image.open(_io.BytesIO(r.content)).size == (88, 88)
+    assert c.get(f"/api/photos/{sid}?taille=88", headers={"If-None-Match": r.headers["etag"]}).status_code == 304
+    assert c.get(f"/api/photos/{sid}").headers["content-type"] == "image/jpeg"     # sans taille : l'original
+    assert c.get("/api/contacts", headers={"Accept-Encoding": "gzip"}).status_code == 200
