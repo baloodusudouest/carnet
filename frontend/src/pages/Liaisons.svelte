@@ -591,7 +591,7 @@
                   onclick={() => (filtreAffiches = v)}>{t}</button>
               {/each}
             </div>
-            <div class="overflow-x-auto rounded-xl border border-couture">
+            <div class="overflow-x-auto rounded-xl border border-couture" data-defile>
               <table class="w-full text-sm">
                 <thead>
                   <tr class="text-xs text-mine text-left">

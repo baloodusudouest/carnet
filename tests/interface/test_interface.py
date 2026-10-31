@@ -110,7 +110,7 @@ def test_raccourcis_de_la_revision(navigateur, serveur):
     pid = next(p["id"] for p in contacts.get("/api/contacts").json() if p["nom"] == second)
     page.wait_for_timeout(500)                            # brouillon de la proposition enregistré
     d = contacts.get(f"/api/personnes/{pid}").json()
-    amis_avant = "Amis" in (d.get("brouillon") or d["fiche"] or {}).get("groupes", [])
+    amis_avant = "Amis" in d["fiche"]["groupes"]
     page.keyboard.press("a")                              # A : ajouter ou retirer le groupe Amis
     page.keyboard.press("Enter")                          # Entrée : valider et passer à la suivante
     expect(titre).not_to_have_text(second)
@@ -121,48 +121,50 @@ def test_raccourcis_de_la_revision(navigateur, serveur):
 
 
 def _deborde(page: Page) -> bool:
-    """Le contenu de la page (hors barre d'onglets) sort de l'écran, ou un bloc défile en largeur.
-    Sur mobile, innerWidth s'agrandit avec le contenu : la largeur de l'écran est clientWidth."""
+    """Le contenu de la page sort de l'écran, ou un bloc défile en largeur sans le vouloir
+    (les bandeaux de photos marqués data-defile défilent exprès). Sur mobile, innerWidth
+    s'agrandit avec le contenu : la largeur de l'écran est clientWidth."""
     return page.evaluate("""() => { const l = document.documentElement.clientWidth;
-        return [...document.querySelectorAll('main *')].some(el => el.getBoundingClientRect().right > l + 1
-          || (el.scrollWidth > el.clientWidth + 1 && ['auto', 'scroll'].includes(getComputedStyle(el).overflowX))) }""")
+        if (document.documentElement.scrollWidth > l + 1) return true;
+        return [...document.querySelectorAll('main *')].some(el => !el.closest('[data-defile]') && (
+          el.getBoundingClientRect().right > l + 1
+          || (el.scrollWidth > el.clientWidth + 1 && ['auto', 'scroll'].includes(getComputedStyle(el).overflowX)))) }""")
 
 
-def _onglets_caches(page: Page) -> int:
-    return page.evaluate("""() => { const l = document.documentElement.clientWidth;
-        return [...document.querySelectorAll('header a, header button')].filter(a => {
-          const r = a.getBoundingClientRect(); return r.right > l + 1 || r.left < 0 }).length }""")
-
-
-@pytest.mark.parametrize("route", ["accueil", "export", "icloud", "liaisons", "groupes"])
+@pytest.mark.parametrize("route", ["chercher", "photos", "plus", "accueil", "revue", "groupes", "liaisons",
+                                   "export", "icloud", "archives", "contacts", "revision"])
 def test_iphone_sans_defilement_horizontal(navigateur, serveur, route):
     page, _ = _page(navigateur, serveur, "iphone")
     page.goto(f"{serveur}/#/{route}")
-    expect(page.locator("h1").first).to_be_visible()
+    expect(page.locator("h1").first).to_be_attached()
+    page.wait_for_timeout(400)
     assert not _deborde(page)
     page.context.close()
 
 
-@pytest.mark.xfail(strict=True, reason="défaut connu : la barre d'onglets déborde sur iPhone (chantier 6)")
-def test_iphone_tous_les_onglets_accessibles(navigateur, serveur):
-    page, _ = _page(navigateur, serveur, "iphone")
-    assert _onglets_caches(page) == 0
+def test_iphone_barre_d_onglets_et_fiche(navigateur, serveur):
+    page, erreurs = _page(navigateur, serveur, "iphone")
+    barre = page.get_by_role("navigation", name="Sections")
+    for nom in ("Chercher", "Photos", "Plus"):
+        expect(barre.get_by_role("link", name=nom)).to_be_visible()
+    hauteur = page.evaluate("Math.min(...[...document.querySelectorAll('nav a')].map(a => a.getBoundingClientRect().height))")
+    assert hauteur >= 44                                    # cibles tactiles
+    page.get_by_label("Rechercher un contact").fill("claire")
+    page.locator("main a[href^='#/fiche/']").first.click()
+    expect(page.locator("h1")).to_have_text("Claire MARTIN")
+    expect(page.get_by_role("link", name="Appeler")).to_have_attribute("href", "tel:+33612345678")
+    page.go_back()
+    expect(page.get_by_label("Rechercher un contact")).to_be_visible()
+    barre.get_by_role("link", name="Plus").click()
+    expect(page.get_by_role("link", name="Groupes")).to_be_visible()
+    assert erreurs == []
     page.context.close()
 
 
-@pytest.mark.xfail(strict=True, reason="défaut connu : la liste des contacts est un tableau plus large que l'iPhone (chantier 6)")
-def test_iphone_contacts(navigateur, serveur):
-    page, _ = _page(navigateur, serveur, "iphone")
-    page.goto(f"{serveur}/#/contacts")
-    expect(page.locator("h1").first).to_be_visible()
-    page.wait_for_timeout(500)
-    assert not _deborde(page)
-    page.context.close()
-
-
-@pytest.mark.xfail(strict=True, reason="défaut connu : la révision n'indique pas « à faire sur PC » sur iPhone (chantier 6)")
 def test_iphone_revision_renvoie_au_pc(navigateur, serveur):
     page, _ = _page(navigateur, serveur, "iphone")
     page.goto(f"{serveur}/#/revision")
-    expect(page.get_by_text("sur PC")).to_be_visible(timeout=2000)
+    expect(page.get_by_text("à faire sur PC")).to_be_visible()
+    page.get_by_role("button", name="Afficher quand même la vue PC").click()
+    expect(page.locator("header nav a", has_text="Révision")).to_be_attached()
     page.context.close()

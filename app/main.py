@@ -618,6 +618,14 @@ def choisir_affiche(corps: ChoixAffiche):
     return carnet().choisir_affiche(corps.pid, corps.asset)
 
 
+@app.get("/api/affiches/image/{pid}")
+def image_affiche(pid: str):
+    image = carnet().image_affiche(pid)
+    if not image:
+        raise HTTPException(404, "Pas d'affiche choisie.")
+    return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, no-cache"})
+
+
 @app.get("/api/affiches/proposition/{pid}/{asset}")
 def apercu_proposition(pid: str, asset: str, grand: bool = False):
     try:
