@@ -12,6 +12,7 @@ import secrets
 import shutil
 import threading
 import time
+import unicodedata
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -950,6 +951,21 @@ class Carnet:
                 "journal": self.base.etat("journal_icloud", []),
                 "veille": {"revision": bool(self.base.etat("veille_revision", False)),
                            "journal": self.base.etat("veille_journal", [])[:30]}}
+
+    def icloud_brute(self, pid: str) -> tuple[str, str]:
+        """La carte telle qu'iCloud la renvoie maintenant, sans aucune transformation (diagnostic)."""
+        s = self.base.etat("icloud_suivi", {}).get(pid)
+        if not s or not s.get("href"):
+            raise ErreurCarnet("Ce contact n'a pas encore été écrit dans iCloud par carnet.")
+        dav = self._dav()
+        try:
+            r = dav._requete("GET", dav._url(s["href"], dav.decouvrir()))
+        finally:
+            dav.fermer()
+        fiche = completer(json.loads(self._personne(pid)["fiche"] or "{}"))
+        ascii_ = unicodedata.normalize("NFKD", nom_affiche(fiche)).encode("ascii", "ignore").decode()
+        nom = re.sub(r"[^A-Za-z0-9.-]+", "-", ascii_).strip("-") or pid
+        return r.text, f"icloud-{nom}.vcf"
 
     def _lancer(self, nom: str, travail) -> dict:
         with self._verrou_icloud:
