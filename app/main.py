@@ -550,6 +550,36 @@ def apercu_portrait(pid: str, asset: str):
     return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=86400"})
 
 
+@app.get("/api/affiches")
+def affiches():
+    return carnet().affiches()
+
+
+class GroupesAffiches(BaseModel):
+    groupes: list[str]
+
+
+@app.post("/api/affiches/groupes")
+def affiches_groupes(corps: GroupesAffiches):
+    return carnet().affiches_groupes(corps.groupes)
+
+
+@app.post("/api/affiches/preparation")
+def preparer_affiches():
+    return carnet().preparer_affiches()
+
+
+@app.get("/api/affiches/apercu/{pid}")
+def apercu_affiche(pid: str):
+    try:
+        image = carnet().apercu_affiche(pid)
+    except Exception:  # noqa: BLE001
+        image = None
+    if not image:
+        raise HTTPException(404, "Pas d'affiche.")
+    return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=3600"})
+
+
 @app.get("/api/naissances")
 def naissances():
     return carnet().naissances_plan()

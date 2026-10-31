@@ -209,3 +209,63 @@ def alleger(image: tuple[bytes, str], max_octets: int = PHOTO_MAX) -> tuple[byte
             if len(meilleur) <= max_octets:
                 return meilleur, "image/jpeg"
     return meilleur, "image/jpeg"
+
+
+# ------------------------------------------------------------ affiches plein écran (iPhone)
+
+FORMAT_AFFICHE = 9 / 19.5   # largeur / hauteur d'un écran d'iPhone
+VISAGE_AFFICHE = 0.28       # part idéale de la hauteur occupée par le visage
+VISAGE_AFFICHE_MAX = 0.55   # au-delà, le visage est trop serré pour une affiche
+HAUTEUR_AFFICHE = 2532      # pixels : hauteur d'un écran d'iPhone récent
+
+
+def cadre_affiche(boite, ratio: float) -> tuple[tuple[float, float, float, float], float] | None:
+    """Cadre vertical (relatif, 0 à 1) autour du visage, et note de 0 à 1 : 1 quand la photo laisse
+    assez de place autour du visage, moins quand il faut le serrer. None si impossible."""
+    x1, y1, x2, y2 = boite
+    fx1, fx2 = x1 * ratio, x2 * ratio          # repère : hauteur 1, largeur = ratio
+    fh = y2 - y1
+    voulue = fh / VISAGE_AFFICHE
+    possible = min(1.0, ratio / FORMAT_AFFICHE)
+    hc = min(voulue, possible)
+    if fh / hc > VISAGE_AFFICHE_MAX:
+        return None
+    wc = hc * FORMAT_AFFICHE
+    cx, cy = (fx1 + fx2) / 2, (y1 + y2) / 2
+    gauche = min(max(cx - wc / 2, 0), ratio - wc)
+    haut = min(max(cy - 0.38 * hc, 0), 1 - hc)
+    return (gauche / ratio, haut, (gauche + wc) / ratio, haut + hc), hc / voulue
+
+
+def note_affiche(cand: dict, ratio: float) -> float:
+    """Note d'un candidat pour l'affiche : qualité du visage × place autour × définition."""
+    cadre = cadre_affiche(cand["boite"], ratio)
+    if not cadre:
+        return 0.0
+    (_, h1, _, h2), place = cadre
+    fh = cand["boite"][3] - cand["boite"][1]
+    hauteur_px = (h2 - h1) / max(fh, 1e-6) * cand["taille"]
+    definition = min(1.0, hauteur_px / 1600)
+    return score(cand["taille"], cand.get("nettete"), cand.get("face"), cand.get("ecran")) * place * (0.4 + 0.6 * definition)
+
+
+def affiche(contenu: bytes, boite) -> bytes:
+    """Image verticale plein écran (JPEG), cadrée sur le visage."""
+    img = _ouvrir(contenu)
+    l, h = img.size
+    cadre, _ = cadre_affiche(boite, l / h) or (None, 0)
+    if cadre is None:
+        raise ValueError("visage trop serré pour une affiche")
+    x1, y1, x2, y2 = cadre
+    decoupe = img.crop((int(x1 * l), int(y1 * h), int(x2 * l), int(y2 * h)))
+    if decoupe.height > HAUTEUR_AFFICHE:
+        decoupe = decoupe.resize((int(HAUTEUR_AFFICHE * decoupe.width / decoupe.height), HAUTEUR_AFFICHE),
+                                 Image.Resampling.LANCZOS)
+    sortie = io.BytesIO()
+    decoupe.save(sortie, "JPEG", quality=90, optimize=True)
+    return sortie.getvalue()
+
+
+def ratio_image(contenu: bytes) -> float:
+    img = _ouvrir(contenu)
+    return img.width / img.height

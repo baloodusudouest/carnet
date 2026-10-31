@@ -1486,3 +1486,81 @@ def test_photo_allegee_pour_icloud():
     assert len(carte.encode()) < 200_000          # iCloud refuse au-delà de ~256 Ko
     petite = (b"\xff\xd8\xff" + b"x" * 1000, "image/jpeg")
     assert portraits.alleger(petite) == petite    # une photo légère n'est pas retouchée
+
+
+def test_affiches_iphone(client, monkeypatch):
+    import httpx, json as _json
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    t_im, t_tm = _faux_immich_treemich()
+    # b1 : visage serré au bord du cadre vertical possible ; b2 : visage plus petit mais avec de la place autour
+    photos = {"b1": (0.30, 0.10, 0.70, 0.75), "b2": (0.44, 0.25, 0.56, 0.41)}
+    images = {a: _jpeg(1500, 2000, b) for a, b in photos.items()}
+    envoyes, albums, supprimes = [], {}, []
+
+    def immich(r):
+        chemin = r.url.path
+        if chemin == "/api/search/metadata":
+            return httpx.Response(200, json={"albums": {}, "assets": {"items": [
+                {"id": a, "width": 3000, "height": 4000, "originalMimeType": "image/jpeg", "fileCreatedAt": "2025-01-01"}
+                for a in photos], "nextCursor": None, "nextPage": None}})
+        if chemin == "/api/faces":
+            b = photos[r.url.params["id"]]
+            return httpx.Response(200, json=[{"id": "f", "boundingBoxX1": int(b[0] * 1440), "boundingBoxY1": int(b[1] * 1920),
+                                              "boundingBoxX2": int(b[2] * 1440), "boundingBoxY2": int(b[3] * 1920),
+                                              "imageWidth": 1440, "imageHeight": 1920, "person": {"id": "im-claire"}}])
+        if chemin == "/api/assets" and r.method == "POST":
+            assert b"archive" in r.content and b"affiche-Claire-MARTIN.jpg" in r.content
+            envoyes.append(r.content)
+            return httpx.Response(201, json={"id": f"up{len(envoyes)}", "status": "created"})
+        if chemin == "/api/assets" and r.method == "DELETE":
+            supprimes.extend(_json.loads(r.content)["ids"])
+            return httpx.Response(204)
+        if chemin == "/api/albums" and r.method == "GET":
+            return httpx.Response(200, json=[{"id": i, "albumName": n} for i, n in albums.items()])
+        if chemin == "/api/albums" and r.method == "POST":
+            albums["al1"] = _json.loads(r.content)["albumName"]
+            return httpx.Response(201, json={"id": "al1"})
+        if chemin.startswith("/api/albums/al1"):
+            return httpx.Response(200, json={"id": "al1"})
+        if chemin.startswith("/api/assets/up"):
+            return httpx.Response(200, content=b"\xff\xd8\xffaffiche", headers={"content-type": "image/jpeg"})
+        if chemin.startswith("/api/assets/"):
+            return httpx.Response(200, content=images[chemin.split("/")[3]], headers={"content-type": "image/jpeg"})
+        return t_im.handler(r)
+
+    monkeypatch.setattr(cn, "transport_immich", httpx.MockTransport(immich), raising=False)
+    monkeypatch.setattr(cn, "transport_treemich", t_tm, raising=False)
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "immich_cle": "cle",
+                                                        "treemich_email": "moi@x.fr", "treemich_password": "tm"}))
+    p = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+    f["groupes"] = ["Famille"]
+    c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/liaisons/valider", json={"liaisons": [{"pid": p["id"], "immich": "im-claire"}]})
+    _attendre(c)
+    assert c.post("/api/affiches/preparation").status_code == 400          # aucun groupe coché
+    a = c.post("/api/affiches/groupes", json={"groupes": ["Famille", "Inconnu"]}).json()
+    assert a["groupes"] == ["Famille"] and [l["pid"] for l in a["lignes"]] == [p["id"]]
+    c.post("/api/affiches/preparation")
+    t = _attendre(c)
+    assert t["tache"]["etat"] == "termine", t["tache"]
+    assert albums == {"al1": "Affiches de contacts"} and len(envoyes) == 1
+    assert cn.base.etat("affiches")[p["id"]]["source"] == "b2"           # de la place autour du visage
+    from PIL import Image
+    import io as _io
+    corps = envoyes[0]
+    img = Image.open(_io.BytesIO(corps[corps.index(b"\xff\xd8\xff"):]))
+    assert img.height > img.width * 2                                    # format écran d'iPhone
+    assert c.get(f"/api/affiches/apercu/{p['id']}").status_code == 200
+    # Deuxième passage : rien ne change ; contact sorti du groupe : affiche supprimée d'Immich
+    c.post("/api/affiches/preparation")
+    _attendre(c)
+    assert len(envoyes) == 1
+    c.post("/api/affiches/groupes", json={"groupes": ["Amis"]})
+    c.post("/api/affiches/preparation")
+    _attendre(c)
+    assert supprimes == ["up1"] and cn.base.etat("affiches") == {}

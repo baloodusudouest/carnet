@@ -1,7 +1,7 @@
 <script>
   import { onDestroy } from 'svelte'
   import { api } from '../lib/api.js'
-  import { annoncer } from '../lib/etat.svelte.js'
+  import { annoncer, ref } from '../lib/etat.svelte.js'
   import { dateCourte, pluriel, anniversaireLisible } from '../lib/cles.js'
 
   // Liaisons contact ↔ personne Immich (photo) ↔ personne Treemich (relations familiales).
@@ -33,6 +33,7 @@
       annoncer(tache.message, tache.etat === 'erreur')
       if (tache.operation === 'naissances') await chargerNaissances()
       else if (tache.operation === 'portraits') await chargerPortraits()
+      else if (tache.operation === 'affiches') await chargerAffiches()
       else await charger()
     }
   }
@@ -155,6 +156,29 @@
   const netteteLisible = (n, ecran) => ecran >= 0.5 ? 'pixélisé (écran ?)' : n == null ? 'netteté inconnue' : n >= 110 ? 'net' : n >= 70 ? 'assez net' : 'un peu flou'
   const faceLisible = (f) => f == null ? '' : f >= 0.7 ? ' · de face' : f >= 0.4 ? ' · trois quarts' : ' · profil ou masqué'
 
+  // Affiches plein écran pour l'iPhone : images verticales dans l'album Immich « Affiches de contacts »
+  let affiches = $state(null)
+  async function chargerAffiches() {
+    try {
+      affiches = await api.get('/api/affiches')
+    } catch (e) {
+      annoncer(e.message, true)
+    }
+  }
+  chargerAffiches()
+  async function basculerGroupe(g) {
+    const groupes = affiches.groupes.includes(g) ? affiches.groupes.filter((x) => x !== g) : [...affiches.groupes, g]
+    affiches = await api.post('/api/affiches/groupes', { groupes })
+  }
+  async function preparerAffiches() {
+    try {
+      await api.post('/api/affiches/preparation')
+      await suivre()
+    } catch (e) {
+      annoncer(e.message, true)
+    }
+  }
+
   // Sommaire (comme dans la Revue) : nombre d'éléments qui demandent une action
   const sommaire = $derived(donnees ? [
     { cle: 'a-valider', titre: 'À valider', n: donnees.propositions.length },
@@ -163,6 +187,7 @@
     { cle: 'naissances', titre: 'Dates de naissance', n: naissances?.plan
       ? ['immich', 'treemich'].reduce((t, c) => t + naissances.plan.resume[c].ajouter, 0) : 0 },
     { cle: 'photos-hd', titre: 'Photos HD', n: portraits?.lignes.filter((l) => !l.hd && l.candidats.length).length ?? 0 },
+    { cle: 'affiches', titre: 'Affiches iPhone', n: affiches?.lignes.filter((l) => !l.affiche).length ?? 0 },
     { cle: 'liees', titre: 'Contacts liés', n: donnees.liees.length, info: true },
   ] : [])
   function allerA(cle) {
@@ -198,7 +223,7 @@
     <button class="bouton ml-auto" disabled={enCours} onclick={actualiser}>Mettre à jour maintenant</button>
   </div>
 
-  {#if tache && tache.etat !== 'repos' && ['liens', 'naissances', 'portraits'].includes(tache.operation)}
+  {#if tache && tache.etat !== 'repos' && ['liens', 'naissances', 'portraits', 'affiches'].includes(tache.operation)}
     <p class="text-sm mb-3 {tache.etat === 'erreur' ? 'text-alerte' : 'text-mine'}">{tache.message}
       {#if enCours && tache.total}<span class="tabular-nums"> ({tache.fait}/{tache.total})</span>{/if}</p>
   {/if}
@@ -477,6 +502,57 @@
                 <li class="py-3 text-sm text-mine">Rien dans ce filtre.</li>
               {/each}
             </ul>
+          {/if}
+        </section>
+      {/if}
+
+      {#if affiches && portraits?.immich}
+        {@const pretes = affiches.lignes.filter((l) => l.affiche).length}
+        <section id="affiches" class="mb-10 scroll-mt-6">
+          <div class="flex flex-wrap items-end gap-4 mb-2">
+            <div>
+              <h2 class="titre text-xl">Affiches plein écran pour l'iPhone <span class="text-mine text-base font-normal">({pretes}/{affiches.lignes.length})</span></h2>
+              <p class="text-sm text-mine max-w-3xl">Pour les contacts des groupes cochés, carnet choisit la photo Immich qui se prête le mieux
+                au plein écran (visage de face, net, avec de la place autour), la cadre à la verticale et la range dans l'album
+                Immich « Affiches de contacts » (archivée : elle n'encombre pas la chronologie). Mise à jour avec la recherche mensuelle.</p>
+            </div>
+            <button class="bouton {affiches.journal.length ? '' : 'bouton-principal'} ml-auto" disabled={enCours || !affiches.groupes.length}
+              onclick={preparerAffiches}>{affiches.journal.length ? 'Mettre à jour les affiches' : 'Préparer les affiches'}</button>
+          </div>
+          <div class="flex flex-wrap gap-2 text-sm mb-3" role="group" aria-label="Groupes pour les affiches">
+            {#each ref.groupes as g}
+              <button class="rounded-full px-3 py-1 border {affiches.groupes.includes(g) ? 'border-onglet text-papier bg-onglet/10' : 'border-couture text-mine'}"
+                aria-pressed={affiches.groupes.includes(g)} onclick={() => basculerGroupe(g)}>{g}</button>
+            {/each}
+          </div>
+          {#if affiches.journal.length}
+            {@const j = affiches.journal[0]}
+            <p class="text-xs text-mine mb-3">Dernière préparation le {dateCourte(j.le)} : {j.nouvelles} nouvelle(s),
+              {j.retirees} retirée(s), {j.sans_photo} sans photo qui convienne.
+              {#if j.erreurs.length}<span class="block text-alerte">{j.erreurs.join(' · ')}</span>{/if}</p>
+          {/if}
+          <details class="mb-3 text-sm">
+            <summary class="cursor-pointer text-mine">Sur l'iPhone : créer l'affiche d'un contact</summary>
+            <ol class="list-decimal pl-5 mt-2 space-y-1 text-mine">
+              <li>Dans l'app Immich, ouvre l'album « Affiches de contacts », ouvre l'image et enregistre-la dans Photos (Partager › Enregistrer).</li>
+              <li>Contacts › la fiche › Modifier › Photo et affiche du contact › Photos : choisis l'image.</li>
+              <li>En haut, choisis Affiche, puis OK deux fois (pas « Retour »).</li>
+            </ol>
+          </details>
+          {#if affiches.lignes.length}
+            <ul class="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-7 gap-3">
+              {#each affiches.lignes as l (l.pid)}
+                <li class="text-xs">
+                  <div class="aspect-[9/19.5] rounded-lg overflow-hidden bg-couture grid place-items-center text-mine">
+                    {#if l.affiche}<img class="w-full h-full object-cover" src={`/api/affiches/apercu/${l.pid}?v=${l.le}`} alt={`Affiche de ${l.nom}`} loading="lazy" />
+                    {:else}<span class="px-2 text-center">pas encore</span>{/if}
+                  </div>
+                  <span class="block truncate mt-1">{l.nom}</span>
+                </li>
+              {/each}
+            </ul>
+          {:else if affiches.groupes.length}
+            <p class="text-sm text-mine">Aucun contact lié à Immich dans ces groupes.</p>
           {/if}
         </section>
       {/if}
