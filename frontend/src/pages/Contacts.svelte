@@ -13,7 +13,8 @@
   let choisis = $state(new Set())   // fiches cochées pour une fusion manuelle
 
   // Tous les contacts, y compris les relations LinkedIn sans contact (pour les rattacher à la main)
-  api.get('/api/contacts?tout=true').then((l) => (tous = l))
+  const charger = () => api.get('/api/contacts?tout=true').then((l) => (tous = l))
+  charger()
 
   const initiale = (nom) => {
     const c = sansAccents(nom).trim().charAt(0).toUpperCase()
@@ -29,7 +30,8 @@
       (!source || p.sources.includes(source)) &&
       (!injoignables || !p.joignable) &&
       (filtre === 'tous' ? !['ecarte', 'linkedin'].includes(p.statut)
-        : filtre === 'toutes_fiches' ? true : p.statut === filtre))
+        : filtre === 'toutes_fiches' ? true
+        : filtre === 'fusions' ? p.statut === 'a_reviser' && p.a_revoir === 'fusion manuelle' : p.statut === filtre))
   })
   const presentes = $derived(new Set(filtres.map((p) => initiale(p.nom))))
   const affiches = $derived(lettre ? filtres.filter((p) => initiale(p.nom) === lettre) : filtres)
@@ -43,12 +45,14 @@
   const contactsChoisis = $derived(selection.filter((p) => p.statut !== 'linkedin').length)
   let fusionEnCours = $state(false)
   async function fusionner() {
-    if (!confirm(`Fusionner ${selection.length} fiches en un seul contact ?\n\n${selection.map((p) => '• ' + p.nom).join('\n')}\n\nLe résultat s'ouvre dans la Révision pour choisir les valeurs.`)) return
+    if (!confirm(`Réunir ${selection.length} fiches en un seul contact ?\n\n${selection.map((p) => '• ' + p.nom).join('\n')}\n\nLe choix des valeurs se fera ensuite dans la Révision.`)) return
     fusionEnCours = true
     try {
-      const r = await api.post('/api/contacts/fusion', { ids: [...choisis] })
+      const n = choisis.size
+      await api.post('/api/contacts/fusion', { ids: [...choisis] })
       choisis = new Set()
-      aller('revision', r.id)
+      await charger()   // on reste ici : la fiche réunie est marquée « fusion à réviser »
+      annoncer(`${n} fiches réunies : la fusion est à finir dans l'onglet Révision.`)
     } catch (e) {
       annoncer(e.message, true)
     } finally {
@@ -73,6 +77,7 @@
     <option value="verifie">Vérifiés</option>
     <option value="a_reviser">À vérifier</option>
     <option value="ecarte">Mis de côté</option>
+    <option value="fusions">Fusions à réviser</option>
     <option value="linkedin">LinkedIn uniquement (sans contact)</option>
     <option value="toutes_fiches">Toutes les fiches</option>
   </select>
@@ -83,6 +88,8 @@
   <label class="flex items-center gap-2 text-sm text-mine">
     <input type="checkbox" bind:checked={injoignables} /> Sans téléphone ni courriel
   </label>
+  <p class="basis-full text-xs text-mine">Clique sur une ligne pour la cocher, sur le nom pour l'ouvrir.
+    <span class="inline-block w-2.5 h-2.5 rounded-sm bg-[#a78bfa] align-middle ml-2"></span> fusion faite ici, à finir dans la Révision.</p>
 </div>
 
 {#if choisis.size}
@@ -127,8 +134,10 @@
       </thead>
       <tbody>
         {#each affiches as p (p.id)}
-          <tr class="border-t border-couture/70 hover:bg-reliure cursor-pointer {choisis.has(p.id) ? 'bg-onglet-sombre/30' : ''}"
-            onclick={() => (p.statut === 'linkedin' ? cocher(p.id) : aller('revision', p.id))}>
+          {@const fusion = p.statut === 'a_reviser' && p.a_revoir === 'fusion manuelle'}
+          <tr class="border-t border-couture/70 hover:bg-reliure cursor-pointer
+            {choisis.has(p.id) ? 'bg-onglet-sombre/30' : fusion ? 'bg-[#2b2238] shadow-[inset_3px_0_0_#a78bfa]' : ''}"
+            onclick={() => cocher(p.id)}>
             <td class="pl-4 py-2" onclick={(e) => e.stopPropagation()}>
               <input type="checkbox" class="w-4 h-4 accent-[var(--color-onglet)]" checked={choisis.has(p.id)}
                 onchange={() => cocher(p.id)} aria-label={`Cocher ${p.nom} pour une fusion`} />
@@ -144,6 +153,7 @@
             <td class="px-4 py-2 text-sm text-mine">{p.sources.map((s) => ref.sources[s]).join(', ')}</td>
             <td class="px-4 py-2 text-sm whitespace-nowrap">
               {#if p.statut === 'linkedin'}<span class="text-mine">LinkedIn seul</span>
+              {:else if fusion}<span class="text-[#c4b5fd]">Fusion à réviser</span>
               {:else if p.statut === 'ecarte'}<span class="text-alerte">Mis de côté</span>
               {:else if p.statut === 'verifie'}<span class="text-valide">Vérifié</span>{#if p.brouillon}<span class="block text-xs text-onglet">modifié, à valider</span>{/if}
               {:else if p.doublon}<span class="text-onglet">Doublon à fusionner</span>
