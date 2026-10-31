@@ -961,7 +961,7 @@ class Carnet:
         def executer():
             try:
                 travail()
-            except (ErreurICloud, ErreurCarnet) as exc:
+            except (ErreurICloud, ErreurCarnet, ErreurLien) as exc:
                 self._tache.update(etat="erreur", message=str(exc))
             except Exception as exc:  # noqa: BLE001 — affiché, et détaillé dans le journal du conteneur
                 log.exception("Opération iCloud %s", nom)
