@@ -23,7 +23,7 @@ import httpx
 from fastapi import HTTPException
 from rapidfuzz import fuzz
 
-from . import doublons, export, fusion, portraits, synchro
+from . import anniversaires, doublons, export, fusion, portraits, synchro
 from .carddav import CardDAV, Conflit, ErreurICloud
 from .liens import TYPES_FAMILLE, ErreurLien, Immich, Treemich, relations_de
 from .config import Config
@@ -2352,9 +2352,9 @@ class Carnet:
 
     # ================================================================ Home Assistant : réservations et journal de naissance
 
-    def _personnes_ha(self) -> list[dict]:
-        """Contacts vérifiés liés à Immich, et proches (règle « proches »), avec le nom tel que la
-        réservation doit l'écrire : le nom Immich quand le contact est lié, sinon le nom carnet."""
+    def _contacts_ha(self) -> list[dict]:
+        """Tous les contacts vérifiés, avec le nom donné à Home Assistant : le nom Immich quand
+        le contact est lié, sinon le nom carnet (même règle pour toutes les adresses /ha/…)."""
         d = self._donnees_liens()
         noms_immich = {p["id"]: p["nom"] for p in d["immich"]}
         liens = self.base.etat("liaisons", {})
@@ -2362,11 +2362,33 @@ class Carnet:
         for pid, fiche, _ in self._verifiees():
             lien = liens.get(pid, {})
             immich = lien.get("immich")
-            if not immich and not set(fiche["groupes"]) & GROUPES_PROCHES:
-                continue
             res.append({"pid": pid, "nom": noms_immich.get(immich) or nom_affiche(fiche), "nom_carnet": nom_affiche(fiche),
                         "immich_id": immich, "treemich_id": lien.get("treemich"), "fiche": fiche})
         return res
+
+    def _personnes_ha(self) -> list[dict]:
+        """Contacts vérifiés liés à Immich, et proches (règle « proches ») : la liste de la
+        carte de réservation."""
+        return [p for p in self._contacts_ha()
+                if p["immich_id"] or set(p["fiche"]["groupes"]) & GROUPES_PROCHES]
+
+    def ha_anniversaires(self) -> dict:
+        """Tous les contacts vérifiés qui ont une date de naissance, pour le calendrier
+        « Anniversaires » de Home Assistant. Le journal ne note que des nombres."""
+        entrees, ignores = [], 0
+        for p in self._contacts_ha():
+            brut = p["fiche"].get("anniversaire")
+            if not brut:
+                continue
+            lue = anniversaires.analyser(brut)
+            if lue is None:
+                ignores += 1
+                continue
+            jour, mois, annee = lue
+            entrees.append({"nom": p["nom"], "jour": jour, "mois": mois, "annee": annee, "immich": bool(p["immich_id"])})
+        liste = anniversaires.assembler(entrees)
+        log.info("HA anniversaires : %d entrée(s) renvoyée(s), %d date(s) illisible(s) ignorée(s)", len(liste), ignores)
+        return {"genere_le": _iso(maintenant()), "nombre": len(liste), "anniversaires": liste}
 
     def ha_personnes(self) -> dict:
         personnes = sorted(self._personnes_ha(), key=lambda p: p["nom"].lower())
