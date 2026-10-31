@@ -1885,6 +1885,101 @@ class Carnet:
                 "annee_connue": len(annif) == 10, "immich_id": p["immich_id"], "treemich_id": p["treemich_id"],
                 "groupes": p["fiche"]["groupes"]}
 
+    # ================================================================ dates de naissance → Immich et Treemich (V3, étape 5)
+
+    def naissances_simuler(self) -> dict:
+        return self._lancer("naissances", self._simuler_naissances)
+
+    def _simuler_naissances(self) -> None:
+        """Compare la date de naissance de carnet à celle d'Immich et de Treemich, sans rien écrire."""
+        d = self._donnees_liens(rafraichir=True)
+        if d["erreurs"]:
+            raise ErreurCarnet(d["erreurs"][0])
+        naissance_immich = {p["id"]: (p["naissance"] or "")[:10] for p in d["immich"]}
+        liens = self.base.etat("liaisons", {})
+        verifiees = {pid: f for pid, f, _ in self._verifiees()}
+        lignes = []
+        tm = self._treemich() if self.cfg.treemich_email and any(l.get("treemich") for l in liens.values()) else None
+        cibles = [(pid, l) for pid, l in liens.items() if pid in verifiees]
+        self._tache.update(total=len(cibles), fait=0, message="Dates de naissance : lecture d'Immich et Treemich…")
+        for pid, lien in sorted(cibles, key=lambda x: nom_affiche(verifiees[x[0]]).lower()):
+            self._tache["fait"] += 1
+            fiche = verifiees[pid]
+            date = fiche["anniversaire"] or ""
+            ligne = {"pid": pid, "nom": nom_affiche(fiche), "carnet": date, "complete": len(date) == 10}
+            for cible, ident in (("immich", lien.get("immich")), ("treemich", lien.get("treemich"))):
+                if not ident or (cible == "treemich" and not tm):
+                    continue
+                actuelle = naissance_immich.get(ident, "") if cible == "immich" else tm.naissance(ident)
+                if not date:
+                    etat = "rien_dans_carnet"
+                elif len(date) != 10:
+                    etat = "annee_inconnue"
+                elif actuelle == date:
+                    etat = "identique"
+                elif not actuelle:
+                    etat = "ajouter"
+                else:
+                    etat = "differente"
+                ligne[cible] = {"id": ident, "actuelle": actuelle, "etat": etat}
+            lignes.append(ligne)
+        self._plan_naissances = {"instant": time.monotonic(), "lignes": lignes, "le": _iso(maintenant())}
+        n = sum(1 for l in lignes for c in ("immich", "treemich") if l.get(c, {}).get("etat") in ("ajouter", "differente"))
+        self._tache.update(etat="termine", message=f"Simulation : {n} date(s) à écrire, rien n'a été modifié.")
+
+    def naissances_plan(self) -> dict | None:
+        plan = getattr(self, "_plan_naissances", None)
+        if not plan or time.monotonic() - plan["instant"] > self.PLAN_VALIDE:
+            return {"plan": None, "journal": self.base.etat("naissances_journal", [])[:20]}
+        resume = {c: {e: sum(1 for l in plan["lignes"] if l.get(c, {}).get("etat") == e)
+                      for e in ("ajouter", "differente", "identique", "annee_inconnue", "rien_dans_carnet")}
+                  for c in ("immich", "treemich")}
+        return {"plan": {"le": plan["le"], "lignes": plan["lignes"], "resume": resume},
+                "journal": self.base.etat("naissances_journal", [])[:20]}
+
+    def naissances_ecrire(self, cible: str, remplacer: bool, essai: str | None, confirme: bool) -> dict:
+        plan = getattr(self, "_plan_naissances", None)
+        if not plan or time.monotonic() - plan["instant"] > self.PLAN_VALIDE:
+            raise ErreurCarnet("Lance d'abord une simulation (valable 30 minutes).")
+        if cible not in ("immich", "treemich"):
+            raise ErreurCarnet("Cible inconnue.")
+        if not essai and not confirme:
+            raise ErreurCarnet("Coche la confirmation avant d'écrire.")
+        etats = {"ajouter", "differente"} if remplacer else {"ajouter"}
+        a_faire = [l for l in plan["lignes"] if l.get(cible, {}).get("etat") in etats and (not essai or l["pid"] == essai)]
+        if essai and not a_faire:
+            raise ErreurCarnet("Rien à écrire pour cette personne (date identique, absente ou année inconnue).")
+        if not a_faire:
+            raise ErreurCarnet("Rien à écrire.")
+        return self._lancer("naissances", lambda: self._ecrire_naissances(cible, a_faire, bool(essai)))
+
+    def _ecrire_naissances(self, cible: str, lignes: list[dict], essai: bool) -> None:
+        quand = maintenant()
+        bilan = {"le": _iso(quand), "cible": cible, "essai": essai, "ecrites": [], "erreurs": [], "sauvegarde": None}
+        client = self._immich() if cible == "immich" else self._treemich()
+        try:
+            if cible == "treemich":  # export complet de l'arbre avant la première écriture
+                nom = f"{quand:%Y-%m-%d_%H%M%S}_treemich-avant-dates.ged"
+                (self.cfg.archives / nom).write_bytes(client.exporter_gedcom())
+                bilan["sauvegarde"] = nom
+            self._tache.update(total=len(lignes), fait=0, message=f"Dates de naissance → {cible.capitalize()}…")
+            for l in lignes:
+                info = l[cible]
+                try:
+                    client.maj_naissance(info["id"], l["carnet"])
+                    # ancienne valeur gardée : de quoi revenir en arrière à la main si besoin
+                    bilan["ecrites"].append({"nom": l["nom"], "avant": info["actuelle"], "apres": l["carnet"]})
+                except ErreurLien as exc:
+                    bilan["erreurs"].append(f"{l['nom']} : {exc}")
+                self._tache["fait"] += 1
+        finally:
+            client.fermer()
+        self._plan_naissances = None  # les valeurs lues ne valent plus
+        self.base.ecrire_etat("naissances_journal", ([bilan] + self.base.etat("naissances_journal", []))[:50])
+        self._tache.update(etat="erreur" if bilan["erreurs"] else "termine", message=(
+            f"{'Essai' if essai else 'Écriture'} {cible.capitalize()} : {len(bilan['ecrites'])} date(s) écrite(s)"
+            + (f", {len(bilan['erreurs'])} erreur(s)" if bilan["erreurs"] else "") + "."))
+
     # ================================================================ sauvegarde de nuit (V3)
 
     SEUIL_COUPE_CIRCUIT = 0.05   # au-delà de 5 % de fiches supprimées ou changées d'un coup : arrêt

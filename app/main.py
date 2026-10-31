@@ -517,6 +517,28 @@ def visage_immich(immich_id: str):
     return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=3600"})
 
 
+@app.get("/api/naissances")
+def naissances():
+    return carnet().naissances_plan()
+
+
+@app.post("/api/naissances/simulation")
+def naissances_simuler():
+    return carnet().naissances_simuler()
+
+
+class EcritureNaissances(BaseModel):
+    cible: str
+    remplacer: bool = False
+    essai: str | None = None
+    confirme: bool = False
+
+
+@app.post("/api/naissances/ecriture")
+def naissances_ecrire(corps: EcritureNaissances):
+    return carnet().naissances_ecrire(corps.cible, corps.remplacer, corps.essai, corps.confirme)
+
+
 @app.get("/api/sauvegardes")
 def sauvegardes():
     return carnet().sauvegardes()
