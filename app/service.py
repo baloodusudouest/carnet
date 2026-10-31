@@ -1845,7 +1845,7 @@ class Carnet:
     # ================================================================ portraits HD depuis Immich
 
     PORTRAITS_PAR_PERSONNE = 120   # photos les plus récentes examinées par personne (1er passage)
-    PORTRAITS_A_MESURER = 8        # meilleurs visages (par taille) dont la netteté est mesurée
+    PORTRAITS_A_MESURER = 12       # meilleurs visages (par taille) dont la netteté et l'orientation sont mesurées
     PORTRAITS_GARDES = 6           # choix proposés par contact
     PORTRAITS_JOURS = 30           # recherche automatique une fois par mois (pendant la tâche de nuit)
 
@@ -1870,8 +1870,8 @@ class Carnet:
                 continue
             h = hd.get(pid) if (hd.get(pid) or {}).get("immich") == immich else None
             lignes.append({"pid": pid, "nom": nom_affiche(fiche), "photo": fiche.get("photo"),
-                           "hd": h and {k: h[k] for k in ("asset", "taille", "nettete", "manuel", "le")},
-                           "candidats": [{k: c[k] for k in ("asset", "taille", "nettete", "le")}
+                           "hd": h and {k: h.get(k) for k in ("asset", "taille", "nettete", "face", "ecran", "manuel", "le")},
+                           "candidats": [{k: c.get(k) for k in ("asset", "taille", "nettete", "face", "ecran", "le")}
                                          for c in candidats.get(pid, [])]})
         lignes.sort(key=lambda x: (x["hd"] is not None, x["nom"].lower()))
         prochaine = None
@@ -1911,7 +1911,9 @@ class Carnet:
                 actuel = hd.get(pid) if (hd.get(pid) or {}).get("immich") == immich_id else None
                 anciens = tous_candidats.get(pid, []) if actuel or pid in tous_candidats else []
                 try:
-                    trouves = self._candidats_portrait(immich, immich_id, depuis if anciens else None, anciens)
+                    # Critères changés depuis le dernier passage : toutes les photos sont réexaminées
+                    a_jour = anciens and all(c.get("mesures") == portraits.VERSION_MESURES for c in anciens)
+                    trouves = self._candidats_portrait(immich, immich_id, depuis if a_jour else None, anciens)
                 except ErreurLien as exc:
                     bilan["erreurs"].append(str(exc))
                     if "droits" in str(exc):
@@ -1924,8 +1926,10 @@ class Carnet:
                 if actuel and actuel.get("manuel"):
                     continue
                 meilleur = trouves[0]
-                if actuel and (actuel["asset"] == meilleur["asset"] or meilleur["score"] < actuel.get("score", 0) * 1.1):
-                    continue
+                if actuel:   # le portrait actuel est noté avec les mêmes critères que les autres
+                    note = next((c["score"] for c in trouves if c["asset"] == actuel["asset"]), actuel.get("score", 0))
+                    if actuel["asset"] == meilleur["asset"] or meilleur["score"] < note * 1.1:
+                        continue
                 try:
                     hd[pid] = self._poser_portrait(immich, pid, fiche, immich_id, meilleur, manuel=False)
                     bilan["changees"] += 1
@@ -1962,15 +1966,20 @@ class Carnet:
                                    "type": photo["type"], "le": (photo["le"] or "")[:10]}
         liste = sorted(connus.values(), key=lambda c: -c["taille"])
         for c in liste[:self.PORTRAITS_A_MESURER]:
-            if c["nettete"] is None:
+            if c.get("mesures") != portraits.VERSION_MESURES:
                 apercu = immich.image(c["asset"], "preview")
+                if not apercu:
+                    continue
                 try:
-                    c["nettete"] = round(portraits.nettete(apercu, c["boite"]), 1) if apercu else None
-                except Exception:  # noqa: BLE001 — aperçu illisible : netteté inconnue
-                    c["nettete"] = None
+                    c["nettete"], c["ecran"] = portraits.qualite(apercu, c["boite"])
+                    c["face"] = portraits.de_face(apercu, c["boite"])
+                    c["mesures"] = portraits.VERSION_MESURES
+                except Exception:  # noqa: BLE001 — aperçu illisible : mesures inconnues
+                    log.warning("Portrait : mesure impossible sur %s", c["asset"], exc_info=True)
         for c in liste:
-            c["score"] = round(portraits.score(c["taille"], c["nettete"]), 1)
-        nets = [c for c in liste if c["nettete"] is None or c["nettete"] >= portraits.NETTETE_MIN]
+            c["score"] = round(portraits.score(c["taille"], c.get("nettete"), c.get("face"), c.get("ecran")), 1)
+        nets = [c for c in liste if (c.get("nettete") is None or c["nettete"] >= portraits.NETTETE_MIN)
+                and (c.get("ecran") or 0) < portraits.ECRAN_MAX]
         liste = sorted(nets or liste, key=lambda c: -c["score"])
         return liste[:self.PORTRAITS_GARDES]
 
@@ -1996,8 +2005,8 @@ class Carnet:
             immich.definir_couverture(immich_id, cand["asset"])
         except ErreurLien as exc:  # la photo du contact est posée quand même
             log.warning("Photo de la personne Immich %s : %s", immich_id, exc)
-        return {"immich": immich_id, "asset": cand["asset"], "taille": cand["taille"], "nettete": cand["nettete"],
-                "score": cand.get("score", 0), "manuel": manuel, "le": _iso(maintenant())}
+        return {"immich": immich_id, "asset": cand["asset"], "taille": cand["taille"], "nettete": cand.get("nettete"),
+                "face": cand.get("face"), "ecran": cand.get("ecran"), "score": cand.get("score", 0), "manuel": manuel, "le": _iso(maintenant())}
 
     def choisir_portrait(self, pid: str, asset: str) -> dict:
         """Choix manuel parmi les candidats : gardé lors des recherches suivantes."""

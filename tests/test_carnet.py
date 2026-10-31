@@ -1342,20 +1342,16 @@ def test_treemich_patiente_sur_429():
 
 
 def _jpeg(largeur, hauteur, boite, net=True):
-    """Photo de test : fond uni et damier fin (net) ou flou à l'emplacement du visage."""
+    """Photo de test : fond uni et, à l'emplacement du visage, une texture aléatoire (pas de trame
+    régulière, comme un vrai visage) nette ou floue."""
     import io as _io
+    import numpy as _np
     from PIL import Image, ImageFilter
     img = Image.new("RGB", (largeur, hauteur), (90, 110, 130))
     x1, y1, x2, y2 = (int(boite[0] * largeur), int(boite[1] * hauteur), int(boite[2] * largeur), int(boite[3] * hauteur))
-    damier = Image.new("RGB", (x2 - x1, y2 - y1), (230, 200, 180))
-    px = damier.load()
-    for x in range(damier.width):
-        for y in range(damier.height):
-            if (x // 6 + y // 6) % 2:
-                px[x, y] = (40, 30, 20)
-    if not net:
-        damier = damier.filter(ImageFilter.GaussianBlur(12))
-    img.paste(damier, (x1, y1))
+    alea = _np.random.default_rng(7).integers(0, 255, (y2 - y1, x2 - x1, 3), dtype=_np.uint8)
+    texture = Image.fromarray(alea).filter(ImageFilter.GaussianBlur(2 if net else 14))
+    img.paste(texture, (x1, y1))
     sortie = _io.BytesIO()
     img.save(sortie, "JPEG", quality=92)
     return sortie.getvalue()
@@ -1450,3 +1446,28 @@ def test_portraits_hd(client, monkeypatch):
     j[0]["le"] = "2020-01-01T00:00:00+01:00"
     cn.base.ecrire_etat("photos_hd_journal", j)
     assert cn._portraits_dus()
+
+
+def test_portrait_de_face_prefere():
+    from app import portraits
+    # visage un peu plus grand mais de profil < visage de face, même netteté
+    assert portraits.score(450, 150, 0.1) < portraits.score(380, 150, 0.9)
+    assert portraits.score(450, 150, None) > portraits.score(380, 150, None)
+    # photo sans visage repérable par YuNet : orientation 0 (pénalisée, pas écartée)
+    assert portraits.de_face(_jpeg(800, 600, (0.4, 0.3, 0.6, 0.56)), (0.4, 0.3, 0.6, 0.56)) == 0.0
+
+
+def test_portrait_photo_ecran_reperee():
+    import io as _io
+    import numpy as _np
+    from PIL import Image
+    from app import portraits
+    boite = (0.25, 0.25, 0.75, 0.75)
+    net, ecran = portraits.qualite(_jpeg(800, 800, boite), boite)
+    assert ecran < portraits.ECRAN_MAX and net >= portraits.NETTETE_MIN
+    # trame régulière (pixels d'un écran photographié) : repérée, malgré beaucoup de « détail » fin
+    yy, xx = _np.mgrid[0:800, 0:800]
+    trame = 128 + 60 * _np.sin(xx * 2 * _np.pi / 5.3) * _np.sin(yy * 2 * _np.pi / 5.1)
+    sortie = _io.BytesIO()
+    Image.fromarray(_np.stack([trame] * 3, -1).astype("uint8")).save(sortie, "JPEG", quality=92)
+    assert portraits.qualite(sortie.getvalue(), boite)[1] >= portraits.ECRAN_MAX
