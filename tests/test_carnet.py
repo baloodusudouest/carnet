@@ -1322,3 +1322,20 @@ def test_naissances_vers_immich_et_treemich(client, monkeypatch):
     j = c.get("/api/naissances").json()["journal"][0]
     assert j["ecrites"] == [{"nom": "Claire MARTIN", "avant": "1984-03-14", "apres": "1985-03-14"}]
     assert (etat["cfg"].archives / j["sauvegarde"]).read_bytes().startswith(b"0 HEAD")
+
+
+def test_treemich_patiente_sur_429():
+    import httpx
+    from app.liens import Treemich
+    appels = {"n": 0}
+
+    def repondre(r):
+        if r.url.path == "/auth/login":
+            return httpx.Response(200)
+        appels["n"] += 1
+        if appels["n"] <= 2:
+            return httpx.Response(429, headers={"retry-after": "5"})
+        return httpx.Response(200, json={})
+    tm = Treemich("http://tm:4000", "a@b.c", "x", transport=httpx.MockTransport(repondre))
+    tm.maj_naissance("t1", "1985-03-14")          # deux refus, puis accepté
+    assert appels["n"] == 3
