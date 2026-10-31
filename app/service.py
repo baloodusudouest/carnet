@@ -419,6 +419,44 @@ class Carnet:
                            (json.dumps(avec_profil(base), ensure_ascii=False), pid))
         return {"linkedin": url}
 
+    def grouper(self, ids: list[str], groupe: str, retirer: bool = False) -> dict:
+        """Ajoute (ou retire) un groupe à plusieurs contacts d'un coup. Contact vérifié : la fiche
+        validée change directement (iCloud suivra à la prochaine écriture), le brouillon aussi."""
+        if groupe not in groupes_reconnus():
+            raise ErreurCarnet(f"Groupe inconnu : « {groupe} ».")
+        pids = [i for i in dict.fromkeys(ids) if i and not i.startswith("li-")]
+        if not pids:
+            raise ErreurCarnet("Coche au moins un contact (une relation LinkedIn seule n'a pas de groupe).")
+
+        def changer(f: dict) -> tuple[dict, bool]:
+            f = completer(f)
+            avant = list(f["groupes"])
+            f["groupes"] = [g for g in avant if g != groupe] if retirer else avant + ([] if groupe in avant else [groupe])
+            return f, f["groupes"] != avant
+        modifies = 0
+        with self.base.transaction() as cx:
+            for pid in pids:
+                ligne = cx.execute("SELECT statut, fiche, brouillon FROM personnes WHERE id = ?", (pid,)).fetchone()
+                if not ligne:
+                    continue
+                touche = False
+                if ligne["statut"] == "verifie" and ligne["fiche"]:
+                    f, ch = changer(json.loads(ligne["fiche"]))
+                    if ch:
+                        cx.execute("UPDATE personnes SET fiche = ?, modifie_le = ? WHERE id = ?",
+                                   (json.dumps(normaliser_fiche(f, self.cfg.region), ensure_ascii=False),
+                                    _iso(maintenant()), pid))
+                        touche = True
+                if ligne["brouillon"] or ligne["statut"] != "verifie":
+                    base = json.loads(ligne["brouillon"]) if ligne["brouillon"] else \
+                        self._fiche_courante(self._personne(pid), self._sources_de(pid))
+                    f, ch = changer(base)
+                    if ch:
+                        cx.execute("UPDATE personnes SET brouillon = ? WHERE id = ?", (json.dumps(f, ensure_ascii=False), pid))
+                        touche = True
+                modifies += touche
+        return {"modifies": modifies}
+
     def liste_complete(self) -> list[dict]:
         """Tous les contacts, plus les relations LinkedIn qui n'ont trouvé aucun contact
         (identifiant « li-<source> ») : pour les rattacher à la main."""
