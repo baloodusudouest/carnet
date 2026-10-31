@@ -252,8 +252,17 @@ def linkedin_code(corps: RetourLinkedIn):
 # ------------------------------------------------------------------ contacts et révision
 
 @app.get("/api/contacts")
-def contacts():
-    return carnet().liste()
+def contacts(tout: bool = False):
+    return carnet().liste_complete() if tout else carnet().liste()
+
+
+class FusionMultiple(BaseModel):
+    ids: list[str]
+
+
+@app.post("/api/contacts/fusion")
+def fusionner_plusieurs(corps: FusionMultiple):
+    return carnet().fusionner_plusieurs(corps.ids)
 
 
 @app.get("/api/file")
