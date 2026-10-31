@@ -387,10 +387,37 @@ class Carnet:
                 "telephone": (fiche["telephones"][0].get("affichage") if fiche["telephones"] else ""),
                 "courriel": (fiche["courriels"][0]["valeur"] if fiche["courriels"] else ""),
                 "societe": fiche["societe"], "photo": fiche.get("photo"),
+                "linkedin": next((x["valeur"] for x in fiche["sites"] if x.get("type") == "linkedin"), None),
                 "joignable": bool(fiche["telephones"] or fiche["courriels"] or any(
                     s.get("type") in MESSAGERIES for s in fiche["sites"])),
             })
         return sorted(resultat, key=lambda r: r["nom"].lower())
+
+    def ajouter_linkedin(self, pid: str, url: str) -> dict:
+        """Ajoute l'adresse du profil LinkedIn trouvée à la main. Contact vérifié : la fiche validée
+        est complétée directement (iCloud suivra à la prochaine écriture), le brouillon aussi."""
+        url = (url or "").strip().split("?")[0].rstrip("/")
+        if not re.match(r"^(https?://)?([a-z]{2,3}\.)?linkedin\.com/in/[^/\s]+$", url, re.I):
+            raise ErreurCarnet("Colle l'adresse d'un profil LinkedIn (linkedin.com/in/…).")
+        if not url.lower().startswith("http"):
+            url = "https://" + url
+        ligne = self._personne(pid)
+        site = {"valeur": url, "type": "linkedin"}
+
+        def avec_profil(f: dict) -> dict:
+            f = completer(f)
+            f["sites"] = [x for x in f["sites"] if x.get("type") != "linkedin"] + [site]
+            return f
+        with self.base.transaction() as cx:
+            if ligne["statut"] == "verifie" and ligne["fiche"]:
+                propre = normaliser_fiche(avec_profil(json.loads(ligne["fiche"])), self.cfg.region)
+                cx.execute("UPDATE personnes SET fiche = ?, modifie_le = ? WHERE id = ?",
+                           (json.dumps(propre, ensure_ascii=False), _iso(maintenant()), pid))
+            if ligne["brouillon"] or ligne["statut"] != "verifie":
+                base = json.loads(ligne["brouillon"]) if ligne["brouillon"] else self._fiche_courante(ligne, self._sources_de(pid))
+                cx.execute("UPDATE personnes SET brouillon = ? WHERE id = ?",
+                           (json.dumps(avec_profil(base), ensure_ascii=False), pid))
+        return {"linkedin": url}
 
     def liste_complete(self) -> list[dict]:
         """Tous les contacts, plus les relations LinkedIn qui n'ont trouvé aucun contact

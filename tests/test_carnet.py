@@ -1683,3 +1683,19 @@ def test_bilan_de_l_accueil(client):
     b = c.get("/api/bilan").json()
     assert b["statut"]["a_reviser"] > 0 and b["revue"] is not None and b["restauration"] is None
     assert b["liaisons"] is None and b["photos"] == {"hd": 0, "affiches": 0}
+
+
+def test_ajouter_le_profil_linkedin(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    p = _personne(c, "Jean-Pierre")
+    f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+    c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    assert c.post(f"/api/personnes/{p['id']}/linkedin", json={"url": "https://exemple.fr/jp"}).status_code == 400
+    r = c.post(f"/api/personnes/{p['id']}/linkedin", json={"url": "www.linkedin.com/in/jp-dubois/?trk=x"}).json()
+    assert r["linkedin"] == "https://www.linkedin.com/in/jp-dubois"
+    d = c.get(f"/api/personnes/{p['id']}").json()
+    assert d["statut"] == "verifie" and any(s["type"] == "linkedin" for s in d["fiche"]["sites"])
+    ligne = next(x for x in c.get("/api/contacts").json() if x["id"] == p["id"])
+    assert ligne["linkedin"] == "https://www.linkedin.com/in/jp-dubois"

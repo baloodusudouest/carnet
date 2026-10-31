@@ -2,7 +2,7 @@
   import { tick, untrack } from 'svelte'
   import { api } from '../lib/api.js'
   import { ref, statut, route, aller, annoncer, ecran, choisirVue } from '../lib/etat.svelte.js'
-  import { CLES, texteItem, anniversaireLisible, dateCourte } from '../lib/cles.js'
+  import { CLES, texteItem, anniversaireLisible, dateCourte, rechercheLinkedin } from '../lib/cles.js'
   import Fusion from '../components/Fusion.svelte'
   import Aide from '../components/Aide.svelte'
 
@@ -159,6 +159,7 @@
   const ligneActive = $derived(navigables[Math.min(actif, navigables.length - 1)])
   const position = $derived(dossier ? file.findIndex((p) => p.id === dossier.id) : -1)
   const raisons = $derived(dossier ? [...new Set(dossier.raisons.flatMap((r) => r.raisons))] : [])
+  const profilLinkedin = $derived(fiche?.sites?.find((x) => x.type === 'linkedin'))
 
   // ------------------------------------------------------------ actions sur la fiche
 
@@ -468,6 +469,14 @@
       {#each raisons as r}
         <span class="text-sm rounded-full bg-couture text-mine px-2.5 py-0.5">{r}</span>
       {/each}
+      {#if profilLinkedin}
+        <a class="text-sm rounded-full border border-valide/60 bg-valide/15 text-valide px-2.5 py-0.5" href={profilLinkedin.valeur.startsWith('http') ? profilLinkedin.valeur : `https://${profilLinkedin.valeur}`}
+          target="_blank" rel="noopener noreferrer" title="Profil LinkedIn de la fiche">LinkedIn ✓</a>
+      {:else}
+        <a class="text-sm rounded-full border border-couture text-mine hover:text-papier px-2.5 py-0.5"
+          href={rechercheLinkedin([fiche.prenom, fiche.nom].filter(Boolean).join(' '), fiche.societe)} target="_blank" rel="noopener noreferrer"
+          title="Chercher sur LinkedIn ; colle ensuite l'adresse du profil dans « Ajouter : site »">Chercher sur LinkedIn</a>
+      {/if}
     </div>
     <div class="ml-auto flex gap-2">
       <button class="bouton" onclick={() => deplacer(-1)} title="Précédent (←)">Précédent</button>

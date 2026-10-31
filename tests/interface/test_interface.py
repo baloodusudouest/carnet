@@ -207,3 +207,18 @@ def test_pc_fusion_depuis_contacts_reste_sur_la_liste(navigateur, serveur):
     assert any(page.get_by_text(n, exact=True).count() for n in noms)
     assert erreurs == []
     page.context.close()
+
+
+def test_pc_linkedin_des_membres_d_un_groupe(navigateur, serveur):
+    page, erreurs = _page(navigateur, serveur, "pc")
+    page.goto(f"{serveur}/#/groupes")
+    ligne = page.locator("li", has_text="Urgence").first
+    ligne.get_by_role("button", name="LinkedIn").click()
+    lien = ligne.get_by_role("link", name="Chercher sur LinkedIn").first
+    expect(lien).to_have_attribute("href", re.compile(r"^https://www\.linkedin\.com/search/results/people/\?keywords="))
+    champ = ligne.get_by_placeholder("linkedin.com/in/…").first
+    champ.fill("linkedin.com/in/essai-carnet")
+    ligne.get_by_role("button", name="Ajouter").first.click()
+    expect(ligne.get_by_role("link", name="LinkedIn ✓").first).to_be_visible()
+    assert erreurs == []
+    page.context.close()
