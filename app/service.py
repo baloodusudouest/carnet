@@ -2162,7 +2162,8 @@ class Carnet:
         except ErreurLien as exc:  # la photo du contact est posée quand même
             log.warning("Photo de la personne Immich %s : %s", immich_id, exc)
         return {"immich": immich_id, "asset": cand["asset"], "taille": cand["taille"], "nettete": cand.get("nettete"),
-                "face": cand.get("face"), "ecran": cand.get("ecran"), "score": cand.get("score", 0), "manuel": manuel, "le": _iso(maintenant())}
+                "face": cand.get("face"), "ecran": cand.get("ecran"), "score": cand.get("score", 0), "manuel": manuel,
+                "boite": cand.get("boite"), "ratio": cand.get("ratio"), "le": _iso(maintenant())}
 
     def choisir_portrait(self, pid: str, asset: str) -> dict:
         """Choix manuel parmi les candidats : gardé lors des recherches suivantes."""
@@ -2427,6 +2428,66 @@ class Carnet:
         liste = anniversaires.assembler(entrees)
         log.info("HA anniversaires : %d entrée(s) renvoyée(s), %d date(s) illisible(s) ignorée(s)", len(liste), ignores)
         return {"genere_le": _iso(maintenant()), "nombre": len(liste), "anniversaires": liste}
+
+    def ha_portrait(self, immich_id: str, cadre: str | None = None) -> tuple[bytes, str, tuple | None] | None:
+        """Portrait HD (Photos HD) de la personne Immich, pour les cadres et dashboards de Home
+        Assistant : (image, type, cadre du visage dans l'image ou None). None si le contact n'a
+        pas de portrait HD en service (pas de liaison, photo iCloud gardée, aucun visage assez
+        grand) : Home Assistant reprend alors la vignette Immich.
+
+        ``cadre="centre"`` : visage entier au milieu d'un carré, découpé dans l'aperçu Immich
+        de la même photo (plus de place autour que le portrait « tête et épaules ») ; gardé en
+        mémoire. Immich injoignable : le portrait enregistré, avec son cadre du visage."""
+        immich_id = (immich_id or "").strip().lower()
+        if not immich_id:
+            return None
+        liens = self.base.etat("liaisons", {})
+        hd = self.base.etat("photos_hd", {})
+        for pid, fiche, _ in self._verifiees():
+            if (liens.get(pid) or {}).get("immich") != immich_id:
+                continue
+            entree = hd.get(pid)
+            if not entree or entree.get("immich") != immich_id or not fiche.get("photo") \
+                    or fiche["photo"] != self._source_immich_id(pid):
+                continue
+            image = self.photo(fiche["photo"])
+            if not image:
+                continue
+            boite, ratio = entree.get("boite"), entree.get("ratio")
+            if not (boite and ratio):   # portrait posé avant la v1.1 : cadre retrouvé dans les candidats
+                cand = next((c for c in self.base.etat("photos_hd_candidats", {}).get(pid, [])
+                             if c["asset"] == entree.get("asset")), None)
+                boite, ratio = (cand.get("boite"), cand.get("ratio")) if cand else (None, None)
+            if cadre == "centre" and boite and entree.get("asset"):
+                centre = self._portrait_centre(entree["asset"], tuple(boite))
+                if centre:
+                    return centre[0], "image/jpeg", centre[1]
+            visage = portraits.visage_dans_portrait(boite, ratio) if boite and ratio else None
+            return image[0], image[1], visage
+        return None
+
+    def _portrait_centre(self, asset: str, boite: tuple) -> tuple[bytes, tuple] | None:
+        cache = self.__dict__.setdefault("_cache_portraits_centres", {})
+        cle = (asset, boite)
+        if cle not in cache:
+            immich = self._immich()
+            try:
+                contenu = immich.image(asset, "preview")
+            except ErreurLien as exc:
+                log.warning("HA portrait centré : %s", exc)
+                return None
+            finally:
+                immich.fermer()
+            if not contenu:
+                return None
+            try:
+                cache[cle] = portraits.portrait_centre(contenu, boite)
+            except Exception:  # noqa: BLE001 — aperçu illisible : portrait enregistré à la place
+                log.warning("HA portrait centré : aperçu illisible pour %s", asset, exc_info=True)
+                return None
+            if len(cache) > 200:
+                cache.pop(next(iter(cache)))
+        return cache[cle]
 
     def ha_personnes(self) -> dict:
         personnes = sorted(self._personnes_ha(), key=lambda p: p["nom"].lower())
