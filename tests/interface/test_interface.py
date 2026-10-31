@@ -222,3 +222,19 @@ def test_pc_linkedin_des_membres_d_un_groupe(navigateur, serveur):
     expect(ligne.get_by_role("link", name="LinkedIn ✓").first).to_be_visible()
     assert erreurs == []
     page.context.close()
+
+
+def test_pc_ajouter_des_contacts_a_un_groupe(navigateur, serveur):
+    page, erreurs = _page(navigateur, serveur, "pc")
+    page.goto(f"{serveur}/#/contacts")
+    lignes = page.locator("tbody tr")
+    expect(lignes.first).to_be_visible()
+    lignes.nth(0).click()
+    lignes.nth(1).click()
+    page.get_by_label("Groupe à ajouter ou retirer").select_option("Clients")
+    page.get_by_role("button", name="Ajouter au groupe").click()
+    expect(page.get_by_text("ajouté(s) à Clients")).to_be_visible()
+    expect(page.locator("tbody input[type=checkbox]:checked")).to_have_count(0)
+    expect(lignes.filter(has_text="Clients")).to_have_count(2)
+    assert erreurs == []
+    page.context.close()

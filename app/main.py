@@ -265,6 +265,17 @@ class FusionMultiple(BaseModel):
     ids: list[str]
 
 
+class GroupeMultiple(BaseModel):
+    ids: list[str]
+    groupe: str
+    retirer: bool = False
+
+
+@app.post("/api/contacts/groupe")
+def grouper(corps: GroupeMultiple):
+    return carnet().grouper(corps.ids, corps.groupe, corps.retirer)
+
+
 @app.post("/api/contacts/fusion")
 def fusionner_plusieurs(corps: FusionMultiple):
     return carnet().fusionner_plusieurs(corps.ids)

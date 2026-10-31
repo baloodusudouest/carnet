@@ -44,6 +44,22 @@
   const selection = $derived(tous.filter((p) => choisis.has(p.id)))
   const contactsChoisis = $derived(selection.filter((p) => p.statut !== 'linkedin').length)
   let fusionEnCours = $state(false)
+
+  // Ajouter (ou retirer) un groupe aux contacts cochés
+  let groupeCible = $state('')
+  async function grouper(retirer) {
+    fusionEnCours = true
+    try {
+      const r = await api.post('/api/contacts/groupe', { ids: [...choisis], groupe: groupeCible, retirer })
+      annoncer(`${r.modifies} contact(s) ${retirer ? 'retiré(s) de' : 'ajouté(s) à'} ${groupeCible}.`)
+      choisis = new Set()
+      await charger()
+    } catch (e) {
+      annoncer(e.message, true)
+    } finally {
+      fusionEnCours = false
+    }
+  }
   async function fusionner() {
     if (!confirm(`Réunir ${selection.length} fiches en un seul contact ?\n\n${selection.map((p) => '• ' + p.nom).join('\n')}\n\nLe choix des valeurs se fera ensuite dans la Révision.`)) return
     fusionEnCours = true
@@ -96,7 +112,13 @@
   <div class="sticky top-2 z-20 mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-onglet/60 bg-reliure/95 backdrop-blur px-4 py-2.5 text-sm shadow-lg">
     <span>{choisis.size} fiche{choisis.size > 1 ? 's' : ''} cochée{choisis.size > 1 ? 's' : ''}</span>
     <span class="text-mine truncate max-w-xl">{selection.map((p) => p.nom).join(' · ')}</span>
-    <span class="ml-auto flex gap-2">
+    <span class="ml-auto flex flex-wrap gap-2">
+      <select class="!py-1" bind:value={groupeCible} aria-label="Groupe à ajouter ou retirer">
+        <option value="">Groupe…</option>
+        {#each ref.groupes as g}<option value={g}>{g}</option>{/each}
+      </select>
+      <button class="bouton !py-1" disabled={!groupeCible || !contactsChoisis || fusionEnCours} onclick={() => grouper(false)}>Ajouter au groupe</button>
+      <button class="bouton !py-1" disabled={!groupeCible || !contactsChoisis || fusionEnCours} onclick={() => grouper(true)}>Retirer du groupe</button>
       <button class="bouton !py-1" onclick={() => (choisis = new Set())}>Tout décocher</button>
       <button class="bouton bouton-principal !py-1" disabled={choisis.size < 2 || !contactsChoisis || fusionEnCours}
         title={!contactsChoisis ? 'LinkedIn ne crée pas de contact : coche aussi le contact à compléter' : ''}

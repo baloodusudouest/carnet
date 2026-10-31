@@ -1746,3 +1746,21 @@ def test_anniversaires_tri_et_doublons():
          {"nom": "Bruno C", "jour": 29, "mois": 2, "annee": 1990, "immich": False}]
     r = assembler(e)
     assert [x["nom"] for x in r] == ["Adam M", "Bruno C", "Adeline F", "Zoé B"]
+
+
+def test_ajouter_plusieurs_contacts_a_un_groupe(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    claire, jp = _personne(c, "Claire"), _personne(c, "Jean-Pierre")
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})          # vérifiée ; JP à relire
+    assert c.post("/api/contacts/groupe", json={"ids": [claire["id"]], "groupe": "Inconnu"}).status_code == 400
+    r = c.post("/api/contacts/groupe", json={"ids": [claire["id"], jp["id"], "li-1"], "groupe": "Clients"}).json()
+    assert r["modifies"] == 2
+    d = c.get(f"/api/personnes/{claire['id']}").json()
+    assert d["statut"] == "verifie" and "Clients" in d["fiche"]["groupes"]
+    assert "Clients" in c.get(f"/api/personnes/{jp['id']}").json()["fiche"]["groupes"]
+    assert c.post("/api/contacts/groupe", json={"ids": [claire["id"]], "groupe": "Clients"}).json()["modifies"] == 0
+    c.post("/api/contacts/groupe", json={"ids": [claire["id"]], "groupe": "Clients", "retirer": True})
+    assert "Clients" not in c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["groupes"]
