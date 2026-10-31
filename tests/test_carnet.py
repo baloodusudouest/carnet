@@ -1471,3 +1471,18 @@ def test_portrait_photo_ecran_reperee():
     sortie = _io.BytesIO()
     Image.fromarray(_np.stack([trame] * 3, -1).astype("uint8")).save(sortie, "JPEG", quality=92)
     assert portraits.qualite(sortie.getvalue(), boite)[1] >= portraits.ECRAN_MAX
+
+
+def test_photo_allegee_pour_icloud():
+    import io as _io
+    import numpy as _np
+    from PIL import Image
+    from app import export, portraits
+    sortie = _io.BytesIO()
+    Image.fromarray(_np.random.default_rng(1).integers(0, 255, (1400, 1400, 3), dtype=_np.uint8)).save(sortie, "JPEG", quality=95)
+    lourde = sortie.getvalue()
+    assert len(lourde) > 500_000
+    carte = export.vcard({"prenom": "A", "nom": "B"}, "u1", (lourde, "image/jpeg"))
+    assert len(carte.encode()) < 200_000          # iCloud refuse au-delà de ~256 Ko
+    petite = (b"\xff\xd8\xff" + b"x" * 1000, "image/jpeg")
+    assert portraits.alleger(petite) == petite    # une photo légère n'est pas retouchée

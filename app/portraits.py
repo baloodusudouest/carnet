@@ -20,7 +20,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
-TAILLE_SORTIE = 1024     # côté du portrait carré envoyé à iCloud (assez pour un écran Retina)
+TAILLE_SORTIE = 800      # côté du portrait carré (largement assez pour l'écran d'un iPhone)
+PHOTO_MAX = 120_000      # octets : iCloud refuse une fiche de plus de ~256 Ko, photo en base64 comprise
 MARGE_BORD = 0.01        # un visage qui touche le bord de la photo est coupé : écarté
 VISAGE_MIN = 250         # côté minimal du visage sur la photo d'origine (pixels)
 NETTETE_REF = 110.0      # détail des traits à partir duquel un visage est jugé net
@@ -186,3 +187,25 @@ def portrait(contenu: bytes, boite, taille: int = TAILLE_SORTIE) -> tuple[bytes,
     sortie = io.BytesIO()
     carre.save(sortie, "JPEG", quality=90, optimize=True)
     return sortie.getvalue(), "image/jpeg"
+
+
+def alleger(image: tuple[bytes, str], max_octets: int = PHOTO_MAX) -> tuple[bytes, str]:
+    """Photo réduite (taille puis qualité JPEG) jusqu'à tenir dans max_octets ; inchangée si elle tient."""
+    contenu, type_ = image
+    if len(contenu) <= max_octets:
+        return image
+    try:
+        img = _ouvrir(contenu)
+    except Exception:  # noqa: BLE001 — illisible : laissée telle quelle
+        return image
+    meilleur = contenu
+    for cote in (800, 640, 512, 400):
+        essai = img.copy()
+        essai.thumbnail((cote, cote), Image.Resampling.LANCZOS)
+        for qualite in (88, 80, 72, 64):
+            sortie = io.BytesIO()
+            essai.save(sortie, "JPEG", quality=qualite, optimize=True)
+            meilleur = sortie.getvalue()
+            if len(meilleur) <= max_octets:
+                return meilleur, "image/jpeg"
+    return meilleur, "image/jpeg"
