@@ -32,6 +32,7 @@
     else if (['lecture', 'ecriture'].includes(avant)) {
       annoncer(tache.message, tache.etat === 'erreur')
       if (tache.operation === 'naissances') await chargerNaissances()
+      else if (tache.operation === 'portraits') await chargerPortraits()
       else await charger()
     }
   }
@@ -117,6 +118,42 @@
     annee_inconnue: 'année inconnue', rien_dans_carnet: 'absente de carnet' }
   const aEcrire = (l, c) => l[c] && (l[c].etat === 'ajouter' || (remplacer && l[c].etat === 'differente'))
 
+  // Photos HD : le meilleur visage Immich (entier, grand, net) devient la photo du contact
+  let portraits = $state(null)
+  let ouvert = $state(null)       // pid dont on montre les autres choix
+  let filtrePortraits = $state('sans')
+  async function chargerPortraits() {
+    try {
+      portraits = await api.get('/api/portraits')
+    } catch (e) {
+      annoncer(e.message, true)
+    }
+  }
+  chargerPortraits()
+  async function chercherPortraits() {
+    try {
+      await api.post('/api/portraits/recherche')
+      await suivre()
+    } catch (e) {
+      annoncer(e.message, true)
+    }
+  }
+  async function choisirPortrait(l, asset) {
+    occupe = l.pid
+    try {
+      await api.post('/api/portraits/choix', { pid: l.pid, asset })
+      annoncer(asset ? `Photo de ${l.nom} changée (aussi dans Immich).` : `carnet choisira la meilleure photo de ${l.nom} au prochain passage.`)
+      await chargerPortraits()
+    } catch (e) {
+      annoncer(e.message, true)
+    } finally {
+      occupe = null
+    }
+  }
+  const lignesPortraits = $derived(portraits ? portraits.lignes.filter((l) =>
+    filtrePortraits === 'tous' || (filtrePortraits === 'sans' ? !l.hd : l.hd?.manuel)) : [])
+  const netteteLisible = (n) => n == null ? 'netteté inconnue' : n >= 120 ? 'net' : n >= 50 ? 'assez net' : 'un peu flou'
+
   async function actualiser() {
     try {
       await api.post('/api/liaisons/actualiser')
@@ -146,7 +183,7 @@
     <button class="bouton ml-auto" disabled={enCours} onclick={actualiser}>Mettre à jour maintenant</button>
   </div>
 
-  {#if tache && tache.etat !== 'repos' && ['liens', 'naissances'].includes(tache.operation)}
+  {#if tache && tache.etat !== 'repos' && ['liens', 'naissances', 'portraits'].includes(tache.operation)}
     <p class="text-sm mb-3 {tache.etat === 'erreur' ? 'text-alerte' : 'text-mine'}">{tache.message}
       {#if enCours && tache.total}<span class="tabular-nums"> ({tache.fait}/{tache.total})</span>{/if}</p>
   {/if}
@@ -339,6 +376,75 @@
                   {/if}
                   {#if j.erreurs.length}<span class="block text-xs text-alerte">{j.erreurs.join(' · ')}</span>{/if}
                 </li>
+              {/each}
+            </ul>
+          {/if}
+        </section>
+      {/if}
+
+      {#if portraits?.immich}
+        {@const avecHd = portraits.lignes.filter((l) => l.hd).length}
+        <section class="mb-10">
+          <div class="flex flex-wrap items-end gap-4 mb-2">
+            <div>
+              <h2 class="titre text-xl">Photos HD depuis Immich <span class="text-mine text-base font-normal">({avecHd}/{portraits.lignes.length})</span></h2>
+              <p class="text-sm text-mine max-w-3xl">Pour chaque contact lié sans photo ou avec la vignette Immich, carnet cherche le visage
+                entier le plus grand et le plus net, et le découpe en portrait carré depuis la photo d'origine. Il devient la photo du
+                contact (iCloud suivra à la prochaine écriture) et la photo de la personne dans Immich. Une photo venue d'iCloud ou de
+                Gmail est gardée. Un choix fait ici n'est plus changé automatiquement.</p>
+            </div>
+            <button class="bouton {portraits.journal.length ? '' : 'bouton-principal'} ml-auto" disabled={enCours}
+              onclick={chercherPortraits}>{portraits.journal.length ? 'Relancer la recherche' : 'Chercher les photos HD'}</button>
+          </div>
+          {#if portraits.journal.length}
+            {@const j = portraits.journal[0]}
+            <p class="text-xs text-mine mb-3">Dernière recherche le {dateCourte(j.le)} : {j.changees} photo(s) posée(s),
+              {j.sans_photo_hd} contact(s) sans visage assez grand{portraits.prochaine ? ` · prochaine recherche automatique vers le ${dateCourte(portraits.prochaine)}` : ''}.
+              {#if j.erreurs.length}<span class="block text-alerte">{j.erreurs.join(' · ')}</span>{/if}</p>
+            <div class="flex gap-2 text-sm mb-3" role="group" aria-label="Filtrer les photos HD">
+              {#each [['sans', 'Sans photo HD'], ['manuel', 'Choisies à la main'], ['tous', 'Tous']] as [v, t]}
+                <button class="rounded-full px-3 py-1 border {filtrePortraits === v ? 'border-onglet text-papier' : 'border-couture text-mine'}"
+                  onclick={() => (filtrePortraits = v)}>{t}</button>
+              {/each}
+            </div>
+            <ul class="divide-y divide-couture border-y border-couture">
+              {#each lignesPortraits as l (l.pid)}
+                <li class="py-2 text-sm {occupe === l.pid ? 'opacity-60' : ''}">
+                  <div class="flex flex-wrap items-center gap-3">
+                    <span class="relative w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-couture grid place-items-center text-mine">
+                      {l.nom[0]}
+                      {#if l.photo}<img class="absolute inset-0 w-full h-full object-cover" src={`/api/photos/${l.photo}?v=${l.hd?.le ?? ''}`} alt=""
+                        onerror={(e) => e.currentTarget.remove()} loading="lazy" />{/if}
+                    </span>
+                    <span class="flex-1 min-w-0">
+                      <a href={`#/revision/${l.pid}`} class="block truncate hover:text-onglet">{l.nom}</a>
+                      <span class="block text-xs text-mine">
+                        {#if l.hd}visage de {l.hd.taille} px, {netteteLisible(l.hd.nettete)}{l.hd.manuel ? ' · choisie à la main' : ''}
+                        {:else if l.candidats.length}pas encore posée{:else}aucune photo où le visage est entier et assez grand{/if}</span>
+                    </span>
+                    {#if l.candidats.length}
+                      <button class="text-xs text-mine underline underline-offset-2 hover:text-papier"
+                        onclick={() => (ouvert = ouvert === l.pid ? null : l.pid)}>{ouvert === l.pid ? 'Fermer' : `Autres choix (${l.candidats.length})`}</button>
+                    {/if}
+                    {#if l.hd?.manuel}
+                      <button class="text-xs text-mine underline underline-offset-2 hover:text-papier" disabled={occupe !== null}
+                        onclick={() => choisirPortrait(l, null)}>Laisser carnet choisir</button>
+                    {/if}
+                  </div>
+                  {#if ouvert === l.pid}
+                    <div class="flex flex-wrap gap-3 mt-3 pl-[4.25rem]">
+                      {#each l.candidats as cand (cand.asset)}
+                        <button class="w-28 text-left rounded-lg overflow-hidden border-2 {l.hd?.asset === cand.asset ? 'border-onglet' : 'border-transparent hover:border-couture'}"
+                          disabled={occupe !== null} onclick={() => choisirPortrait(l, cand.asset)} aria-label={`Choisir cette photo pour ${l.nom}`}>
+                          <img class="w-28 h-28 object-cover bg-couture" src={`/api/portraits/apercu/${l.pid}/${cand.asset}`} alt="" loading="lazy" />
+                          <span class="block text-[11px] text-mine px-1 py-0.5 leading-tight">{cand.taille} px · {netteteLisible(cand.nettete)}{cand.le ? ` · ${cand.le.slice(0, 4)}` : ''}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  {/if}
+                </li>
+              {:else}
+                <li class="py-3 text-sm text-mine">Rien dans ce filtre.</li>
               {/each}
             </ul>
           {/if}

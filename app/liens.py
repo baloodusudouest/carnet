@@ -78,6 +78,72 @@ class Immich:
         if r.status_code >= 400:
             raise ErreurLien(f"Immich a refusé la date de naissance ({r.status_code}).")
 
+    # ------------------------------------------------------------ photos HD (portraits)
+
+    DROITS_PHOTOS = "asset.read, asset.view, asset.download et face.read"
+
+    def _refus_photos(self, r: httpx.Response, quoi: str) -> None:
+        if r.status_code in (401, 403):
+            raise ErreurLien(f"Immich refuse {quoi} : ajoute à la clé d'API les droits {self.DROITS_PHOTOS}.")
+        if r.status_code >= 400:
+            raise ErreurLien(f"Immich a répondu {r.status_code} ({quoi}).")
+
+    def photos_de(self, pid: str, limite: int, depuis: str | None = None) -> list[dict]:
+        """Photos (pas les vidéos) où la personne apparaît, les plus récentes d'abord."""
+        res, curseur, page = [], None, 1
+        while len(res) < limite:
+            corps = {"personIds": [pid], "type": "IMAGE", "size": min(250, limite - len(res)),
+                     "order": "desc", "withExif": True}
+            if depuis:
+                corps["createdAfter"] = depuis
+            if curseur:
+                corps["cursor"] = curseur
+            else:
+                corps["page"] = page
+            try:
+                r = self.client.post(f"{self.api}/search/metadata", json=corps)
+            except httpx.HTTPError as exc:
+                raise ErreurLien(f"Immich injoignable ({exc.__class__.__name__}).") from exc
+            self._refus_photos(r, "la recherche des photos")
+            bloc = (r.json() or {}).get("assets") or {}
+            for a in bloc.get("items") or []:
+                exif = a.get("exifInfo") or {}
+                res.append({"id": a["id"], "largeur": a.get("width") or exif.get("exifImageWidth"),
+                            "hauteur": a.get("height") or exif.get("exifImageHeight"),
+                            "type": a.get("originalMimeType") or "", "le": a.get("fileCreatedAt") or ""})
+            curseur = bloc.get("nextCursor")
+            if not curseur and not bloc.get("nextPage"):
+                break
+            page += 1
+        return res[:limite]
+
+    def visages_photo(self, asset_id: str) -> list[dict]:
+        try:
+            r = self.client.get(f"{self.api}/faces", params={"id": asset_id})
+        except httpx.HTTPError as exc:
+            raise ErreurLien(f"Immich injoignable ({exc.__class__.__name__}).") from exc
+        self._refus_photos(r, "la lecture des visages")
+        return r.json() or []
+
+    def image(self, asset_id: str, taille: str = "preview") -> bytes | None:
+        """taille : preview (≈1 440 px), fullsize, ou original (fichier tel qu'importé)."""
+        chemin = f"/assets/{asset_id}/original" if taille == "original" else f"/assets/{asset_id}/thumbnail"
+        try:
+            r = self.client.get(self.api + chemin, params=None if taille == "original" else {"size": taille})
+        except httpx.HTTPError as exc:
+            raise ErreurLien(f"Immich injoignable ({exc.__class__.__name__}).") from exc
+        if r.status_code in (401, 403):
+            self._refus_photos(r, "le téléchargement des photos")
+        return r.content if r.status_code == 200 and r.content else None
+
+    def definir_couverture(self, pid: str, asset_id: str) -> None:
+        try:
+            r = self.client.put(f"{self.api}/people/{pid}", json={"featureFaceAssetId": asset_id})
+        except httpx.HTTPError as exc:
+            raise ErreurLien(f"Immich injoignable ({exc.__class__.__name__}).") from exc
+        if r.status_code >= 400:
+            raise ErreurLien(f"Immich a refusé la photo de la personne ({r.status_code}).")
+
 
 class Treemich:
     """Une seule session, réutilisée : Treemich limite fortement le nombre de connexions."""

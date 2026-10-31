@@ -517,6 +517,39 @@ def visage_immich(immich_id: str):
     return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=3600"})
 
 
+@app.get("/api/portraits")
+def portraits_hd():
+    return carnet().photos_hd()
+
+
+@app.post("/api/portraits/recherche")
+def chercher_portraits():
+    return carnet().chercher_portraits()
+
+
+class ChoixPortrait(BaseModel):
+    pid: str
+    asset: str | None = None
+
+
+@app.post("/api/portraits/choix")
+def choisir_portrait(corps: ChoixPortrait):
+    if not corps.asset:
+        return carnet().portrait_auto(corps.pid)
+    return carnet().choisir_portrait(corps.pid, corps.asset)
+
+
+@app.get("/api/portraits/apercu/{pid}/{asset}")
+def apercu_portrait(pid: str, asset: str):
+    try:
+        image = carnet().apercu_portrait(pid, asset)
+    except Exception:  # noqa: BLE001 — l'interface affiche un cadre vide
+        image = None
+    if not image:
+        raise HTTPException(404, "Pas d'aperçu.")
+    return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=86400"})
+
+
 @app.get("/api/naissances")
 def naissances():
     return carnet().naissances_plan()
