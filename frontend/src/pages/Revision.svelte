@@ -1,7 +1,7 @@
 <script>
   import { tick, untrack } from 'svelte'
   import { api } from '../lib/api.js'
-  import { ref, statut, route, aller, annoncer } from '../lib/etat.svelte.js'
+  import { ref, statut, route, aller, annoncer, ecran, choisirVue } from '../lib/etat.svelte.js'
   import { CLES, texteItem, anniversaireLisible, dateCourte } from '../lib/cles.js'
   import Fusion from '../components/Fusion.svelte'
   import Aide from '../components/Aide.svelte'
@@ -421,7 +421,19 @@
 
 <svelte:window onkeydown={clavier} onbeforeunload={() => sauverMaintenant(true)} />
 
-{#if !dossier || !fiche}
+{#if ecran.etroit && !ecran.forcerPC}
+  <!-- Sur iPhone : la révision (colonnes côte à côte, clavier) se fait sur PC -->
+  <div class="max-w-md mx-auto text-center py-16">
+    <h1 class="titre text-2xl mb-2">Révision : à faire sur PC</h1>
+    <p class="text-mine text-sm mb-6">La fusion champ par champ compare les sources en colonnes et se pilote au clavier ;
+      elle n'est pas faite pour un écran de téléphone.
+      {statut.a_reviser ? `${statut.a_reviser} fiche(s) t'y attendent.` : 'Rien à relire pour l\'instant.'}</p>
+    <div class="flex flex-col gap-2">
+      <a class="bouton justify-center h-11" href="#/chercher">Chercher un contact</a>
+      <button class="text-sm text-mine underline underline-offset-2" onclick={() => choisirVue(true)}>Afficher quand même la vue PC</button>
+    </div>
+  </div>
+{:else if !dossier || !fiche}
   <div class="max-w-xl mx-auto text-center py-24">
     <h1 class="titre text-3xl mb-3">Rien à relire</h1>
     <p class="text-mine mb-6">Tous les contacts importés sont vérifiés. Importe un nouvel export ou passe à l'export.</p>

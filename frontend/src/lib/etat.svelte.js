@@ -24,3 +24,24 @@ lireAncre()
 export function aller(page, id = null) {
   location.hash = id ? `#/${page}/${id}` : `#/${page}`
 }
+
+// Vue iPhone : automatique sur un écran étroit ; « Vue PC » la désactive (mémorisé sur cet appareil)
+const ETROIT = '(max-width: 767px)'
+function lirePreference() {
+  try {
+    return localStorage.getItem('carnet-vue') === 'pc'
+  } catch {
+    return false
+  }
+}
+export const ecran = $state({ etroit: matchMedia(ETROIT).matches, forcerPC: lirePreference() })
+matchMedia(ETROIT).addEventListener('change', (e) => (ecran.etroit = e.matches))
+export function choisirVue(pc) {
+  ecran.forcerPC = pc
+  try {
+    if (pc) localStorage.setItem('carnet-vue', 'pc')
+    else localStorage.removeItem('carnet-vue')
+  } catch {
+    /* navigation privée : préférence non gardée */
+  }
+}

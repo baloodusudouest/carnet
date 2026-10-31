@@ -29,8 +29,8 @@
     <thead class="bg-reliure text-mine text-sm">
       <tr>
         <th class="text-left font-normal px-4 py-2.5">Export</th>
-        <th class="text-left font-normal px-4 py-2.5">Importé le</th>
-        <th class="text-left font-normal px-4 py-2.5">Fiches</th>
+        <th class="text-left font-normal px-4 py-2.5 hidden sm:table-cell">Importé le</th>
+        <th class="text-left font-normal px-4 py-2.5 hidden sm:table-cell">Fiches</th>
         <th class="text-left font-normal px-4 py-2.5">Suppression</th>
         <th class="px-4 py-2.5"><span class="sr-only">Contacts</span></th>
       </tr>
@@ -38,9 +38,10 @@
     <tbody>
       {#each archives as a (a.id)}
         <tr class="border-t border-couture/70 {a.bientot ? 'bg-onglet-sombre/20' : ''}">
-          <td class="px-4 py-2.5">{a.libelle}<span class="block text-xs text-mine">{a.fichier}</span></td>
-          <td class="px-4 py-2.5 text-mine">{dateCourte(a.importe_le)}</td>
-          <td class="px-4 py-2.5 text-mine tabular-nums">{a.lus} lues, {a.ajoutes} ajoutées</td>
+          <td class="px-4 py-2.5 break-all">{a.libelle}<span class="block text-xs text-mine">{a.fichier}</span>
+            <span class="block text-xs text-mine sm:hidden">importé le {dateCourte(a.importe_le)}</span></td>
+          <td class="px-4 py-2.5 text-mine hidden sm:table-cell">{dateCourte(a.importe_le)}</td>
+          <td class="px-4 py-2.5 text-mine tabular-nums hidden sm:table-cell">{a.lus} lues, {a.ajoutes} ajoutées</td>
           <td class="px-4 py-2.5 {a.bientot ? 'text-onglet' : 'text-mine'}">
             {#if a.purge_le}supprimée le {dateCourte(a.purge_le)}
             {:else}le {dateCourte(a.expire_le)} <span class="text-xs">(dans {a.jours_restants} j)</span>{/if}
@@ -48,7 +49,7 @@
           <td class="px-4 py-2.5 text-right">
             <button class="text-sm underline underline-offset-2 text-mine hover:text-papier"
               aria-expanded={ouverte === a.id} onclick={() => (ouverte = ouverte === a.id ? null : a.id)}>
-              {ouverte === a.id ? 'Masquer' : `Voir les ${a.contacts.length} contacts`}
+              {ouverte === a.id ? 'Masquer' : `${a.contacts.length} contacts`}
             </button>
           </td>
         </tr>

@@ -386,7 +386,7 @@ class Carnet:
                 "nb_sources": len(principales), "doublon": len(principales) > 1,
                 "telephone": (fiche["telephones"][0].get("affichage") if fiche["telephones"] else ""),
                 "courriel": (fiche["courriels"][0]["valeur"] if fiche["courriels"] else ""),
-                "societe": fiche["societe"],
+                "societe": fiche["societe"], "photo": fiche.get("photo"),
             })
         return sorted(resultat, key=lambda r: r["nom"].lower())
 
@@ -2236,6 +2236,18 @@ class Carnet:
             immich.fermer()
         self.base.ecrire_etat("affiches", faites)
         return {"ok": True}
+
+    def image_affiche(self, pid: str) -> tuple[bytes, str] | None:
+        """L'affiche choisie, en pleine taille (pour l'enregistrer dans Photos sur l'iPhone)."""
+        a = self.base.etat("affiches", {}).get(pid)
+        if not a or not a.get("immich_asset"):
+            return None
+        immich = self._immich()
+        try:
+            contenu = immich.image(a["immich_asset"], "original")
+        finally:
+            immich.fermer()
+        return (contenu, "image/jpeg") if contenu else None
 
     def apercu_proposition(self, pid: str, asset: str, grand: bool = False) -> tuple[bytes, str] | None:
         """Proposition cadrée comme l'affiche finale, en petit (tableau) ou en grand (survol)."""
