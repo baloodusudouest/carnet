@@ -1650,3 +1650,27 @@ def test_copie_et_restauration_de_la_base(client):
     assert r["ok"] and r["cle"] == "Enpass" and r["comptes"]["personnes"] > 0 and r["vcf"] is not None
     journal = c.get("/api/sauvegardes").json()["restaurations"]
     assert len(journal) == 2 and cn.cfg.db_key not in str(journal)                # la clé n'est jamais notée
+
+
+def test_fusion_manuelle_de_plusieurs_fiches_avec_linkedin(client):
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    _importer(c, "Connections.csv", "linkedin")
+    tous = c.get("/api/contacts?tout=true").json()
+    orphelines = [p for p in tous if p["statut"] == "linkedin"]
+    assert orphelines and all(p["id"].startswith("li-") for p in orphelines)
+    assert not any(p["statut"] == "linkedin" for p in c.get("/api/contacts").json())   # liste habituelle inchangée
+    li = orphelines[0]
+    a, b = [p for p in tous if p["statut"] != "linkedin"][:2]
+    assert c.post("/api/contacts/fusion", json={"ids": [li["id"]]}).status_code == 400              # une seule fiche
+    assert c.post("/api/contacts/fusion", json={"ids": [li["id"], li["id"]]}).status_code == 400
+    r = c.post("/api/contacts/fusion", json={"ids": [a["id"], b["id"], li["id"]]})
+    assert r.status_code == 200, r.text
+    cible = r.json()["id"]
+    d = c.get(f"/api/personnes/{cible}").json()
+    assert d["statut"] == "a_reviser" and d["a_revoir"] == "fusion manuelle"
+    sources = {s["source"] for s in d["sources"]}
+    assert "linkedin" in sources and any(s["source"] == "linkedin" and not s["enrichissement"] for s in d["sources"])
+    restants = {p["id"] for p in c.get("/api/contacts?tout=true").json()}
+    assert li["id"] not in restants and len({a["id"], b["id"]} & restants) == 1

@@ -387,8 +387,60 @@ class Carnet:
                 "telephone": (fiche["telephones"][0].get("affichage") if fiche["telephones"] else ""),
                 "courriel": (fiche["courriels"][0]["valeur"] if fiche["courriels"] else ""),
                 "societe": fiche["societe"], "photo": fiche.get("photo"),
+                "joignable": bool(fiche["telephones"] or fiche["courriels"] or any(
+                    s.get("type") in MESSAGERIES for s in fiche["sites"])),
             })
         return sorted(resultat, key=lambda r: r["nom"].lower())
+
+    def liste_complete(self) -> list[dict]:
+        """Tous les contacts, plus les relations LinkedIn qui n'ont trouvé aucun contact
+        (identifiant « li-<source> ») : pour les rattacher à la main."""
+        res = self.liste()
+        for l in self.base.lire("SELECT id, donnees FROM sources WHERE enrichissement = 1 AND personne_id IS NULL"):
+            f = completer(json.loads(l["donnees"]))
+            res.append({"id": f"li-{l['id']}", "nom": nom_affiche(f), "statut": "linkedin", "a_revoir": None,
+                        "brouillon": False, "groupes": [], "sources": ["linkedin"], "nb_sources": 1, "doublon": False,
+                        "telephone": f["telephones"][0].get("affichage") if f["telephones"] else "",
+                        "courriel": f["courriels"][0]["valeur"] if f["courriels"] else "",
+                        "societe": f["societe"], "fonction": f["fonction"], "photo": None,
+                        "joignable": bool(f["telephones"] or f["courriels"])})
+        return sorted(res, key=lambda r: r["nom"].lower())
+
+    def fusionner_plusieurs(self, ids: list[str]) -> dict:
+        """Fusion manuelle de plusieurs contacts (et de relations LinkedIn sans contact) dans un
+        seul : le contact vérifié le plus complet est gardé, les autres y sont réunis, et une
+        relation LinkedIn devient une source à part entière. Le résultat repart en révision."""
+        ids = list(dict.fromkeys(i for i in ids if i))
+        personnes = [i for i in ids if not i.startswith("li-")]
+        linkedin = [int(i[3:]) for i in ids if i.startswith("li-") and i[3:].isdigit()]
+        if len(personnes) + len(linkedin) < 2:
+            raise ErreurCarnet("Sélectionne au moins deux fiches à fusionner.")
+        if not personnes:
+            raise ErreurCarnet("LinkedIn ne crée pas de contact : sélectionne aussi le contact à compléter.")
+        lignes = {pid: self._personne(pid) for pid in personnes}
+        # Fiche gardée : vérifiée d'abord, puis celle qui a le plus de sources
+        cible = max(personnes, key=lambda pid: (lignes[pid]["statut"] == "verifie", len(self._sources_de(pid))))
+        for autre in personnes:
+            if autre != cible:
+                self.fusionner(cible, autre)
+        if linkedin:
+            ligne = self._personne(cible)
+            courante = self._fiche_courante(ligne, self._sources_de(cible))
+            with self.base.transaction() as cx:
+                for sid in linkedin:
+                    l = cx.execute("SELECT donnees FROM sources WHERE id = ? AND enrichissement = 1 AND personne_id IS NULL",
+                                   (sid,)).fetchone()
+                    if not l:
+                        continue   # déjà rattachée entre-temps
+                    courante = fusion.reunir(courante, json.loads(l["donnees"]))
+                    cx.execute("UPDATE sources SET personne_id = ?, enrichissement = 0 WHERE id = ?", (cible, sid))
+                raisons = json.loads(ligne["raisons"] or "[]") + [
+                    {"a": None, "b": None, "score": 100, "raisons": ["fusion manuelle avec LinkedIn"]}]
+                cx.execute("UPDATE personnes SET raisons = ?, brouillon = ?, statut = 'a_reviser', "
+                           "a_revoir = 'fusion manuelle', modifie_le = ? WHERE id = ?",
+                           (json.dumps(raisons, ensure_ascii=False), json.dumps(courante, ensure_ascii=False),
+                            _iso(maintenant()), cible))
+        return {"id": cible}
 
     def file(self) -> list[dict]:
         """File de révision : doublons d'abord, puis les contacts seuls, par ordre alphabétique."""

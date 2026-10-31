@@ -1,15 +1,19 @@
 <script>
   import { api } from '../lib/api.js'
-  import { ref, aller } from '../lib/etat.svelte.js'
+  import { ref, aller, annoncer } from '../lib/etat.svelte.js'
   import { cleTexte, sansAccents } from '../lib/cles.js'
 
   let tous = $state([])
   let recherche = $state('')
   let groupe = $state('')
   let filtre = $state('tous')
+  let source = $state('')
+  let injoignables = $state(false)
   let lettre = $state('')
+  let choisis = $state(new Set())   // fiches cochées pour une fusion manuelle
 
-  api.get('/api/contacts').then((l) => (tous = l))
+  // Tous les contacts, y compris les relations LinkedIn sans contact (pour les rattacher à la main)
+  api.get('/api/contacts?tout=true').then((l) => (tous = l))
 
   const initiale = (nom) => {
     const c = sansAccents(nom).trim().charAt(0).toUpperCase()
@@ -22,10 +26,35 @@
     return tous.filter((p) =>
       (!q || cleTexte(`${p.nom} ${p.societe} ${p.courriel} ${p.telephone}`).includes(q)) &&
       (!groupe || p.groupes.includes(groupe)) &&
-      (filtre === 'tous' ? p.statut !== 'ecarte' : p.statut === filtre))
+      (!source || p.sources.includes(source)) &&
+      (!injoignables || !p.joignable) &&
+      (filtre === 'tous' ? !['ecarte', 'linkedin'].includes(p.statut)
+        : filtre === 'toutes_fiches' ? true : p.statut === filtre))
   })
   const presentes = $derived(new Set(filtres.map((p) => initiale(p.nom))))
   const affiches = $derived(lettre ? filtres.filter((p) => initiale(p.nom) === lettre) : filtres)
+
+  function cocher(id) {
+    const n = new Set(choisis)
+    n.has(id) ? n.delete(id) : n.add(id)
+    choisis = n
+  }
+  const selection = $derived(tous.filter((p) => choisis.has(p.id)))
+  const contactsChoisis = $derived(selection.filter((p) => p.statut !== 'linkedin').length)
+  let fusionEnCours = $state(false)
+  async function fusionner() {
+    if (!confirm(`Fusionner ${selection.length} fiches en un seul contact ?\n\n${selection.map((p) => '• ' + p.nom).join('\n')}\n\nLe résultat s'ouvre dans la Révision pour choisir les valeurs.`)) return
+    fusionEnCours = true
+    try {
+      const r = await api.post('/api/contacts/fusion', { ids: [...choisis] })
+      choisis = new Set()
+      aller('revision', r.id)
+    } catch (e) {
+      annoncer(e.message, true)
+    } finally {
+      fusionEnCours = false
+    }
+  }
 </script>
 
 <div class="flex flex-wrap items-end gap-4 mb-6">
@@ -40,12 +69,34 @@
     {#each ref.groupes as g}<option value={g}>{g}</option>{/each}
   </select>
   <select bind:value={filtre} aria-label="Statut">
-    <option value="tous">Tous les statuts</option>
+    <option value="tous">Contacts (vérifiés et à relire)</option>
     <option value="verifie">Vérifiés</option>
-    <option value="a_reviser">À relire</option>
+    <option value="a_reviser">À vérifier</option>
     <option value="ecarte">Mis de côté</option>
+    <option value="linkedin">LinkedIn uniquement (sans contact)</option>
+    <option value="toutes_fiches">Toutes les fiches</option>
   </select>
+  <select bind:value={source} aria-label="Source">
+    <option value="">Toutes les sources</option>
+    {#each Object.entries(ref.sources).filter(([k]) => k !== 'immich') as [k, v]}<option value={k}>{v}</option>{/each}
+  </select>
+  <label class="flex items-center gap-2 text-sm text-mine">
+    <input type="checkbox" bind:checked={injoignables} /> Sans téléphone ni courriel
+  </label>
 </div>
+
+{#if choisis.size}
+  <div class="sticky top-2 z-20 mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-onglet/60 bg-reliure/95 backdrop-blur px-4 py-2.5 text-sm shadow-lg">
+    <span>{choisis.size} fiche{choisis.size > 1 ? 's' : ''} cochée{choisis.size > 1 ? 's' : ''}</span>
+    <span class="text-mine truncate max-w-xl">{selection.map((p) => p.nom).join(' · ')}</span>
+    <span class="ml-auto flex gap-2">
+      <button class="bouton !py-1" onclick={() => (choisis = new Set())}>Tout décocher</button>
+      <button class="bouton bouton-principal !py-1" disabled={choisis.size < 2 || !contactsChoisis || fusionEnCours}
+        title={!contactsChoisis ? 'LinkedIn ne crée pas de contact : coche aussi le contact à compléter' : ''}
+        onclick={fusionner}>Fusionner</button>
+    </span>
+  </div>
+{/if}
 
 <div class="flex gap-0">
   <!-- Onglets alphabétiques, comme sur la tranche d'un carnet d'adresses -->
@@ -65,6 +116,7 @@
     <table class="w-full text-[0.93rem]">
       <thead class="bg-reliure text-mine text-sm">
         <tr>
+          <th class="w-10 pl-4 py-2.5"><span class="sr-only">Cocher pour fusionner</span></th>
           <th class="text-left font-normal px-4 py-2.5">Nom</th>
           <th class="text-left font-normal px-4 py-2.5">Téléphone</th>
           <th class="text-left font-normal px-4 py-2.5">Courriel</th>
@@ -75,24 +127,31 @@
       </thead>
       <tbody>
         {#each affiches as p (p.id)}
-          <tr class="border-t border-couture/70 hover:bg-reliure cursor-pointer" onclick={() => aller('revision', p.id)}>
+          <tr class="border-t border-couture/70 hover:bg-reliure cursor-pointer {choisis.has(p.id) ? 'bg-onglet-sombre/30' : ''}"
+            onclick={() => (p.statut === 'linkedin' ? cocher(p.id) : aller('revision', p.id))}>
+            <td class="pl-4 py-2" onclick={(e) => e.stopPropagation()}>
+              <input type="checkbox" class="w-4 h-4 accent-[var(--color-onglet)]" checked={choisis.has(p.id)}
+                onchange={() => cocher(p.id)} aria-label={`Cocher ${p.nom} pour une fusion`} />
+            </td>
             <td class="px-4 py-2">
-              <a href={`#/revision/${p.id}`} class="hover:text-onglet" onclick={(e) => e.stopPropagation()}>{p.nom}</a>
-              {#if p.societe && !p.nom.includes(p.societe)}<span class="block text-xs text-mine">{p.societe}</span>{/if}
+              {#if p.statut === 'linkedin'}<span>{p.nom}</span>
+              {:else}<a href={`#/revision/${p.id}`} class="hover:text-onglet" onclick={(e) => e.stopPropagation()}>{p.nom}</a>{/if}
+              {#if (p.societe || p.fonction) && !p.nom.includes(p.societe)}<span class="block text-xs text-mine">{[p.fonction, p.societe].filter(Boolean).join(' · ')}</span>{/if}
             </td>
             <td class="px-4 py-2 tabular-nums whitespace-nowrap">{p.telephone}</td>
             <td class="px-4 py-2 text-mine truncate max-w-56">{p.courriel}</td>
             <td class="px-4 py-2 text-sm text-mine">{p.groupes.join(', ')}</td>
             <td class="px-4 py-2 text-sm text-mine">{p.sources.map((s) => ref.sources[s]).join(', ')}</td>
             <td class="px-4 py-2 text-sm whitespace-nowrap">
-              {#if p.statut === 'ecarte'}<span class="text-alerte">Mis de côté</span>
+              {#if p.statut === 'linkedin'}<span class="text-mine">LinkedIn seul</span>
+              {:else if p.statut === 'ecarte'}<span class="text-alerte">Mis de côté</span>
               {:else if p.statut === 'verifie'}<span class="text-valide">Vérifié</span>{#if p.brouillon}<span class="block text-xs text-onglet">modifié, à valider</span>{/if}
               {:else if p.doublon}<span class="text-onglet">Doublon à fusionner</span>
               {:else}<span class="text-mine">À relire</span>{/if}
             </td>
           </tr>
         {:else}
-          <tr><td colspan="6" class="px-4 py-10 text-center text-mine">
+          <tr><td colspan="7" class="px-4 py-10 text-center text-mine">
             {tous.length ? 'Aucun contact ne correspond à ces filtres.' : 'Aucun contact : commence par importer un export depuis l’accueil.'}
           </td></tr>
         {/each}
