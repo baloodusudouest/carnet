@@ -537,7 +537,7 @@
                         title={l.champ === 'photo' ? undefined : affichage(l.champ, v)}
                         onclick={(e) => { e.stopPropagation(); actif = i; choisir(l, v) }}>
                         {#if l.champ === 'photo'}
-                          <img src={`/api/photos/${v}`} alt={`Photo ${colonnes[ci].libelle}`} class="w-9 h-9 rounded-full object-cover" />
+                          <img src={`/api/photos/${v}?taille=72`} alt={`Photo ${colonnes[ci].libelle}`} class="w-9 h-9 rounded-full object-cover" />
                         {:else}
                           <span class="block {l.champ === 'notes' ? 'line-clamp-2 whitespace-pre-line break-words' : 'truncate'}">{affichage(l.champ, v)}</span>
                         {/if}
@@ -556,7 +556,7 @@
                         onblur={() => (edition = null)} />
                     {/if}
                   {:else if l.champ === 'photo'}
-                    {#if fiche.photo}<img src={`/api/photos/${fiche.photo}`} alt="Retenue" class="w-9 h-9 rounded-full object-cover" />{:else}<span class="text-[#9a8a76] italic">aucune</span>{/if}
+                    {#if fiche.photo}<img src={`/api/photos/${fiche.photo}?taille=72`} alt="Retenue" class="w-9 h-9 rounded-full object-cover" />{:else}<span class="text-[#9a8a76] italic">aucune</span>{/if}
                   {:else if l.champ === 'societe' && estDeduite(l)}
                     <!-- Proposition déduite de l'adresse e-mail : fond ocre jusqu'à ce que tu la modifies -->
                     <button class="w-full min-w-0 flex items-baseline gap-2 text-left py-0.5"

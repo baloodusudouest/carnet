@@ -23,7 +23,18 @@
       annoncer(e.message, true)
     }
   }
-  charger(true)
+  charger()   // dernière lecture d'Immich et de Treemich (faite chaque nuit) ; « Relire » pour la refaire
+
+  let relecture = $state(false)
+  async function relire() {
+    relecture = true
+    try {
+      await charger(true)
+      annoncer('Immich et Treemich relus.')
+    } finally {
+      relecture = false
+    }
+  }
 
   async function suivre() {
     const avant = tache?.etat
@@ -230,7 +241,7 @@
 {#snippet visage(id, nom)}
   <span class="relative w-11 h-11 shrink-0 rounded-full overflow-hidden bg-couture grid place-items-center text-mine text-sm">
     {nom?.[0] ?? '?'}
-    {#if id}<img class="absolute inset-0 w-full h-full object-cover" src={`/api/immich/visage/${id}`} alt=""
+    {#if id}<img class="absolute inset-0 w-full h-full object-cover" src={`/api/immich/visage/${id}?taille=88`} alt=""
       onerror={(e) => e.currentTarget.remove()} loading="lazy" />{/if}
   </span>
 {/snippet}
@@ -268,7 +279,10 @@
       {#each donnees.erreurs as e}<p class="text-sm text-alerte mb-2">{e}</p>{/each}
       <p class="text-sm text-mine mb-6">{pluriel(donnees.nb_immich, 'personne nommée', 'personnes nommées')} dans Immich,
         {pluriel(donnees.nb_treemich, 'personne', 'personnes')} dans Treemich ;
-        {pluriel(donnees.liees.length, 'contact lié', 'contacts liés')}.</p>
+        {pluriel(donnees.liees.length, 'contact lié', 'contacts liés')}.
+        {#if donnees.lu_le}<span class="whitespace-nowrap">Lu le {dateCourte(donnees.lu_le)}.</span>{/if}
+        <button class="underline underline-offset-2 hover:text-papier disabled:opacity-50" disabled={relecture || enCours}
+          onclick={relire}>{relecture ? 'Lecture…' : 'Relire Immich et Treemich'}</button></p>
 
       <div class="flex gap-8">
       <!-- Sommaire, comme dans la Revue -->
@@ -498,7 +512,7 @@
                   <div class="flex flex-wrap items-center gap-3">
                     <span class="relative w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-couture grid place-items-center text-mine">
                       {l.nom[0]}
-                      {#if l.photo}<img class="absolute inset-0 w-full h-full object-cover" src={`/api/photos/${l.photo}?v=${l.hd?.le ?? ''}`} alt=""
+                      {#if l.photo}<img class="absolute inset-0 w-full h-full object-cover" src={`/api/photos/${l.photo}?taille=112&v=${l.hd?.le ?? ''}`} alt=""
                         onerror={(e) => e.currentTarget.remove()} loading="lazy" />{/if}
                     </span>
                     <span class="flex-1 min-w-0">
