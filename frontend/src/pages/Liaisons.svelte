@@ -152,7 +152,8 @@
   }
   const lignesPortraits = $derived(portraits ? portraits.lignes.filter((l) =>
     filtrePortraits === 'tous' || (filtrePortraits === 'sans' ? !l.hd : l.hd?.manuel)) : [])
-  const netteteLisible = (n) => n == null ? 'netteté inconnue' : n >= 120 ? 'net' : n >= 50 ? 'assez net' : 'un peu flou'
+  const netteteLisible = (n, ecran) => ecran >= 0.5 ? 'pixélisé (écran ?)' : n == null ? 'netteté inconnue' : n >= 110 ? 'net' : n >= 70 ? 'assez net' : 'un peu flou'
+  const faceLisible = (f) => f == null ? '' : f >= 0.7 ? ' · de face' : f >= 0.4 ? ' · trois quarts' : ' · profil ou masqué'
 
   // Sommaire (comme dans la Revue) : nombre d'éléments qui demandent une action
   const sommaire = $derived(donnees ? [
@@ -448,7 +449,7 @@
                     <span class="flex-1 min-w-0">
                       <a href={`#/revision/${l.pid}`} class="block truncate hover:text-onglet">{l.nom}</a>
                       <span class="block text-xs text-mine">
-                        {#if l.hd}visage de {l.hd.taille} px, {netteteLisible(l.hd.nettete)}{l.hd.manuel ? ' · choisie à la main' : ''}
+                        {#if l.hd}visage de {l.hd.taille} px, {netteteLisible(l.hd.nettete, l.hd.ecran)}{faceLisible(l.hd.face)}{l.hd.manuel ? ' · choisie à la main' : ''}
                         {:else if l.candidats.length}pas encore posée{:else}aucune photo où le visage est entier et assez grand{/if}</span>
                     </span>
                     {#if l.candidats.length}
@@ -466,7 +467,7 @@
                         <button class="w-28 text-left rounded-lg overflow-hidden border-2 {l.hd?.asset === cand.asset ? 'border-onglet' : 'border-transparent hover:border-couture'}"
                           disabled={occupe !== null} onclick={() => choisirPortrait(l, cand.asset)} aria-label={`Choisir cette photo pour ${l.nom}`}>
                           <img class="w-28 h-28 object-cover bg-couture" src={`/api/portraits/apercu/${l.pid}/${cand.asset}`} alt="" loading="lazy" />
-                          <span class="block text-[11px] text-mine px-1 py-0.5 leading-tight">{cand.taille} px · {netteteLisible(cand.nettete)}{cand.le ? ` · ${cand.le.slice(0, 4)}` : ''}</span>
+                          <span class="block text-[11px] text-mine px-1 py-0.5 leading-tight">{cand.taille} px · {netteteLisible(cand.nettete, cand.ecran)}{faceLisible(cand.face)}{cand.le ? ` · ${cand.le.slice(0, 4)}` : ''}</span>
                         </button>
                       {/each}
                     </div>
