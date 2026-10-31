@@ -112,6 +112,7 @@ Toutes exigent l'en-tête `Authorization: Bearer <CARNET_HA_TOKEN>` (401 sinon, 
 | `GET /ha/personnes` | contacts liés à Immich et proches : `{"personnes": [{"nom", "immich"}]}` (carte de réservation) |
 | `GET /ha/invite?nom=…` | date de naissance d'un invité (journal de naissance) ; 404 inconnu, 409 nom ambigu |
 | `GET /ha/anniversaires` | tous les contacts vérifiés ayant une date de naissance, pour un calendrier « Anniversaires » |
+| `GET /ha/portrait?immich=<uuid>[&cadre=centre]` | portrait HD (Photos HD) de la personne Immich, JPEG carré ; en-tête `X-Visage: x1,y1,x2,y2` (cadre du visage, de 0 à 1) ; `cadre=centre` : visage entier au milieu du carré, découpé dans l'aperçu Immich de la même photo (losange du cadre PicPak de porte, avatars ronds) ; 404 si le contact n'a pas de portrait HD (Home Assistant reprend la vignette Immich) |
 
 `/ha/anniversaires` :
 

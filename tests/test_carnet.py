@@ -1439,6 +1439,35 @@ def test_portraits_hd(client, monkeypatch):
     assert ("immich", "/api/people/im-claire", {"featureFaceAssetId": "a1"}) in ecrits
     assert c.get(f"/api/portraits/apercu/{p['id']}/a1").headers["content-type"] == "image/jpeg"
 
+    # Home Assistant : portrait HD + cadre du visage (cadres PicPak, dashboards)
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "ha_token": "jeton-ha"}))
+    monkeypatch.setitem(etat, "cfg", cn.cfg)
+    h = {"Authorization": "Bearer jeton-ha"}
+    assert c.get("/ha/portrait", params={"immich": "im-claire"}).status_code == 401
+    r = c.get("/ha/portrait", params={"immich": "im-claire"}, headers=h)
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    assert r.content == c.get(f"/api/photos/{fiche['photo']}").content
+    x1, y1, x2, y2 = map(float, r.headers["x-visage"].split(","))
+    assert 0 < x1 < x2 < 1 and 0 < y1 < y2 < 1
+    assert abs((x1 + x2) / 2 - 0.5) < 0.02                 # visage centré horizontalement
+    assert 0.3 < x2 - x1 < 0.55                            # visage ≈ 1/2,4 du portrait
+    assert (y1 + y2) / 2 < 0.5                             # un peu au-dessus du centre (épaules dessous)
+    assert c.get("/ha/portrait", params={"immich": "im-inconnu"}, headers=h).status_code == 404
+    # Cadre « centre » : visage entier au milieu, découpé dans l'aperçu de la même photo
+    r2 = c.get("/ha/portrait", params={"immich": "im-claire", "cadre": "centre"}, headers=h)
+    assert r2.status_code == 200 and r2.content != r.content
+    img2 = Image.open(_io.BytesIO(r2.content))
+    assert img2.width == img2.height
+    x1, y1, x2, y2 = map(float, r2.headers["x-visage"].split(","))
+    assert abs((x1 + x2) / 2 - 0.5) < 0.03 and abs((y1 + y2) / 2 - 0.5) < 0.1
+    assert (x2 - x1) + (y2 - y1) <= 1.0                    # tient dans un losange inscrit
+    # Portrait posé avant la v1.1 (sans cadre mémorisé) : cadre retrouvé dans les candidats
+    hd = cn.base.etat("photos_hd", {})
+    for v in hd.values():
+        v.pop("boite", None), v.pop("ratio", None)
+    cn.base.ecrire_etat("photos_hd", hd)
+    assert c.get("/ha/portrait", params={"immich": "im-claire"}, headers=h).headers["x-visage"] == r.headers["x-visage"]
+
     # La mise à jour des liaisons ne remet pas la vignette à la place du portrait
     c.post("/api/liaisons/actualiser")
     _attendre(c)
