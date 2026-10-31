@@ -4,13 +4,13 @@
 
   let { deconnecter } = $props()
   const PAGES = [
-    { cle: 'accueil', nom: 'Importer des exports', aide: 'Accueil : dépôt des fichiers, où tu en es' },
+    { cle: 'importer', nom: 'Importer des exports', aide: 'Dépôt des fichiers iCloud, Gmail, Outlook, LinkedIn' },
     { cle: 'revision', nom: 'Révision', aide: 'Fusion champ par champ — à faire sur PC' },
     { cle: 'revue', nom: 'Revue', aide: 'Points à compléter sur les contacts vérifiés' },
-    { cle: 'groupes', nom: 'Groupes', aide: 'Créer, renommer, supprimer' },
     { cle: 'liaisons', nom: 'Liaisons Immich et Treemich', aide: 'Visages, arbre, dates de naissance' },
     { cle: 'icloud', nom: 'iCloud', aide: 'Simulation, écriture, veille de nuit' },
-    { cle: 'export', nom: 'Export, kit et sauvegardes', aide: 'Fichiers .vcf, kit d’urgence, restauration' },
+    { cle: 'groupes', nom: 'Groupes', aide: 'Créer, renommer, supprimer' },
+    { cle: 'export', nom: 'Export, kit et sauvegardes', aide: 'Fichiers .vcf, kit d\u2019urgence, restauration' },
     { cle: 'archives', nom: 'Archives', aide: 'Exports déposés et leur expiration' },
   ]
 </script>

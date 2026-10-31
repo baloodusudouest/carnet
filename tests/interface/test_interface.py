@@ -8,6 +8,7 @@ Lancement : construire l'interface (cd frontend && npm run build), puis python -
 """
 from __future__ import annotations
 
+import re
 import socket
 import subprocess
 import sys
@@ -24,9 +25,9 @@ if not (RACINE / "app" / "static" / "index.html").is_file():
 
 from playwright.sync_api import Page, expect, sync_playwright  # noqa: E402
 
-ONGLETS = [("accueil", "Accueil"), ("revision", "Révision"), ("contacts", "Contacts"), ("revue", "Revue"),
-           ("groupes", "Groupes"), ("liaisons", "Liaisons"), ("export", "Export"), ("icloud", "iCloud"),
-           ("archives", "Archives")]
+ONGLETS = [("accueil", "Accueil"), ("importer", "Importer"), ("revision", "Révision"), ("contacts", "Contacts"),
+           ("revue", "Revue"), ("groupes", "Groupes"), ("liaisons", "Liaisons"), ("photos", "Photos"),
+           ("export", "Export"), ("icloud", "iCloud"), ("archives", "Archives")]
 ECRANS = {"pc": {"viewport": {"width": 1300, "height": 900}},
           "iphone": {"viewport": {"width": 390, "height": 844}, "device_scale_factor": 3, "is_mobile": True,
                      "has_touch": True}}
@@ -145,16 +146,18 @@ def test_iphone_sans_defilement_horizontal(navigateur, serveur, route):
 def test_iphone_barre_d_onglets_et_fiche(navigateur, serveur):
     page, erreurs = _page(navigateur, serveur, "iphone")
     barre = page.get_by_role("navigation", name="Sections")
-    for nom in ("Chercher", "Photos", "Plus"):
+    for nom in ("Accueil", "Chercher", "Photos", "Plus"):
         expect(barre.get_by_role("link", name=nom)).to_be_visible()
     hauteur = page.evaluate("Math.min(...[...document.querySelectorAll('nav a')].map(a => a.getBoundingClientRect().height))")
     assert hauteur >= 44                                    # cibles tactiles
+    barre.get_by_role("link", name="Chercher").click()
     page.get_by_label("Rechercher un contact").fill("claire")
     page.locator("main a[href^='#/fiche/']").first.click()
     expect(page.locator("h1")).to_have_text("Claire MARTIN")
     expect(page.get_by_role("link", name="Appeler")).to_have_attribute("href", "tel:+33612345678")
     page.go_back()
     expect(page.get_by_label("Rechercher un contact")).to_be_visible()
+    barre.get_by_role("link", name="Chercher").click()
     barre.get_by_role("link", name="Plus").click()
     expect(page.get_by_role("link", name="Groupes")).to_be_visible()
     assert erreurs == []
@@ -166,5 +169,23 @@ def test_iphone_revision_renvoie_au_pc(navigateur, serveur):
     page.goto(f"{serveur}/#/revision")
     expect(page.get_by_text("à faire sur PC")).to_be_visible()
     page.get_by_role("button", name="Afficher quand même la vue PC").click()
-    expect(page.locator("header nav a", has_text="Révision")).to_be_attached()
+    expect(page.get_by_role("navigation", name="Pages de l'onglet").get_by_role("link", name="Révision")).to_be_attached()
+    page.context.close()
+
+
+def test_pc_quatre_onglets_et_sous_onglets(navigateur, serveur):
+    page, erreurs = _page(navigateur, serveur, "pc")
+    principal = page.locator("header nav a")
+    expect(principal).to_have_text(["Accueil", "Contacts", re.compile(r"^Actions"), "Sauvegarde"])
+    page.get_by_label("Chercher un contact").fill("sophie")
+    page.get_by_role("link", name="Sophie LEFÈVRE").click()
+    expect(page.locator("h1")).to_have_text("Sophie LEFÈVRE")
+    expect(page.get_by_role("link", name="Modifier dans la Révision")).to_be_visible()
+    principal.filter(has_text="Actions").click()
+    sous = page.get_by_role("navigation", name="Pages de l'onglet")
+    for nom in ("Importer", "Révision", "Revue", "Liaisons", "Photos", "iCloud"):
+        expect(sous.get_by_role("link", name=nom)).to_be_visible()
+    principal.filter(has_text="Sauvegarde").click()
+    expect(page.get_by_role("navigation", name="Pages de l'onglet").get_by_role("link", name="Archives")).to_be_visible()
+    assert erreurs == []
     page.context.close()

@@ -2,7 +2,7 @@
   // Vue iPhone : fiche d'un contact en lecture, avec les actions de l'iPhone
   // (appeler, message, courriel, Plans). La modification se fait sur PC, dans la Révision.
   import { api } from '../lib/api.js'
-  import { route, annoncer } from '../lib/etat.svelte.js'
+  import { route, annoncer, ecran } from '../lib/etat.svelte.js'
   import { anniversaireLisible, texteItem } from '../lib/cles.js'
 
   let dossier = $state(null)
@@ -48,8 +48,9 @@
   {/if}
 {/snippet}
 
+<div class="max-w-xl mx-auto">
 <a href="#/chercher" onclick={(e) => { if (history.length > 1) { e.preventDefault(); history.back() } }}
-  class="inline-flex items-center gap-1 text-onglet text-sm h-10">‹ Chercher</a>
+  class="inline-flex items-center gap-1 text-onglet text-sm h-10">‹ Retour</a>
 
 {#if !f}
   <p class="text-mine mt-6">Chargement…</p>
@@ -102,5 +103,10 @@
       {#each f.groupes as g}<span class="text-xs rounded-full px-2.5 py-1 border border-couture text-mine">{g}</span>{/each}
     </div>
   {/if}
-  <p class="text-xs text-mine mt-6 text-center">Pour modifier ce contact, ouvre carnet sur ton PC (onglet Révision).</p>
+  {#if ecran.etroit && !ecran.forcerPC}
+    <p class="text-xs text-mine mt-6 text-center">Pour modifier ce contact, ouvre carnet sur ton PC.</p>
+  {:else}
+    <p class="mt-6 text-center"><a class="bouton" href={`#/revision/${route.id}`}>Modifier dans la Révision</a></p>
+  {/if}
 {/if}
+</div>

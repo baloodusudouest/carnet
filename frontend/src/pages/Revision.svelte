@@ -438,7 +438,7 @@
     <h1 class="titre text-3xl mb-3">Rien à relire</h1>
     <p class="text-mine mb-6">Tous les contacts importés sont vérifiés. Importe un nouvel export ou passe à l'export.</p>
     <div class="flex justify-center gap-3">
-      <a class="bouton" href="#/accueil">Importer</a>
+      <a class="bouton" href="#/importer">Importer</a>
       <a class="bouton bouton-principal" href="#/export">Exporter</a>
     </div>
   </div>

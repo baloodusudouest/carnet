@@ -181,6 +181,11 @@ def referentiel():
             "archive_jours": etat["cfg"].archive_jours, "alerte_jours": etat["cfg"].alerte_jours}
 
 
+@app.get("/api/bilan")
+def bilan():
+    return carnet().bilan()
+
+
 @app.get("/api/statut")
 def statut():
     return carnet().statut()
