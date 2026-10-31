@@ -488,6 +488,19 @@ def ha_anniversaires():
     return carnet().ha_anniversaires()
 
 
+@app.get("/ha/portrait")
+def ha_portrait(immich: str, cadre: str | None = None):
+    """Cadres PicPak et dashboards : portrait HD de la personne Immich (JPEG carré), avec le cadre
+    du visage dans l'en-tête X-Visage (« x1,y1,x2,y2 », de 0 à 1). ``cadre=centre`` : visage
+    entier au milieu du carré (losange du cadre de porte, avatars ronds). 404 sans portrait HD."""
+    trouve = carnet().ha_portrait(immich, cadre)
+    if not trouve:
+        raise HTTPException(404, "Pas de portrait HD pour cette personne.")
+    image, type_, visage = trouve
+    entetes = {"X-Visage": ",".join(f"{v:.4f}" for v in visage)} if visage else {}
+    return Response(image, media_type=type_, headers=entetes)
+
+
 @app.get("/ha/invite")
 def ha_invite(nom: str):
     """Journal de naissance : date de naissance de l'invité écrit dans la réservation."""
