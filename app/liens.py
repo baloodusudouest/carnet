@@ -145,6 +145,58 @@ class Immich:
             raise ErreurLien(f"Immich a refusé la photo de la personne ({r.status_code}).")
 
 
+    # ------------------------------------------------------------ affiches (album Immich)
+
+    DROITS_AFFICHES = "asset.upload, asset.delete, album.create, album.read et albumAsset.create"
+
+    def _appel_affiche(self, methode: str, chemin: str, quoi: str, **kw) -> httpx.Response:
+        try:
+            r = self.client.request(methode, self.api + chemin, **kw)
+        except httpx.HTTPError as exc:
+            raise ErreurLien(f"Immich injoignable ({exc.__class__.__name__}).") from exc
+        if r.status_code in (401, 403):
+            raise ErreurLien(f"Immich refuse {quoi} : ajoute à la clé d'API les droits {self.DROITS_AFFICHES}.")
+        return r
+
+    def envoyer_image(self, contenu: bytes, nom_fichier: str, quand: str) -> str:
+        """Ajoute une image à Immich, archivée (absente de la chronologie). Renvoie son identifiant."""
+        r = self._appel_affiche("POST", "/assets", "l'envoi d'une image",
+                                files={"assetData": (nom_fichier, contenu, "image/jpeg")},
+                                data={"fileCreatedAt": quand, "fileModifiedAt": quand,
+                                      "filename": nom_fichier, "visibility": "archive"})
+        if r.status_code >= 400:
+            raise ErreurLien(f"Immich a refusé l'image ({r.status_code}).")
+        return r.json()["id"]
+
+    def supprimer_images(self, ids: list[str]) -> None:
+        if ids:
+            self._appel_affiche("DELETE", "/assets", "la suppression d'une ancienne affiche",
+                                json={"ids": ids, "force": True})
+
+    def album(self, nom: str, album_id: str | None) -> str:
+        """Album existant (par identifiant, puis par nom), sinon créé."""
+        if album_id:
+            r = self._appel_affiche("GET", f"/albums/{album_id}", "la lecture de l'album")
+            if r.status_code == 200:
+                return album_id
+        r = self._appel_affiche("GET", "/albums", "la lecture des albums")
+        if r.status_code == 200:
+            for a in r.json() or []:
+                if a.get("albumName") == nom:
+                    return a["id"]
+        r = self._appel_affiche("POST", "/albums", "la création de l'album", json={"albumName": nom,
+                                "description": "Images verticales préparées par carnet pour les affiches de contact de l'iPhone."})
+        if r.status_code >= 400:
+            raise ErreurLien(f"Immich a refusé la création de l'album ({r.status_code}).")
+        return r.json()["id"]
+
+    def ajouter_album(self, album_id: str, ids: list[str]) -> None:
+        if ids:
+            r = self._appel_affiche("PUT", f"/albums/{album_id}/assets", "l'ajout à l'album", json={"ids": ids})
+            if r.status_code >= 400:
+                raise ErreurLien(f"Immich a refusé l'ajout à l'album ({r.status_code}).")
+
+
 class Treemich:
     """Une seule session, réutilisée : Treemich limite fortement le nombre de connexions."""
 

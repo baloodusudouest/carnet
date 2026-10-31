@@ -1963,7 +1963,9 @@ class Carnet:
             if taille < portraits.VISAGE_MIN:
                 continue
             connus[photo["id"]] = {"asset": photo["id"], "boite": list(boite), "taille": taille, "nettete": None,
-                                   "type": photo["type"], "le": (photo["le"] or "")[:10]}
+                                   "type": photo["type"], "le": (photo["le"] or "")[:10],
+                                   "ratio": round(visage["imageWidth"] / visage["imageHeight"], 4)
+                                   if visage.get("imageWidth") and visage.get("imageHeight") else None}
         liste = sorted(connus.values(), key=lambda c: -c["taille"])
         for c in liste[:self.PORTRAITS_A_MESURER]:
             if c.get("mesures") != portraits.VERSION_MESURES:
@@ -1983,8 +1985,10 @@ class Carnet:
         liste = sorted(nets or liste, key=lambda c: -c["score"])
         return liste[:self.PORTRAITS_GARDES]
 
-    def _poser_portrait(self, immich: Immich, pid: str, fiche: dict, immich_id: str, cand: dict, manuel: bool) -> dict:
-        """Découpe le portrait dans la meilleure version de la photo, puis l'installe partout."""
+    @staticmethod
+    def _image_haute(immich: Immich, cand: dict) -> bytes:
+        """Meilleure version disponible de la photo : l'original si Pillow le lit, sinon la
+        version pleine taille (puis l'aperçu) générée par Immich pour les HEIC, RAW…"""
         contenu = None
         if cand.get("type", "").lower() in ("image/jpeg", "image/png", "image/webp", "image/tiff"):
             contenu = immich.image(cand["asset"], "original")
@@ -1996,7 +2000,11 @@ class Carnet:
             contenu = immich.image(cand["asset"], taille)
         if not contenu:
             raise ErreurLien("photo introuvable dans Immich.")
-        image = portraits.portrait(contenu, cand["boite"])
+        return contenu
+
+    def _poser_portrait(self, immich: Immich, pid: str, fiche: dict, immich_id: str, cand: dict, manuel: bool) -> dict:
+        """Découpe le portrait dans la meilleure version de la photo, puis l'installe partout."""
+        image = portraits.portrait(self._image_haute(immich, cand), cand["boite"])
         with self.base.transaction() as cx:
             sid = self._source_immich(cx, pid, immich_id, image)
         fiche = dict(fiche, photo=sid)
@@ -2055,6 +2063,116 @@ class Carnet:
             cache.clear()
         cache[(pid, asset)] = image
         return image
+
+    # ================================================================ affiches plein écran (iPhone)
+
+    ALBUM_AFFICHES = "Affiches de contacts"
+
+    def affiches(self) -> dict:
+        groupes = self.base.etat("affiches_groupes", [])
+        faites = self.base.etat("affiches", {})
+        liens = self.base.etat("liaisons", {})
+        lignes = []
+        for pid, fiche, _ in self._verifiees():
+            if not set(fiche["groupes"]) & set(groupes) or not (liens.get(pid) or {}).get("immich"):
+                continue
+            a = faites.get(pid)
+            lignes.append({"pid": pid, "nom": nom_affiche(fiche), "affiche": a and a.get("immich_asset"),
+                           "le": a and a.get("le"), "erreur": a and a.get("erreur")})
+        return {"groupes": groupes, "lignes": lignes, "journal": self.base.etat("affiches_journal", [])[:10]}
+
+    def affiches_groupes(self, groupes: list[str]) -> dict:
+        connus = set(groupes_reconnus())
+        self.base.ecrire_etat("affiches_groupes", [g for g in groupes if g in connus])
+        return self.affiches()
+
+    def preparer_affiches(self) -> dict:
+        if not self.base.etat("affiches_groupes", []):
+            raise ErreurCarnet("Coche d'abord au moins un groupe.")
+        return self._lancer("affiches", self._preparer_affiches)
+
+    def _preparer_affiches(self) -> None:
+        """Pour chaque contact des groupes cochés : la photo Immich qui se prête le mieux au plein
+        écran (visage de face, net, de la place autour), cadrée à la verticale et rangée dans
+        l'album « Affiches de contacts » (archivée : absente de la chronologie)."""
+        groupes = set(self.base.etat("affiches_groupes", []))
+        liens = self.base.etat("liaisons", {})
+        faites = self.base.etat("affiches", {})
+        tous_candidats = self.base.etat("photos_hd_candidats", {})
+        cibles = [(pid, fiche, liens[pid]["immich"]) for pid, fiche, _ in self._verifiees()
+                  if set(fiche["groupes"]) & groupes and (liens.get(pid) or {}).get("immich")]
+        bilan = {"le": _iso(maintenant()), "contacts": len(cibles), "nouvelles": 0, "retirees": 0,
+                 "sans_photo": 0, "erreurs": []}
+        self._tache.update(total=len(cibles), fait=0, message="Affiches : préparation…")
+        immich = self._immich()
+        try:
+            album = immich.album(self.ALBUM_AFFICHES, self.base.etat("affiches_album"))
+            self.base.ecrire_etat("affiches_album", album)
+            # Contacts sortis des groupes : leur affiche est retirée d'Immich
+            gardes = {pid for pid, _, _ in cibles}
+            partis = [pid for pid in faites if pid not in gardes]
+            immich.supprimer_images([faites[p]["immich_asset"] for p in partis if faites[p].get("immich_asset")])
+            for p in partis:
+                faites.pop(p)
+                bilan["retirees"] += 1
+            for pid, fiche, immich_id in cibles:
+                self._tache["fait"] += 1
+                nom = nom_affiche(fiche)
+                self._tache["message"] = f"Affiches : {nom}…"
+                try:
+                    cands = tous_candidats.get(pid)
+                    if not cands or any(c.get("mesures") != portraits.VERSION_MESURES for c in cands):
+                        cands = tous_candidats[pid] = self._candidats_portrait(immich, immich_id, None, cands or [])
+                    choix, meilleure = None, 0.0
+                    for c in cands:
+                        if not c.get("ratio"):
+                            apercu = immich.image(c["asset"], "preview")
+                            c["ratio"] = round(portraits.ratio_image(apercu), 4) if apercu else None
+                        note = portraits.note_affiche(c, c["ratio"]) if c.get("ratio") else 0.0
+                        if note > meilleure:
+                            choix, meilleure = c, note
+                    if not choix:
+                        bilan["sans_photo"] += 1
+                        continue
+                    avant = faites.get(pid) or {}
+                    if avant.get("source") == choix["asset"] and avant.get("immich_asset"):
+                        continue
+                    image = portraits.affiche(self._image_haute(immich, choix), choix["boite"])
+                    fichier = re.sub(r"[^\w.-]+", "-", f"affiche-{nom}", flags=re.UNICODE).strip("-") + ".jpg"
+                    nouvel = immich.envoyer_image(image, fichier, _iso(maintenant()))
+                    immich.ajouter_album(album, [nouvel])
+                    if avant.get("immich_asset") and avant["immich_asset"] != nouvel:
+                        immich.supprimer_images([avant["immich_asset"]])
+                    faites[pid] = {"source": choix["asset"], "immich_asset": nouvel, "le": _iso(maintenant())}
+                    bilan["nouvelles"] += 1
+                except ErreurLien as exc:
+                    bilan["erreurs"].append(f"{nom} : {exc}")
+                    if "droits" in str(exc):
+                        break
+                except ValueError as exc:
+                    bilan["erreurs"].append(f"{nom} : {exc}")
+        finally:
+            immich.fermer()
+            self.base.ecrire_etat("affiches", faites)
+            self.base.ecrire_etat("photos_hd_candidats", tous_candidats)
+        bilan["erreurs"] = bilan["erreurs"][:20]
+        self.base.ecrire_etat("affiches_journal", ([bilan] + self.base.etat("affiches_journal", []))[:24])
+        self._tache.update(etat="erreur" if bilan["erreurs"] and not bilan["nouvelles"] else "termine", message=(
+            f"Affiches : {bilan['nouvelles']} image(s) ajoutée(s) à l'album « {self.ALBUM_AFFICHES} »"
+            + (f", {bilan['retirees']} retirée(s)" if bilan["retirees"] else "")
+            + (f", {bilan['sans_photo']} contact(s) sans photo qui convienne" if bilan["sans_photo"] else "")
+            + (f" ; {bilan['erreurs'][0]}" if bilan["erreurs"] else "") + "."))
+
+    def apercu_affiche(self, pid: str) -> tuple[bytes, str] | None:
+        a = self.base.etat("affiches", {}).get(pid)
+        if not a or not a.get("immich_asset"):
+            return None
+        immich = self._immich()
+        try:
+            contenu = immich.image(a["immich_asset"], "thumbnail")
+        finally:
+            immich.fermer()
+        return (contenu, "image/webp" if contenu[:4] == b"RIFF" else "image/jpeg") if contenu else None
 
     # ================================================================ Home Assistant : réservations et journal de naissance
 
@@ -2214,6 +2332,11 @@ class Carnet:
                     self._chercher_portraits(None)
                 except Exception:  # noqa: BLE001
                     log.exception("Portraits de nuit")
+                if self.base.etat("affiches_groupes", []):
+                    try:
+                        self._preparer_affiches()
+                    except Exception:  # noqa: BLE001
+                        log.exception("Affiches de nuit")
             self._sauvegarder()
         return self._lancer("veille", travail)
 
