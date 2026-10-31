@@ -2428,10 +2428,31 @@ class Carnet:
     def sauvegarder(self) -> dict:
         return self._lancer("sauvegarde", self._sauvegarder)
 
+    BASE_JOURS = 14   # copies chiffrées de la base gardées 14 jours
+
+    def _copier_base(self, quand: datetime) -> dict:
+        """Copie complète de la base (fiches, photos, liaisons, journaux), chiffrée avec la même
+        clé, dans archives/sauvegardes : illisible sans la clé, prise par les sauvegardes du NAS."""
+        dossier = self.cfg.archives / "sauvegardes"
+        nom = f"carnet-{quand:%Y-%m-%d}.db"
+        self.base.copier(dossier / nom)
+        limite = (quand - timedelta(days=self.BASE_JOURS)).timestamp()
+        for f in dossier.glob("carnet-*.db"):
+            if f.stat().st_mtime < limite:
+                f.unlink(missing_ok=True)
+        return {"nom": nom, "taille": (dossier / nom).stat().st_size}
+
     def _sauvegarder(self) -> None:
         quand = maintenant()
-        entree = {"le": _iso(quand), "vcf": None, "contacts": 0, "synology": None, "erreur": None}
+        entree = {"le": _iso(quand), "vcf": None, "base": None, "contacts": 0, "synology": None, "erreur": None}
         try:
+            # 0. Copie chiffrée de la base entière
+            self._tache["message"] = "Sauvegarde : copie de la base…"
+            try:
+                entree["base"] = self._copier_base(quand)
+            except Exception as exc:  # noqa: BLE001 — l'export .vcf et Synology passent quand même
+                log.exception("Copie de la base")
+                entree["erreur"] = f"Copie de la base impossible : {exc}"
             personnes = self._verifiees()
             entree["contacts"] = len(personnes)
             # 1. Export daté, sans photos (léger) ; gardé CARNET_SAUVEGARDE_JOURS jours
@@ -2543,9 +2564,43 @@ class Carnet:
     def sauvegardes(self) -> dict:
         dossier = self.cfg.archives / "sauvegardes"
         fichiers = sorted(dossier.glob("carnet-*.vcf"), reverse=True) if dossier.is_dir() else []
+        bases = sorted(dossier.glob("carnet-*.db"), reverse=True) if dossier.is_dir() else []
         return {"synology": bool(self.cfg.synology_url), "jours": self.cfg.sauvegarde_jours,
                 "fichiers": [{"nom": f.name, "taille": f.stat().st_size} for f in fichiers],
-                "journal": self.base.etat("sauvegarde_journal", [])[:30]}
+                "bases": [{"nom": f.name, "taille": f.stat().st_size} for f in bases], "jours_base": self.BASE_JOURS,
+                "journal": self.base.etat("sauvegarde_journal", [])[:30],
+                "restaurations": self.base.etat("restauration_journal", [])[:10]}
+
+    def tester_restauration(self, cle: str | None) -> dict:
+        """Ouvre la dernière copie de la base avec la clé donnée (celle d'Enpass ; sinon celle de
+        la stack), la contrôle et la compare à la base en service ; relit aussi le dernier .vcf.
+        La clé saisie n'est ni enregistrée ni écrite dans le journal."""
+        dossier = self.cfg.archives / "sauvegardes"
+        bases = sorted(dossier.glob("carnet-*.db"), reverse=True) if dossier.is_dir() else []
+        if not bases:
+            raise ErreurCarnet("Aucune copie de la base : clique d'abord sur « Sauvegarder maintenant ».")
+        copie = bases[0]
+        res = self.base.verifier(copie, cle or self.cfg.db_key)
+        entree = {"le": _iso(maintenant()), "fichier": copie.name, "cle": "Enpass" if cle else "stack",
+                  "ok": res["ok"], "motif": res["motif"], "comptes": res.get("comptes"), "ecarts": [], "vcf": None}
+        if res["ok"]:
+            # Écarts avec la base en service (attendus si des fiches ont changé depuis la copie)
+            for table, en_service in (("personnes", self.base.un("SELECT count(*) AS n FROM personnes")["n"]),
+                                      ("verifies", self.base.un("SELECT count(*) AS n FROM personnes WHERE statut = 'verifie'")["n"])):
+                if res["comptes"][table] != en_service:
+                    entree["ecarts"].append(f"{table} : {res['comptes'][table]} dans la copie, {en_service} en service")
+        vcfs = sorted(dossier.glob("carnet-*.vcf"), reverse=True) if dossier.is_dir() else []
+        if vcfs:
+            texte = vcfs[0].read_text(encoding="utf-8", errors="replace")
+            try:
+                lues, _ = vcard.lire(texte, self.cfg.region)
+                entree["vcf"] = {"fichier": vcfs[0].name, "contacts": len(lues)}
+            except Exception as exc:  # noqa: BLE001
+                entree["vcf"] = {"fichier": vcfs[0].name, "erreur": str(exc)[:120]}
+                entree["ok"] = False
+        journal = [entree] + self.base.etat("restauration_journal", [])
+        self.base.ecrire_etat("restauration_journal", journal[:20])
+        return entree
 
     def _resume_sauvegarde(self) -> dict | None:
         journal = self.base.etat("sauvegarde_journal", [])

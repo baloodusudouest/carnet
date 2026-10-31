@@ -22,6 +22,24 @@
       annoncer(e.message, true)
     }
   }
+  // Test de restauration : la clé saisie (celle d'Enpass) sert une fois et n'est jamais enregistrée
+  let cleEnpass = $state('')
+  let restauration = $state(null)
+  let testEnCours = $state(false)
+  async function testerRestauration(avecCle) {
+    testEnCours = true
+    try {
+      restauration = await api.post('/api/sauvegardes/restauration', { cle: avecCle ? cleEnpass : null })
+      cleEnpass = ''
+      annoncer(restauration.ok ? 'La sauvegarde s\'ouvre et elle est intacte.' : `Échec : ${restauration.motif ?? 'voir le détail'}.`, !restauration.ok)
+      await chargerSauvegardes()
+    } catch (e) {
+      annoncer(e.message, true)
+    } finally {
+      testEnCours = false
+    }
+  }
+
   let kit = $state(null)
   let occupe = $state('')
 
@@ -155,6 +173,49 @@
               <a class="underline underline-offset-2 hover:text-onglet" href={`/api/sauvegardes/${f.nom}`} download>Télécharger</a></li>
           {/each}
         </ul>
+      </div>
+
+      <div class="grid gap-6 lg:grid-cols-2 mt-8">
+        <div>
+          <h3 class="titre text-xl mb-1">Copies de la base</h3>
+          <p class="text-mine text-sm mb-3">Chaque nuit, la base entière (fiches, photos, liaisons, historique) est copiée, chiffrée avec
+            la même clé, dans <code>archives/sauvegardes</code> ; gardée {sauvegardes.jours_base} jours. Sans la clé, la copie est illisible.</p>
+          <ul class="divide-y divide-couture border-y border-couture text-sm">
+            {#each sauvegardes.bases as f}
+              <li class="py-2 flex"><span class="flex-1">{f.nom}</span>
+                <span class="text-mine">{(f.taille / 1048576).toFixed(1)} Mo</span></li>
+            {:else}
+              <li class="py-2 text-mine">Pas encore de copie : « Sauvegarder maintenant » en crée une.</li>
+            {/each}
+          </ul>
+        </div>
+        <div class="rounded-xl border border-couture bg-reliure p-4 text-sm">
+          <h3 class="titre text-xl mb-1">Test de restauration</h3>
+          <p class="text-mine mb-3">Colle la clé notée dans Enpass : carnet ouvre la dernière copie avec, vérifie qu'elle est intacte,
+            la compare à la base en service et relit le dernier .vcf. La clé n'est ni enregistrée ni notée dans le journal.</p>
+          <form class="flex flex-wrap gap-2" onsubmit={(e) => { e.preventDefault(); testerRestauration(true) }}>
+            <input type="password" class="flex-1 min-w-48" bind:value={cleEnpass} autocomplete="off" spellcheck="false"
+              placeholder="Clé de la base (Enpass)" aria-label="Clé de la base notée dans Enpass" />
+            <button class="bouton bouton-principal !py-1" type="submit" disabled={!cleEnpass || testEnCours || !sauvegardes.bases.length}>Tester avec cette clé</button>
+          </form>
+          <button class="text-xs text-mine underline underline-offset-2 hover:text-papier mt-2" disabled={testEnCours || !sauvegardes.bases.length}
+            onclick={() => testerRestauration(false)}>Tester avec la clé de la stack</button>
+          {#if sauvegardes.restaurations.length}
+            <ul class="mt-4 divide-y divide-couture border-y border-couture">
+              {#each sauvegardes.restaurations as r}
+                <li class="py-2">
+                  <span class="text-papier">{dateCourte(r.le)}</span>
+                  <span class={r.ok ? 'text-valide' : 'text-alerte'}> · {r.ok ? 'réussi' : 'échec'}</span>
+                  <span class="text-mine"> · clé {r.cle === 'Enpass' ? "d'Enpass" : 'de la stack'} · {r.fichier}</span>
+                  {#if r.motif}<span class="block text-xs text-alerte">{r.motif}</span>{/if}
+                  {#if r.comptes}<span class="block text-xs text-mine">{r.comptes.verifies} contacts vérifiés, {r.comptes.photos} photos,
+                    {r.comptes.etat} réglages et journaux{r.vcf?.contacts != null ? ` ; ${r.vcf.fichier} : ${r.vcf.contacts} contacts lisibles` : ''}</span>{/if}
+                  {#each r.ecarts as e}<span class="block text-xs text-mine">Écart (normal si des fiches ont changé depuis la copie) : {e}</span>{/each}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
       </div>
     </section>
   {/if}

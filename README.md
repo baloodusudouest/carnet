@@ -57,6 +57,22 @@ Dans Immich : Paramètres du compte › Clés d'API › modifier la clé de carn
 
 Après la veille, carnet écrit `archives/sauvegardes/carnet-AAAA-MM-JJ.vcf` (contacts vérifiés, sans photos, gardé 30 jours) puis recopie à l'identique les contacts vérifiés et leurs groupes dans Synology Contacts. Si plus de 5 % des fiches déjà copiées devaient être supprimées ou modifiées d'un coup, la copie s'arrête sans rien écrire (bouton « Forcer la copie » dans l'onglet Export et kit) et Home Assistant alerte.
 
+Avant cela, la base entière (fiches, photos, liaisons, réglages, journaux) est copiée dans `archives/sauvegardes/carnet-AAAA-MM-JJ.db`, chiffrée avec la même clé (gardée 14 jours). Ces copies sont dans le dossier de données, donc prises par les sauvegardes du NAS.
+
+#### Test de restauration
+
+Onglet Export et kit › Test de restauration : coller la clé notée dans le gestionnaire de mots de passe. carnet ouvre la dernière copie avec cette clé, contrôle son intégrité, la compare à la base en service et relit le dernier `.vcf`. La clé n'est ni enregistrée ni notée dans le journal. À refaire après tout changement de clé.
+
+#### Restaurer carnet
+
+1. Arrêter le conteneur carnet.
+2. Dans `${CARNET_STATE_DIR}`, renommer `carnet.db` (et supprimer `carnet.db-wal` / `carnet.db-shm` s'ils existent).
+3. Copier la sauvegarde voulue `archives/sauvegardes/carnet-AAAA-MM-JJ.db` dans `${CARNET_STATE_DIR}` sous le nom `carnet.db`.
+4. Vérifier que `CARNET_DB_KEY` dans la stack est bien la clé de cette copie, puis redémarrer.
+5. Faire une simulation iCloud avant toute écriture : elle montre ce qui diffère entre la copie restaurée et iCloud.
+
+Sans la base, les `.vcf` datés restent importables dans un carnet neuf (ou directement sur l'iPhone).
+
 ### Veille de l'iPhone (V3)
 
 Chaque nuit (`CARNET_VEILLE_HEURE`, 03:00 par défaut), carnet relit iCloud et compare chaque fiche à la version validée. Les différences de forme (réécritures d'iCloud, données Siri, photo, types recalculés) sont ignorées ; restent les contacts modifiés, créés ou supprimés sur l'iPhone. En **mode journal** (par défaut) ils sont seulement listés dans l'onglet iCloud ; en **mode révision** les fiches modifiées ou nouvelles sont importées et repassent « à réviser ». `/status` expose le résultat (compteurs seulement) et le paquet Home Assistant alerte si la veille échoue ou ne tourne plus.

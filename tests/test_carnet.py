@@ -1628,3 +1628,25 @@ def test_vignettes_et_compression(client):
     assert c.get(f"/api/photos/{sid}?taille=88", headers={"If-None-Match": r.headers["etag"]}).status_code == 304
     assert c.get(f"/api/photos/{sid}").headers["content-type"] == "image/jpeg"     # sans taille : l'original
     assert c.get("/api/contacts", headers={"Accept-Encoding": "gzip"}).status_code == 200
+
+
+def test_copie_et_restauration_de_la_base(client):
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    assert c.post("/api/sauvegardes/restauration", json={}).status_code == 400      # pas encore de copie
+    c.post("/api/sauvegardes")
+    _attendre(c)
+    s = c.get("/api/sauvegardes").json()
+    assert len(s["bases"]) == 1 and s["bases"][0]["nom"].endswith(".db")
+    assert s["journal"][0]["base"]["nom"] == s["bases"][0]["nom"]
+    copie = (cn.cfg.archives / "sauvegardes" / s["bases"][0]["nom"]).read_bytes()
+    assert not copie.startswith(b"SQLite format 3")                               # chiffrée
+    r = c.post("/api/sauvegardes/restauration", json={"cle": "mauvaise"}).json()
+    assert not r["ok"] and "clé" in r["motif"]
+    r = c.post("/api/sauvegardes/restauration", json={"cle": cn.cfg.db_key}).json()
+    assert r["ok"] and r["cle"] == "Enpass" and r["comptes"]["personnes"] > 0 and r["vcf"] is not None
+    journal = c.get("/api/sauvegardes").json()["restaurations"]
+    assert len(journal) == 2 and cn.cfg.db_key not in str(journal)                # la clé n'est jamais notée
