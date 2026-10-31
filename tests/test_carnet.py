@@ -795,6 +795,8 @@ def test_icloud_photo_par_lien(client, monkeypatch):
     assert any("FN:Moi" in t for _, t in serveur.cartes.values())     # l'essai crée aussi le groupe Moi
     carte = serveur.texte("BBBB-2222").replace("\r\n ", "")
     assert "VALUE=uri" not in carte and base64.b64encode(image).decode() in carte
+    brute = c.get(f"/api/icloud/brute/{dubois['id']}")                 # diagnostic : la carte telle qu'iCloud la renvoie
+    assert brute.status_code == 200 and "BBBB-2222" in brute.text and "attachment" in brute.headers["content-disposition"]
 
     # Photo disparue d'iCloud lors d'une écriture précédente : reprise dans la sauvegarde
     serveur.modifier_sur_iphone("BBBB-2222", "\r\n".join(

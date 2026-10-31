@@ -681,6 +681,9 @@
     </button>
     <button class="hover:text-papier underline underline-offset-2" onclick={() => (fusionOuverte = true)}>Fusionner avec un autre contact…</button>
     <button class="hover:text-papier underline underline-offset-2" onclick={repartir}>Revenir à la proposition automatique</button>
+    {#if dossier.statut === 'verifie'}
+      <a class="hover:text-papier underline underline-offset-2" href={`/api/icloud/brute/${dossier.id}`} download>Fiche iCloud brute (.vcf)</a>
+    {/if}
     <button class="ml-auto hover:text-papier" onclick={() => (aideOuverte = !aideOuverte)}><kbd>?</kbd> Raccourcis clavier</button>
   </div>
 

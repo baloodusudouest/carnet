@@ -56,6 +56,8 @@ class FauxICloud:
         chemin, corps = r.url.path, r.content.decode()
         if r.method == "GET" and chemin in self.photos:
             return httpx.Response(200, content=self.photos[chemin], headers={"Content-Type": "image/jpeg"})
+        if r.method == "GET" and chemin in self.cartes:
+            return httpx.Response(200, content=self.cartes[chemin][1].encode(), headers={"Content-Type": "text/vcard"})
         if r.method == "PROPFIND":
             if chemin not in (PRINCIPAL, MAISON, CARNET):  # racine (ou /carddav/<compte>/ chez Synology)
                 return _multistatus([_reponse("/", f"<d:current-user-principal><d:href>{PRINCIPAL}</d:href></d:current-user-principal>")])

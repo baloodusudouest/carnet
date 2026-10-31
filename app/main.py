@@ -433,6 +433,13 @@ def icloud_simuler():
     return carnet().icloud_simuler()
 
 
+@app.get("/api/icloud/brute/{pid}")
+def icloud_brute(pid: str):
+    texte, nom = carnet().icloud_brute(pid)
+    return Response(texte.encode("utf-8"), media_type="text/vcard; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{nom}"'})
+
+
 @app.get("/api/liaisons")
 def liaisons(rafraichir: bool = False):
     return carnet().liaisons(rafraichir)
