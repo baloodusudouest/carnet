@@ -38,3 +38,7 @@ export function dateCourte(iso) {
 
 // « 1 contact », « 3 contacts »
 export const pluriel = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`
+
+// Recherche de personnes sur LinkedIn (nouvel onglet) : nom et société, sans le groupe
+export const rechercheLinkedin = (nom, societe = '') =>
+  `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent([nom, societe].filter(Boolean).join(' '))}`

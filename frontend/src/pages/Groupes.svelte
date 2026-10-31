@@ -1,7 +1,7 @@
 <script>
   import { api } from '../lib/api.js'
   import { ref, annoncer } from '../lib/etat.svelte.js'
-  import { pluriel } from '../lib/cles.js'
+  import { pluriel, rechercheLinkedin } from '../lib/cles.js'
 
   // Groupes intégrés (règles fixes, non modifiables) et groupes créés à la main.
   const REGLES = [
@@ -16,6 +16,28 @@
   let edition = $state(null)      // { ancien, nom, regle }
   let suppression = $state(null)  // { nom, nb, vers }
   let occupe = $state(false)
+
+  // LinkedIn des membres d'un groupe : vert si le profil est déjà dans la fiche,
+  // sinon recherche sur linkedin.com et adresse du profil à coller ici
+  let groupeLi = $state(null)
+  let contacts = $state(null)
+  let profils = $state({})          // pid → adresse collée
+  async function ouvrirLinkedin(g) {
+    groupeLi = groupeLi === g ? null : g
+    if (groupeLi && !contacts) contacts = await api.get('/api/contacts')
+  }
+  const membres = $derived(contacts && groupeLi
+    ? contacts.filter((p) => p.statut !== 'ecarte' && p.groupes.includes(groupeLi)) : [])
+  async function ajouterProfil(p) {
+    try {
+      const r = await api.post(`/api/personnes/${p.id}/linkedin`, { url: profils[p.id] ?? '' })
+      p.linkedin = r.linkedin
+      profils[p.id] = ''
+      annoncer(`Profil LinkedIn ajouté à ${p.nom}${p.statut === 'verifie' ? ' (iCloud suivra à la prochaine écriture)' : ''}.`)
+    } catch (e) {
+      annoncer(e.message, true)
+    }
+  }
 
   async function charger() {
     groupes = await api.get('/api/groupes')
@@ -96,6 +118,8 @@
             <span class="w-56 truncate {g.fixe ? 'text-mine' : 'text-papier'}">{g.nom}</span>
             <span class="text-xs text-mine w-24">règle : {libelleRegle(g.regle)}</span>
             <span class="text-sm text-mine tabular-nums w-28">{pluriel(g.nb, 'contact', 'contacts')}</span>
+            <button class="text-sm rounded-full border px-2.5 py-0.5 {groupeLi === g.nom ? 'border-onglet text-papier' : 'border-couture text-mine hover:text-papier'}"
+              disabled={!g.nb} aria-expanded={groupeLi === g.nom} onclick={() => ouvrirLinkedin(g.nom)}>LinkedIn</button>
             {#if g.fixe}
               <span class="ml-auto text-xs text-mine/70">intégré</span>
             {:else}
@@ -107,6 +131,35 @@
               </span>
             {/if}
           </div>
+          {#if groupeLi === g.nom}
+            <div class="mt-3 rounded-lg border border-couture bg-reliure/60 p-3">
+              {#if !contacts}<p class="text-sm text-mine">Chargement…</p>
+              {:else}
+                <p class="text-xs text-mine mb-2">{membres.filter((p) => p.linkedin).length} sur {membres.length} ont leur profil LinkedIn.
+                  « Chercher » ouvre LinkedIn dans un nouvel onglet ; colle ensuite l'adresse du profil (linkedin.com/in/…).</p>
+                <ul class="divide-y divide-couture text-sm">
+                  {#each membres as p (p.id)}
+                    <li class="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5">
+                      <a href={`#/revision/${p.id}`} class="w-56 truncate hover:text-onglet">{p.nom}</a>
+                      <span class="w-40 truncate text-xs text-mine">{p.societe}</span>
+                      {#if p.linkedin}
+                        <a class="rounded-full border border-valide/60 bg-valide/15 text-valide px-2.5 py-0.5 text-xs" href={p.linkedin}
+                          target="_blank" rel="noopener noreferrer">LinkedIn ✓</a>
+                      {:else}
+                        <a class="rounded-full border border-couture text-mine hover:text-papier px-2.5 py-0.5 text-xs"
+                          href={rechercheLinkedin(p.nom, p.societe)} target="_blank" rel="noopener noreferrer">Chercher sur LinkedIn</a>
+                        <form class="flex flex-1 min-w-56 gap-2" onsubmit={(e) => { e.preventDefault(); ajouterProfil(p) }}>
+                          <input class="flex-1 !py-0.5 text-xs" placeholder="linkedin.com/in/…" bind:value={profils[p.id]}
+                            aria-label={`Adresse du profil LinkedIn de ${p.nom}`} />
+                          <button class="bouton !py-0.5 text-xs" disabled={!profils[p.id]?.trim()}>Ajouter</button>
+                        </form>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
+          {/if}
         {/if}
       </li>
     {/each}

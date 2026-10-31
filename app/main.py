@@ -275,6 +275,15 @@ def file_revision():
     return carnet().file()
 
 
+class ProfilLinkedin(BaseModel):
+    url: str
+
+
+@app.post("/api/personnes/{pid}/linkedin")
+def ajouter_linkedin(pid: str, corps: ProfilLinkedin):
+    return carnet().ajouter_linkedin(pid, corps.url)
+
+
 @app.get("/api/personnes/{pid}")
 def personne(pid: str):
     return carnet().dossier(pid)
