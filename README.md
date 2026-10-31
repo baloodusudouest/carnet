@@ -41,7 +41,7 @@ Dates de naissance (même onglet) : simulation, essai sur une personne, puis éc
 
 Photos HD (même onglet) : pour chaque contact lié sans photo ou avec la vignette Immich, carnet cherche le visage entier le plus grand, le plus net et le plus de face (les photos d'écran et images pixélisées sont écartées), et le découpe en portrait carré depuis la photo d'origine. Il devient la photo du contact et la photo de la personne dans Immich. Un choix manuel parmi les 6 meilleurs n'est plus changé. Recherche sur bouton, puis une fois par mois pendant la tâche de nuit (seules les nouvelles photos sont lues). Les photos envoyées à iCloud sont limitées à 120 Ko (iCloud refuse les fiches de plus de ~256 Ko).
 
-Affiches iPhone (même onglet) : pour les contacts des groupes cochés, carnet prépare une image verticale au format écran d'iPhone, cadrée sur le visage, et la range archivée dans l'album Immich « Affiches de contacts ». L'affiche de contact (plein écran à l'appel) se crée ensuite à la main sur l'iPhone : Apple ne permet pas de la remplir par CardDAV.
+Affiches iPhone (même onglet) : pour les contacts des groupes cochés, carnet propose jusqu'à 6 photos Immich qui se prêtent au plein écran (visage de face, net, de la place autour), déjà cadrées au format écran d'iPhone, dans un tableau (agrandies au survol). Rien n'est envoyé sans ton choix : la photo choisie est rangée, archivée, dans l'album Immich « Affiches de contacts ». Les propositions sont rafraîchies chaque mois ; un choix n'est jamais changé. L'affiche de contact (plein écran à l'appel) se crée ensuite à la main sur l'iPhone : Apple ne permet pas de la remplir par CardDAV.
 
 #### Droits de la clé d'API Immich
 

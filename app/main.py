@@ -569,15 +569,25 @@ def preparer_affiches():
     return carnet().preparer_affiches()
 
 
-@app.get("/api/affiches/apercu/{pid}")
-def apercu_affiche(pid: str):
+class ChoixAffiche(BaseModel):
+    pid: str
+    asset: str | None = None
+
+
+@app.post("/api/affiches/choix")
+def choisir_affiche(corps: ChoixAffiche):
+    return carnet().choisir_affiche(corps.pid, corps.asset)
+
+
+@app.get("/api/affiches/proposition/{pid}/{asset}")
+def apercu_proposition(pid: str, asset: str, grand: bool = False):
     try:
-        image = carnet().apercu_affiche(pid)
+        image = carnet().apercu_proposition(pid, asset, grand)
     except Exception:  # noqa: BLE001
         image = None
     if not image:
-        raise HTTPException(404, "Pas d'affiche.")
-    return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=3600"})
+        raise HTTPException(404, "Pas d'aperçu.")
+    return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=86400"})
 
 
 @app.get("/api/naissances")

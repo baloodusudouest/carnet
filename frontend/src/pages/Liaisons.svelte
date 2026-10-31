@@ -170,6 +170,29 @@
     const groupes = affiches.groupes.includes(g) ? affiches.groupes.filter((x) => x !== g) : [...affiches.groupes, g]
     affiches = await api.post('/api/affiches/groupes', { groupes })
   }
+  let filtreAffiches = $state('a_choisir')
+  // Loupe : la proposition survolée, en grand, à côté du pointeur
+  let loupe = $state(null)
+  function montrerLoupe(e, l, p) {
+    const largeur = 300, hauteur = Math.round(largeur * 19.5 / 9)
+    const x = e.clientX + 24 + largeur > window.innerWidth ? e.clientX - 24 - largeur : e.clientX + 24
+    const y = Math.min(Math.max(e.clientY - hauteur / 2, 8), window.innerHeight - hauteur - 8)
+    loupe = { src: `/api/affiches/proposition/${l.pid}/${p.asset}?grand=true`, x, y, largeur, hauteur }
+  }
+  async function choisirAffiche(l, asset) {
+    occupe = l.pid
+    try {
+      await api.post('/api/affiches/choix', { pid: l.pid, asset })
+      annoncer(asset ? `Affiche de ${l.nom} rangée dans l'album Immich.` : `Affiche de ${l.nom} retirée.`)
+      await chargerAffiches()
+    } catch (e) {
+      annoncer(e.message, true)
+    } finally {
+      occupe = null
+    }
+  }
+  const lignesAffiches = $derived(affiches ? affiches.lignes.filter((l) =>
+    filtreAffiches === 'tous' || (filtreAffiches === 'a_choisir' ? !l.manuel && l.propositions.length : l.manuel)) : [])
   async function preparerAffiches() {
     try {
       await api.post('/api/affiches/preparation')
@@ -187,7 +210,7 @@
     { cle: 'naissances', titre: 'Dates de naissance', n: naissances?.plan
       ? ['immich', 'treemich'].reduce((t, c) => t + naissances.plan.resume[c].ajouter, 0) : 0 },
     { cle: 'photos-hd', titre: 'Photos HD', n: portraits?.lignes.filter((l) => !l.hd && l.candidats.length).length ?? 0 },
-    { cle: 'affiches', titre: 'Affiches iPhone', n: affiches?.lignes.filter((l) => !l.affiche).length ?? 0 },
+    { cle: 'affiches', titre: 'Affiches iPhone', n: affiches?.lignes.filter((l) => !l.manuel && l.propositions.length).length ?? 0 },
     { cle: 'liees', titre: 'Contacts liés', n: donnees.liees.length, info: true },
   ] : [])
   function allerA(cle) {
@@ -211,6 +234,13 @@
       onerror={(e) => e.currentTarget.remove()} loading="lazy" />{/if}
   </span>
 {/snippet}
+
+{#if loupe}
+  <div class="fixed z-50 pointer-events-none rounded-xl overflow-hidden border border-onglet/60 shadow-2xl bg-couture"
+    style={`left:${loupe.x}px;top:${loupe.y}px;width:${loupe.largeur}px;height:${loupe.hauteur}px`}>
+    <img class="w-full h-full object-cover" src={loupe.src} alt="" />
+  </div>
+{/if}
 
 <div class="max-w-7xl">
   <div class="flex flex-wrap items-end gap-4 mb-2">
@@ -507,17 +537,18 @@
       {/if}
 
       {#if affiches && portraits?.immich}
-        {@const pretes = affiches.lignes.filter((l) => l.affiche).length}
+        {@const choisies = affiches.lignes.filter((l) => l.manuel).length}
         <section id="affiches" class="mb-10 scroll-mt-6">
           <div class="flex flex-wrap items-end gap-4 mb-2">
             <div>
-              <h2 class="titre text-xl">Affiches plein écran pour l'iPhone <span class="text-mine text-base font-normal">({pretes}/{affiches.lignes.length})</span></h2>
-              <p class="text-sm text-mine max-w-3xl">Pour les contacts des groupes cochés, carnet choisit la photo Immich qui se prête le mieux
-                au plein écran (visage de face, net, avec de la place autour), la cadre à la verticale et la range dans l'album
-                Immich « Affiches de contacts » (archivée : elle n'encombre pas la chronologie). Mise à jour avec la recherche mensuelle.</p>
+              <h2 class="titre text-xl">Affiches plein écran pour l'iPhone <span class="text-mine text-base font-normal">({choisies}/{affiches.lignes.length})</span></h2>
+              <p class="text-sm text-mine max-w-3xl">Pour les contacts des groupes cochés, carnet propose jusqu'à 6 photos Immich qui se prêtent
+                au plein écran (visage de face, net, avec de la place autour), déjà cadrées à la verticale. Rien n'est envoyé sans ton choix :
+                la photo choisie est rangée dans l'album Immich « Affiches de contacts » (archivée, hors chronologie). Les propositions
+                sont rafraîchies avec la recherche mensuelle ; un choix n'est jamais changé.</p>
             </div>
             <button class="bouton {affiches.journal.length ? '' : 'bouton-principal'} ml-auto" disabled={enCours || !affiches.groupes.length}
-              onclick={preparerAffiches}>{affiches.journal.length ? 'Mettre à jour les affiches' : 'Préparer les affiches'}</button>
+              onclick={preparerAffiches}>{affiches.journal.length ? 'Actualiser les propositions' : 'Chercher les propositions'}</button>
           </div>
           <div class="flex flex-wrap gap-2 text-sm mb-3" role="group" aria-label="Groupes pour les affiches">
             {#each ref.groupes as g}
@@ -527,8 +558,8 @@
           </div>
           {#if affiches.journal.length}
             {@const j = affiches.journal[0]}
-            <p class="text-xs text-mine mb-3">Dernière préparation le {dateCourte(j.le)} : {j.nouvelles} nouvelle(s),
-              {j.retirees} retirée(s), {j.sans_photo} sans photo qui convienne.
+            <p class="text-xs text-mine mb-3">Dernière recherche le {dateCourte(j.le)} : propositions pour {j.proposees ?? j.nouvelles ?? 0} contact(s),
+              {j.sans_photo} sans photo qui convienne{j.retirees ? `, ${j.retirees} affiche(s) retirée(s)` : ''}.
               {#if j.erreurs.length}<span class="block text-alerte">{j.erreurs.join(' · ')}</span>{/if}</p>
           {/if}
           <details class="mb-3 text-sm">
@@ -540,17 +571,54 @@
             </ol>
           </details>
           {#if affiches.lignes.length}
-            <ul class="grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-7 gap-3">
-              {#each affiches.lignes as l (l.pid)}
-                <li class="text-xs">
-                  <div class="aspect-[9/19.5] rounded-lg overflow-hidden bg-couture grid place-items-center text-mine">
-                    {#if l.affiche}<img class="w-full h-full object-cover" src={`/api/affiches/apercu/${l.pid}?v=${l.le}`} alt={`Affiche de ${l.nom}`} loading="lazy" />
-                    {:else}<span class="px-2 text-center">pas encore</span>{/if}
-                  </div>
-                  <span class="block truncate mt-1">{l.nom}</span>
-                </li>
+            <div class="flex gap-2 text-sm mb-3" role="group" aria-label="Filtrer les affiches">
+              {#each [['a_choisir', 'À choisir'], ['choisies', 'Choisies'], ['tous', 'Tous']] as [v, t]}
+                <button class="rounded-full px-3 py-1 border {filtreAffiches === v ? 'border-onglet text-papier' : 'border-couture text-mine'}"
+                  onclick={() => (filtreAffiches = v)}>{t}</button>
               {/each}
-            </ul>
+            </div>
+            <div class="overflow-x-auto rounded-xl border border-couture">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr class="text-xs text-mine text-left">
+                    <th class="px-3 py-2 font-normal">Contact</th>
+                    {#each [1, 2, 3, 4, 5, 6] as n}<th class="px-1 py-2 font-normal text-center">Photo {n}</th>{/each}
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each lignesAffiches as l (l.pid)}
+                    <tr class="border-t border-couture align-top {occupe === l.pid ? 'opacity-60' : ''}">
+                      <td class="px-3 py-2 w-48">
+                        <a href={`#/revision/${l.pid}`} class="block truncate hover:text-onglet">{l.nom}</a>
+                        <span class="block text-xs text-mine truncate">{l.groupes.filter((g) => affiches.groupes.includes(g)).join(', ')}</span>
+                        <span class="block text-xs mt-1 {l.manuel ? 'text-valide' : 'text-mine'}">
+                          {l.manuel ? 'choisie ✓' : l.affiche ? 'préparée sans ton choix' : l.propositions.length ? 'à choisir' : 'aucune photo qui convienne'}</span>
+                        {#if l.affiche}
+                          <button class="text-xs text-mine underline underline-offset-2 hover:text-papier mt-1" disabled={occupe !== null}
+                            onclick={() => choisirAffiche(l, null)}>Retirer l'affiche</button>
+                        {/if}
+                      </td>
+                      {#each [0, 1, 2, 3, 4, 5] as k}
+                        {@const p = l.propositions[k]}
+                        <td class="px-1 py-2 text-center">
+                          {#if p}
+                            <button class="w-20 rounded-lg overflow-hidden border-2 {l.choisie === p.asset ? 'border-onglet' : 'border-transparent hover:border-couture'}"
+                              disabled={occupe !== null} onclick={() => choisirAffiche(l, p.asset)}
+                              aria-label={`Photo ${k + 1} pour l'affiche de ${l.nom}`} aria-pressed={l.choisie === p.asset}>
+                              <img class="w-full aspect-[9/19.5] object-cover bg-couture" src={`/api/affiches/proposition/${l.pid}/${p.asset}`} alt="" loading="lazy"
+                                onmouseenter={(e) => montrerLoupe(e, l, p)} onmousemove={(e) => montrerLoupe(e, l, p)} onmouseleave={() => (loupe = null)} />
+                              <span class="block text-[10px] text-mine leading-tight py-0.5">{netteteLisible(p.nettete, p.ecran)}{faceLisible(p.face)}{p.le ? ` · ${p.le.slice(0, 4)}` : ''}</span>
+                            </button>
+                          {/if}
+                        </td>
+                      {/each}
+                    </tr>
+                  {:else}
+                    <tr><td colspan="7" class="px-3 py-3 text-mine">Rien dans ce filtre.</td></tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
           {:else if affiches.groupes.length}
             <p class="text-sm text-mine">Aucun contact lié à Immich dans ces groupes.</p>
           {/if}

@@ -1846,7 +1846,8 @@ class Carnet:
 
     PORTRAITS_PAR_PERSONNE = 120   # photos les plus récentes examinées par personne (1er passage)
     PORTRAITS_A_MESURER = 12       # meilleurs visages (par taille) dont la netteté et l'orientation sont mesurées
-    PORTRAITS_GARDES = 6           # choix proposés par contact
+    PORTRAITS_GARDES = 12          # candidats gardés par contact (photos HD : les 6 premiers sont proposés)
+    PORTRAITS_PROPOSES = 6
     PORTRAITS_JOURS = 30           # recherche automatique une fois par mois (pendant la tâche de nuit)
 
     def _source_immich_id(self, pid: str) -> int | None:
@@ -1872,7 +1873,7 @@ class Carnet:
             lignes.append({"pid": pid, "nom": nom_affiche(fiche), "photo": fiche.get("photo"),
                            "hd": h and {k: h.get(k) for k in ("asset", "taille", "nettete", "face", "ecran", "manuel", "le")},
                            "candidats": [{k: c.get(k) for k in ("asset", "taille", "nettete", "face", "ecran", "le")}
-                                         for c in candidats.get(pid, [])]})
+                                         for c in candidats.get(pid, [])[:self.PORTRAITS_PROPOSES]]})
         lignes.sort(key=lambda x: (x["hd"] is not None, x["nom"].lower()))
         prochaine = None
         if journal:
@@ -1947,7 +1948,8 @@ class Carnet:
             + (f" ; {bilan['erreurs'][0]}" if bilan["erreurs"] else "")
             + (". Elles partiront dans iCloud à la prochaine écriture." if bilan["changees"] else ".")))
 
-    def _candidats_portrait(self, immich: Immich, immich_id: str, depuis: str | None, anciens: list[dict]) -> list[dict]:
+    def _candidats_portrait(self, immich: Immich, immich_id: str, depuis: str | None, anciens: list[dict],
+                            garder: int | None = None) -> list[dict]:
         """Visages entiers et assez grands de la personne, classés par taille et netteté.
         Après le premier passage, seules les photos arrivées depuis sont examinées."""
         connus = {c["asset"]: c for c in anciens}
@@ -1983,7 +1985,7 @@ class Carnet:
         nets = [c for c in liste if (c.get("nettete") is None or c["nettete"] >= portraits.NETTETE_MIN)
                 and (c.get("ecran") or 0) < portraits.ECRAN_MAX]
         liste = sorted(nets or liste, key=lambda c: -c["score"])
-        return liste[:self.PORTRAITS_GARDES]
+        return liste[:garder or self.PORTRAITS_GARDES]
 
     @staticmethod
     def _image_haute(immich: Immich, cand: dict) -> bytes:
@@ -2067,19 +2069,29 @@ class Carnet:
     # ================================================================ affiches plein écran (iPhone)
 
     ALBUM_AFFICHES = "Affiches de contacts"
+    AFFICHES_PROPOSEES = 6     # images proposées par contact
+    AFFICHES_EXAMINEES = 12    # meilleurs visages examinés pour en tirer les propositions
+
+    def _cibles_affiches(self) -> list[tuple[str, dict, str]]:
+        groupes = set(self.base.etat("affiches_groupes", []))
+        liens = self.base.etat("liaisons", {})
+        return [(pid, fiche, liens[pid]["immich"]) for pid, fiche, _ in self._verifiees()
+                if set(fiche["groupes"]) & groupes and (liens.get(pid) or {}).get("immich")]
 
     def affiches(self) -> dict:
-        groupes = self.base.etat("affiches_groupes", [])
         faites = self.base.etat("affiches", {})
-        liens = self.base.etat("liaisons", {})
+        propositions = self.base.etat("affiches_propositions", {})
         lignes = []
-        for pid, fiche, _ in self._verifiees():
-            if not set(fiche["groupes"]) & set(groupes) or not (liens.get(pid) or {}).get("immich"):
-                continue
-            a = faites.get(pid)
-            lignes.append({"pid": pid, "nom": nom_affiche(fiche), "affiche": a and a.get("immich_asset"),
-                           "le": a and a.get("le"), "erreur": a and a.get("erreur")})
-        return {"groupes": groupes, "lignes": lignes, "journal": self.base.etat("affiches_journal", [])[:10]}
+        for pid, fiche, _ in self._cibles_affiches():
+            a = faites.get(pid) or {}
+            lignes.append({"pid": pid, "nom": nom_affiche(fiche), "groupes": fiche["groupes"],
+                           "choisie": a.get("source"), "affiche": a.get("immich_asset"),
+                           "manuel": bool(a.get("manuel")), "le": a.get("le"),
+                           "propositions": [{k: c.get(k) for k in ("asset", "le", "nettete", "face", "ecran")}
+                                            for c in propositions.get(pid, [])]})
+        lignes.sort(key=lambda l: (l["manuel"], l["nom"].lower()))
+        return {"groupes": self.base.etat("affiches_groupes", []), "lignes": lignes,
+                "journal": self.base.etat("affiches_journal", [])[:10]}
 
     def affiches_groupes(self, groupes: list[str]) -> dict:
         connus = set(groupes_reconnus())
@@ -2092,87 +2104,131 @@ class Carnet:
         return self._lancer("affiches", self._preparer_affiches)
 
     def _preparer_affiches(self) -> None:
-        """Pour chaque contact des groupes cochés : la photo Immich qui se prête le mieux au plein
-        écran (visage de face, net, de la place autour), cadrée à la verticale et rangée dans
-        l'album « Affiches de contacts » (archivée : absente de la chronologie)."""
-        groupes = set(self.base.etat("affiches_groupes", []))
-        liens = self.base.etat("liaisons", {})
+        """Propositions seulement : pour chaque contact des groupes cochés, les photos Immich qui se
+        prêtent le mieux au plein écran (visage de face, net, de la place autour). Rien n'est envoyé
+        dans Immich avant ton choix. Une affiche d'un contact sorti des groupes est retirée."""
+        cibles = self._cibles_affiches()
         faites = self.base.etat("affiches", {})
-        tous_candidats = self.base.etat("photos_hd_candidats", {})
-        cibles = [(pid, fiche, liens[pid]["immich"]) for pid, fiche, _ in self._verifiees()
-                  if set(fiche["groupes"]) & groupes and (liens.get(pid) or {}).get("immich")]
-        bilan = {"le": _iso(maintenant()), "contacts": len(cibles), "nouvelles": 0, "retirees": 0,
+        reserve = self.base.etat("affiches_candidats", {})
+        propositions = self.base.etat("affiches_propositions", {})
+        journal = self.base.etat("affiches_journal", [])
+        depuis = journal[0]["le"] if journal else None
+        bilan = {"le": _iso(maintenant()), "contacts": len(cibles), "proposees": 0, "nouvelles": 0, "retirees": 0,
                  "sans_photo": 0, "erreurs": []}
-        self._tache.update(total=len(cibles), fait=0, message="Affiches : préparation…")
+        self._tache.update(total=len(cibles), fait=0, message="Affiches : recherche des photos…")
         immich = self._immich()
         try:
-            album = immich.album(self.ALBUM_AFFICHES, self.base.etat("affiches_album"))
-            self.base.ecrire_etat("affiches_album", album)
-            # Contacts sortis des groupes : leur affiche est retirée d'Immich
             gardes = {pid for pid, _, _ in cibles}
-            partis = [pid for pid in faites if pid not in gardes]
-            immich.supprimer_images([faites[p]["immich_asset"] for p in partis if faites[p].get("immich_asset")])
+            partis = [pid for pid in set(faites) | set(propositions) if pid not in gardes]
+            anciennes = [faites[p]["immich_asset"] for p in partis if (faites.get(p) or {}).get("immich_asset")]
+            immich.supprimer_images(anciennes)
+            bilan["retirees"] = len(anciennes)
             for p in partis:
-                faites.pop(p)
-                bilan["retirees"] += 1
+                faites.pop(p, None)
+                propositions.pop(p, None)
             for pid, fiche, immich_id in cibles:
                 self._tache["fait"] += 1
                 nom = nom_affiche(fiche)
                 self._tache["message"] = f"Affiches : {nom}…"
                 try:
-                    cands = tous_candidats.get(pid)
-                    if not cands or any(c.get("mesures") != portraits.VERSION_MESURES for c in cands):
-                        cands = tous_candidats[pid] = self._candidats_portrait(immich, immich_id, None, cands or [])
-                    choix, meilleure = None, 0.0
+                    anciens = reserve.get(pid) or []
+                    a_jour = anciens and all(c.get("mesures") == portraits.VERSION_MESURES for c in anciens)
+                    cands = self._candidats_portrait(immich, immich_id, depuis if a_jour else None, anciens,
+                                                     garder=self.AFFICHES_EXAMINEES)
+                    reserve[pid] = cands
+                    notes = []
                     for c in cands:
                         if not c.get("ratio"):
                             apercu = immich.image(c["asset"], "preview")
                             c["ratio"] = round(portraits.ratio_image(apercu), 4) if apercu else None
                         note = portraits.note_affiche(c, c["ratio"]) if c.get("ratio") else 0.0
-                        if note > meilleure:
-                            choix, meilleure = c, note
-                    if not choix:
+                        if note > 0:
+                            notes.append((note, c))
+                    avant = [c["asset"] for c in propositions.get(pid, [])]
+                    propositions[pid] = [dict(c, note=round(n, 1)) for n, c in
+                                         sorted(notes, key=lambda x: -x[0])[:self.AFFICHES_PROPOSEES]]
+                    if not propositions[pid]:
                         bilan["sans_photo"] += 1
-                        continue
-                    avant = faites.get(pid) or {}
-                    if avant.get("source") == choix["asset"] and avant.get("immich_asset"):
-                        continue
-                    image = portraits.affiche(self._image_haute(immich, choix), choix["boite"])
-                    fichier = re.sub(r"[^\w.-]+", "-", f"affiche-{nom}", flags=re.UNICODE).strip("-") + ".jpg"
-                    nouvel = immich.envoyer_image(image, fichier, _iso(maintenant()))
-                    immich.ajouter_album(album, [nouvel])
-                    if avant.get("immich_asset") and avant["immich_asset"] != nouvel:
-                        immich.supprimer_images([avant["immich_asset"]])
-                    faites[pid] = {"source": choix["asset"], "immich_asset": nouvel, "le": _iso(maintenant())}
-                    bilan["nouvelles"] += 1
+                    nouvelles = [c["asset"] for c in propositions[pid] if c["asset"] not in avant]
+                    bilan["proposees"] += len(propositions[pid])
+                    bilan["nouvelles"] += len(nouvelles) if avant else 0
                 except ErreurLien as exc:
                     bilan["erreurs"].append(f"{nom} : {exc}")
                     if "droits" in str(exc):
                         break
-                except ValueError as exc:
-                    bilan["erreurs"].append(f"{nom} : {exc}")
         finally:
             immich.fermer()
             self.base.ecrire_etat("affiches", faites)
-            self.base.ecrire_etat("photos_hd_candidats", tous_candidats)
+            self.base.ecrire_etat("affiches_candidats", reserve)
+            self.base.ecrire_etat("affiches_propositions", propositions)
         bilan["erreurs"] = bilan["erreurs"][:20]
-        self.base.ecrire_etat("affiches_journal", ([bilan] + self.base.etat("affiches_journal", []))[:24])
-        self._tache.update(etat="erreur" if bilan["erreurs"] and not bilan["nouvelles"] else "termine", message=(
-            f"Affiches : {bilan['nouvelles']} image(s) ajoutée(s) à l'album « {self.ALBUM_AFFICHES} »"
-            + (f", {bilan['retirees']} retirée(s)" if bilan["retirees"] else "")
+        self.base.ecrire_etat("affiches_journal", ([bilan] + journal)[:24])
+        a_choisir = sum(1 for pid, _, _ in cibles if propositions.get(pid) and not (faites.get(pid) or {}).get("manuel"))
+        self._tache.update(etat="erreur" if bilan["erreurs"] and not bilan["proposees"] else "termine", message=(
+            f"Affiches : {a_choisir} contact(s) à choisir"
+            + (f", {bilan['nouvelles']} nouvelle(s) photo(s) proposée(s)" if bilan["nouvelles"] else "")
+            + (f", {bilan['retirees']} affiche(s) retirée(s)" if bilan["retirees"] else "")
             + (f", {bilan['sans_photo']} contact(s) sans photo qui convienne" if bilan["sans_photo"] else "")
             + (f" ; {bilan['erreurs'][0]}" if bilan["erreurs"] else "") + "."))
 
-    def apercu_affiche(self, pid: str) -> tuple[bytes, str] | None:
-        a = self.base.etat("affiches", {}).get(pid)
-        if not a or not a.get("immich_asset"):
+    def choisir_affiche(self, pid: str, asset: str | None) -> dict:
+        """Ton choix : l'image est cadrée, envoyée dans l'album (l'ancienne est supprimée).
+        Sans image : l'affiche existante est retirée d'Immich."""
+        faites = self.base.etat("affiches", {})
+        avant = faites.get(pid) or {}
+        lien = self.base.etat("liaisons", {}).get(pid) or {}
+        immich = self._immich()
+        try:
+            if asset is None:
+                immich.supprimer_images([avant["immich_asset"]] if avant.get("immich_asset") else [])
+                faites.pop(pid, None)
+            else:
+                cand = next((c for c in self.base.etat("affiches_propositions", {}).get(pid, []) if c["asset"] == asset), None)
+                if not cand or not lien.get("immich"):
+                    raise ErreurCarnet("Cette photo n'est plus proposée : relance la recherche.")
+                if avant.get("source") == asset and avant.get("immich_asset"):
+                    faites[pid] = dict(avant, manuel=True)   # préparée avant : ton choix la confirme
+                    self.base.ecrire_etat("affiches", faites)
+                    return {"ok": True}
+                try:
+                    image = portraits.affiche(self._image_haute(immich, cand), cand["boite"])
+                except ValueError as exc:
+                    raise ErreurCarnet(f"Affiche impossible : {exc}.") from exc
+                nom = nom_affiche(completer(json.loads(self._personne(pid)["fiche"] or "{}")))
+                fichier = re.sub(r"[^\w.-]+", "-", f"affiche-{nom}", flags=re.UNICODE).strip("-") + ".jpg"
+                album = immich.album(self.ALBUM_AFFICHES, self.base.etat("affiches_album"))
+                self.base.ecrire_etat("affiches_album", album)
+                nouvel = immich.envoyer_image(image, fichier, _iso(maintenant()))
+                immich.ajouter_album(album, [nouvel])
+                if avant.get("immich_asset") and avant["immich_asset"] != nouvel:
+                    immich.supprimer_images([avant["immich_asset"]])
+                faites[pid] = {"source": asset, "immich_asset": nouvel, "manuel": True, "le": _iso(maintenant())}
+        finally:
+            immich.fermer()
+        self.base.ecrire_etat("affiches", faites)
+        return {"ok": True}
+
+    def apercu_proposition(self, pid: str, asset: str, grand: bool = False) -> tuple[bytes, str] | None:
+        """Proposition cadrée comme l'affiche finale, en petit (tableau) ou en grand (survol)."""
+        cache = self.__dict__.setdefault("_cache_affiches", {})
+        cle = (pid, asset, grand)
+        if cle in cache:
+            return cache[cle]
+        cand = next((c for c in self.base.etat("affiches_propositions", {}).get(pid, []) if c["asset"] == asset), None)
+        if not cand:
             return None
         immich = self._immich()
         try:
-            contenu = immich.image(a["immich_asset"], "thumbnail")
+            contenu = immich.image(asset, "preview")
         finally:
             immich.fermer()
-        return (contenu, "image/webp" if contenu[:4] == b"RIFF" else "image/jpeg") if contenu else None
+        if not contenu:
+            return None
+        image = portraits.affiche(contenu, cand["boite"], hauteur=1100 if grand else 300), "image/jpeg"
+        if len(cache) > 300:
+            cache.clear()
+        cache[cle] = image
+        return image
 
     # ================================================================ Home Assistant : réservations et journal de naissance
 
