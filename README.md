@@ -39,6 +39,20 @@ Onglet Liaisons : carnet propose, pour chaque contact vérifié, la personne Imm
 
 Dates de naissance (même onglet) : simulation, essai sur une personne, puis écriture vers Immich ou Treemich. carnet fait foi ; une date différente n'est remplacée que sur demande ; l'arbre Treemich est exporté en GEDCOM dans `archives/` avant d'écrire, et le journal garde chaque ancienne valeur.
 
+Photos HD (même onglet) : pour chaque contact lié sans photo ou avec la vignette Immich, carnet cherche le visage entier le plus grand, le plus net et le plus de face (les photos d'écran et images pixélisées sont écartées), et le découpe en portrait carré depuis la photo d'origine. Il devient la photo du contact et la photo de la personne dans Immich. Un choix manuel parmi les 6 meilleurs n'est plus changé. Recherche sur bouton, puis une fois par mois pendant la tâche de nuit (seules les nouvelles photos sont lues). Les photos envoyées à iCloud sont limitées à 120 Ko (iCloud refuse les fiches de plus de ~256 Ko).
+
+Affiches iPhone (même onglet) : pour les contacts des groupes cochés, carnet prépare une image verticale au format écran d'iPhone, cadrée sur le visage, et la range archivée dans l'album Immich « Affiches de contacts ». L'affiche de contact (plein écran à l'appel) se crée ensuite à la main sur l'iPhone : Apple ne permet pas de la remplir par CardDAV.
+
+#### Droits de la clé d'API Immich
+
+| Fonction | Droits |
+|---|---|
+| Liaisons, visages, noms, dates de naissance | `person.read`, `person.update` |
+| Photos HD | `asset.read`, `asset.view`, `asset.download`, `face.read` |
+| Affiches iPhone | `asset.upload`, `asset.delete`, `album.create`, `album.read`, `albumAsset.create` |
+
+Dans Immich : Paramètres du compte › Clés d'API › modifier la clé de carnet. Un droit manquant est signalé par son nom dans l'interface.
+
 ### Sauvegarde de nuit (V3)
 
 Après la veille, carnet écrit `archives/sauvegardes/carnet-AAAA-MM-JJ.vcf` (contacts vérifiés, sans photos, gardé 30 jours) puis recopie à l'identique les contacts vérifiés et leurs groupes dans Synology Contacts. Si plus de 5 % des fiches déjà copiées devaient être supprimées ou modifiées d'un coup, la copie s'arrête sans rien écrire (bouton « Forcer la copie » dans l'onglet Export et kit) et Home Assistant alerte.
@@ -102,7 +116,7 @@ Copie `homeassistant/carnet.yaml` dans `/config/packages/`, ajoute `carnet_statu
 | `CARNET_SYNOLOGY_CARNET` | `My Contacts\|Mes contacts` | carnet d'adresses visé (nom CardDAV, souvent en anglais ; plusieurs noms séparés par `\|`) ; jamais un carnet partagé (« Contacts de l'équipe ») |
 | `CARNET_SYNOLOGY_VERIFIER_TLS` | `oui` | `non` pour accepter le certificat du NAS joint par son adresse IP (réseau local) |
 | `CARNET_SAUVEGARDE_JOURS` | `30` | exports .vcf datés gardés dans `archives/sauvegardes` |
-| `CARNET_IMMICH_URL` / `CARNET_IMMICH_CLE` | `http://immich-server:2283` / vide | Immich : visages (photo des contacts liés), droits `person.read` et `person.update` |
+| `CARNET_IMMICH_URL` / `CARNET_IMMICH_CLE` | `http://immich-server:2283` / vide | Immich : liaisons, photos HD, dates de naissance, affiches — droits : voir « Droits de la clé d'API Immich » |
 | `CARNET_TREEMICH_URL` / `_EMAIL` / `_PASSWORD` | `http://treemich-api:4000` / vide | Treemich : relations familiales des contacts liés |
 | `CARNET_HA_TOKEN` | vide | jeton des appels `/ha/…` de Home Assistant (noms et dates de naissance) |
 | `CARNET_VEILLE_HEURE` | `03:00` | heure de la veille iCloud quotidienne (vide : désactivée) |
