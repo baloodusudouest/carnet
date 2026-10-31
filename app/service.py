@@ -7,6 +7,7 @@ import io
 from collections import Counter
 import json
 import logging
+import re
 import secrets
 import shutil
 import threading
@@ -18,6 +19,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
+from fastapi import HTTPException
 from rapidfuzz import fuzz
 
 from . import doublons, export, fusion, synchro
@@ -1838,6 +1840,50 @@ class Carnet:
             return im.visage(immich_id)
         finally:
             im.fermer()
+
+    # ================================================================ Home Assistant : réservations et journal de naissance
+
+    def _personnes_ha(self) -> list[dict]:
+        """Contacts vérifiés liés à Immich, et proches (règle « proches »), avec le nom tel que la
+        réservation doit l'écrire : le nom Immich quand le contact est lié, sinon le nom carnet."""
+        d = self._donnees_liens()
+        noms_immich = {p["id"]: p["nom"] for p in d["immich"]}
+        liens = self.base.etat("liaisons", {})
+        res = []
+        for pid, fiche, _ in self._verifiees():
+            lien = liens.get(pid, {})
+            immich = lien.get("immich")
+            if not immich and not set(fiche["groupes"]) & GROUPES_PROCHES:
+                continue
+            res.append({"pid": pid, "nom": noms_immich.get(immich) or nom_affiche(fiche), "nom_carnet": nom_affiche(fiche),
+                        "immich_id": immich, "treemich_id": lien.get("treemich"), "fiche": fiche})
+        return res
+
+    def ha_personnes(self) -> dict:
+        personnes = sorted(self._personnes_ha(), key=lambda p: p["nom"].lower())
+        return {"personnes": [{"nom": p["nom"], "immich": bool(p["immich_id"])} for p in personnes]}
+
+    def ha_invite(self, nom: str) -> dict:
+        """Nom (ou identifiant Immich, ou adresse de sa fiche) → date de naissance. 404 si inconnu,
+        409 si plusieurs personnes portent ce nom (pas de devinette pour un journal imprimé)."""
+        brut = (nom or "").strip()
+        brut = re.sub(r"\s*\(\d{4}-\d{2}-\d{2}\s*(?:→|->)\s*\d{4}-\d{2}-\d{2}\)\s*$", "", brut)  # « Nom (dates) »
+        personnes = self._personnes_ha()
+        uuid_ = re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", brut.lower())
+        if uuid_:
+            trouves = [p for p in personnes if p["immich_id"] == uuid_.group(0)]
+        else:
+            cle = cle_texte(brut)
+            trouves = [p for p in personnes if cle in (cle_texte(p["nom"]), cle_texte(p["nom_carnet"]))]
+        if not trouves:
+            raise HTTPException(404, f"« {brut} » n'est ni un proche ni un contact lié à Immich dans carnet.")
+        if len(trouves) > 1:
+            raise HTTPException(409, f"Plusieurs personnes s'appellent « {brut} » : mets l'identifiant Immich dans le champ.")
+        p = trouves[0]
+        annif = p["fiche"]["anniversaire"] or ""
+        return {"nom": p["nom"], "prenom": p["fiche"]["prenom"], "naissance": annif or None,
+                "annee_connue": len(annif) == 10, "immich_id": p["immich_id"], "treemich_id": p["treemich_id"],
+                "groupes": p["fiche"]["groupes"]}
 
     # ================================================================ sauvegarde de nuit (V3)
 

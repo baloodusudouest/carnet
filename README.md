@@ -102,6 +102,7 @@ Copie `homeassistant/carnet.yaml` dans `/config/packages/`, ajoute `carnet_statu
 | `CARNET_SAUVEGARDE_JOURS` | `30` | exports .vcf datés gardés dans `archives/sauvegardes` |
 | `CARNET_IMMICH_URL` / `CARNET_IMMICH_CLE` | `http://immich-server:2283` / vide | Immich : visages (photo des contacts liés), droits `person.read` et `person.update` |
 | `CARNET_TREEMICH_URL` / `_EMAIL` / `_PASSWORD` | `http://treemich-api:4000` / vide | Treemich : relations familiales des contacts liés |
+| `CARNET_HA_TOKEN` | vide | jeton des appels `/ha/…` de Home Assistant (noms et dates de naissance) |
 | `CARNET_VEILLE_HEURE` | `03:00` | heure de la veille iCloud quotidienne (vide : désactivée) |
 | `KIT_URL` | `http://kit-urgence:8095` | API du kit d'urgence |
 | `KIT_API_TOKEN` | vide | jeton du kit ; sans lui, le kit se régénère à sa prochaine synchronisation |

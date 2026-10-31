@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 import os
 import threading
@@ -94,8 +95,15 @@ async def garde(request: Request, call_next):
             return JSONResponse({"detail": "Requête refusée."}, status_code=403)
         if chemin not in OUVERTS and not etat["sessions"].valide(request.cookies.get(COOKIE)):
             return JSONResponse({"detail": "Connexion requise."}, status_code=401)
+    if chemin.startswith("/ha/"):
+        # Home Assistant : jeton dédié (dates de naissance), jamais le cookie de l'interface
+        jeton = etat["cfg"].ha_token
+        if not jeton:
+            return JSONResponse({"detail": "CARNET_HA_TOKEN n'est pas défini dans la stack."}, status_code=503)
+        if not hmac.compare_digest(request.headers.get("authorization", ""), f"Bearer {jeton}"):
+            return JSONResponse({"detail": "Jeton refusé."}, status_code=401)
     reponse = await call_next(request)
-    if chemin.startswith("/api/"):
+    if chemin.startswith(("/api/", "/ha/")):
         reponse.headers["Cache-Control"] = "no-store"
     return reponse
 
@@ -397,6 +405,20 @@ def modifier_groupe(corps: ModifGroupe):
 @app.post("/api/groupes/supprimer")
 def supprimer_groupe(corps: SuppressionGroupe):
     return carnet().supprimer_groupe(corps.nom, corps.vers)
+
+
+# ------------------------------------------------------------------ Home Assistant (jeton)
+
+@app.get("/ha/personnes")
+def ha_personnes():
+    """Noms proposés dans la carte de réservation (nom Immich des contacts liés, proches)."""
+    return carnet().ha_personnes()
+
+
+@app.get("/ha/invite")
+def ha_invite(nom: str):
+    """Journal de naissance : date de naissance de l'invité écrit dans la réservation."""
+    return carnet().ha_invite(nom)
 
 
 # ------------------------------------------------------------------ iCloud (V2)

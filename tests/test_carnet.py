@@ -1237,3 +1237,37 @@ def test_corriger_orthographe(client, monkeypatch):
     assert a_formater["im-paul"]["propose"] == "Paul MARTIN" and not a_formater["im-paul"]["lie"]
     c.post("/api/immich/renommer", json={"id": "im-paul", "nom": "Paul MARTIN"})
     assert ecrits[-1] == ("immich", "/api/people/im-paul", {"name": "Paul MARTIN"})
+
+
+def test_home_assistant_reservations(client, monkeypatch):
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    t_im, t_tm = _faux_immich_treemich()
+    monkeypatch.setattr(cn, "transport_immich", t_im, raising=False)
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "immich_cle": "cle"}))
+    assert c.get("/ha/personnes").status_code == 503                           # pas de jeton défini
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "ha_token": "jeton-ha"}))
+    monkeypatch.setitem(etat, "cfg", cn.cfg)
+    assert c.get("/ha/personnes").status_code == 401
+    h = {"Authorization": "Bearer jeton-ha"}
+    claire, jp = _personne(c, "Claire"), _personne(c, "Jean-Pierre")
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})
+    f = c.get(f"/api/personnes/{jp['id']}").json()["fiche"]
+    f["groupes"] = ["Famille"]
+    c.put(f"/api/personnes/{jp['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/liaisons/valider", json={"liaisons": [{"pid": claire["id"], "immich": "im-claire"}]})
+    _attendre(c)
+    noms = c.get("/ha/personnes", headers=h).json()["personnes"]
+    assert noms == [{"nom": "Claire Martin", "immich": True}, {"nom": "Jean-Pierre DUBOIS", "immich": False}]
+    r = c.get("/ha/invite", params={"nom": "Claire Martin (2026-08-16 → 2026-08-23)"}, headers=h).json()
+    assert r["naissance"] == "1985-03-14" and r["annee_connue"] and r["immich_id"] == "im-claire"
+    assert c.get("/ha/invite", params={"nom": "im-claire"}, headers=h).status_code == 404
+    assert c.get("/ha/invite", params={"nom": "https://photos/people/" + "0" * 8 + "-0000-0000-0000-" + "0" * 12},
+                 headers=h).status_code == 404
+    r = c.get("/ha/invite", params={"nom": "jean-pierre dubois"}, headers=h).json()
+    assert r["naissance"] == "--07-02" and not r["annee_connue"]
+    assert c.get("/ha/invite", params={"nom": "Inconnu Total"}, headers=h).status_code == 404
