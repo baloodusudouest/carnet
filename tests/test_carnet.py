@@ -1280,6 +1280,18 @@ def test_home_assistant_reservations(client, monkeypatch):
     assert r["naissance"] == "--07-02" and not r["annee_connue"]
     assert c.get("/ha/invite", params={"nom": "Inconnu Total"}, headers=h).status_code == 404
 
+    # Calendrier « Anniversaires » : tous les vérifiés ayant une date, même nom que /ha/personnes
+    assert c.get("/ha/anniversaires").status_code == 401
+    assert c.get("/ha/anniversaires", headers={"Authorization": "Bearer faux"}).status_code == 401
+    r = c.get("/ha/anniversaires", headers=h)
+    assert r.status_code == 200 and r.headers["cache-control"] == "no-store"
+    a = r.json()
+    assert a["nombre"] == 2 and a["genere_le"]
+    assert a["anniversaires"] == [
+        {"nom": "Claire Martin", "jour": 14, "mois": 3, "annee": 1985, "immich": True},
+        {"nom": "Jean-Pierre DUBOIS", "jour": 2, "mois": 7, "annee": None, "immich": False}]
+    assert {x["nom"] for x in a["anniversaires"]} <= {x["nom"] for x in noms}
+
 
 def test_naissances_vers_immich_et_treemich(client, monkeypatch):
     from app.main import etat
@@ -1699,3 +1711,38 @@ def test_ajouter_le_profil_linkedin(client):
     assert d["statut"] == "verifie" and any(s["type"] == "linkedin" for s in d["fiche"]["sites"])
     ligne = next(x for x in c.get("/api/contacts").json() if x["id"] == p["id"])
     assert ligne["linkedin"] == "https://www.linkedin.com/in/jp-dubois"
+
+
+@pytest.mark.parametrize("brut, sans_annee, attendu", [
+    ("1985-03-04", False, (4, 3, 1985)),
+    ("19850304", False, (4, 3, 1985)),
+    ("1985-03-04T00:00:00Z", False, (4, 3, 1985)),          # date seule, pas de décalage de fuseau
+    ("1985-03-04T23:30:00-05:00", False, (4, 3, 1985)),
+    ("--0304", False, (4, 3, None)),
+    ("--03-04", False, (4, 3, None)),
+    ("1604-07-02", True, (2, 7, None)),                     # X-APPLE-OMIT-YEAR=1604
+    ("1604-07-02", False, (2, 7, None)),                    # 1604 seul : année inconnue chez Apple
+    ("1850-07-02", True, (2, 7, None)),                     # année < 1900 avec OMIT-YEAR
+    ("1950-07-02", True, (2, 7, 1950)),                     # année plausible gardée
+    ("--02-29", False, (29, 2, None)),                      # 29 février sans année : valable
+    ("1985-02-29", False, None),                            # 1985 n'est pas bissextile
+    ("1985-13-01", False, None),
+    ("--13-40", False, None),
+    ("pas une date", False, None),
+    ("", False, None),
+    (None, False, None),
+])
+def test_analyse_des_anniversaires(brut, sans_annee, attendu):
+    from app.anniversaires import analyser
+    assert analyser(brut, sans_annee=sans_annee) == attendu
+
+
+def test_anniversaires_tri_et_doublons():
+    from app.anniversaires import assembler
+    e = [{"nom": "Zoé B", "jour": 1, "mois": 12, "annee": None, "immich": False},
+         {"nom": "Adam M", "jour": 29, "mois": 2, "annee": None, "immich": False},
+         {"nom": "Adeline F", "jour": 4, "mois": 3, "annee": 1985, "immich": True},
+         {"nom": "Adeline F", "jour": 4, "mois": 3, "annee": 1985, "immich": True},
+         {"nom": "Bruno C", "jour": 29, "mois": 2, "annee": 1990, "immich": False}]
+    r = assembler(e)
+    assert [x["nom"] for x in r] == ["Adam M", "Bruno C", "Adeline F", "Zoé B"]

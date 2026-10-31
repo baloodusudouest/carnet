@@ -103,6 +103,34 @@ L'image `ghcr.io/<propriétaire>/carnet:latest` est publiée par `.github/workfl
 ### 3. Home Assistant (facultatif)
 Copie `homeassistant/carnet.yaml` dans `/config/packages/`, ajoute `carnet_status_url` dans `secrets.yaml`, puis redémarre.
 
+#### Adresses `/ha/…` (jeton `CARNET_HA_TOKEN`)
+
+Toutes exigent l'en-tête `Authorization: Bearer <CARNET_HA_TOKEN>` (401 sinon, 503 si le jeton n'est pas défini dans la stack), sont en lecture seule et ne sont jamais mises en cache. Le nom renvoyé est le même partout : le nom de la personne dans Immich quand le contact est lié, sinon le nom carnet.
+
+| Adresse | Contenu |
+|---|---|
+| `GET /ha/personnes` | contacts liés à Immich et proches : `{"personnes": [{"nom", "immich"}]}` (carte de réservation) |
+| `GET /ha/invite?nom=…` | date de naissance d'un invité (journal de naissance) ; 404 inconnu, 409 nom ambigu |
+| `GET /ha/anniversaires` | tous les contacts vérifiés ayant une date de naissance, pour un calendrier « Anniversaires » |
+
+`/ha/anniversaires` :
+
+```json
+{"genere_le": "2026-10-31T18:15:00+01:00", "nombre": 2,
+ "anniversaires": [{"nom": "Adeline FREY", "jour": 4, "mois": 3, "annee": 1985, "immich": true},
+                   {"nom": "Adam MARMANDE", "jour": 29, "mois": 2, "annee": null, "immich": false}]}
+```
+
+- Tri par mois, jour puis nom ; une seule entrée pour un même nom à la même date.
+- `annee` vaut `null` quand l'année est inconnue (`--0304`, `--03-04`, année 1604 d'Apple, année < 1900 avec `X-APPLE-OMIT-YEAR`). Une date avec heure (`1985-03-04T00:00:00Z`) donne la date écrite, sans décalage de fuseau.
+- Une date illisible ou impossible (31 février…) est ignorée ; le journal du conteneur ne note que le nombre d'entrées renvoyées et ignorées, jamais de nom ni de date.
+
+Test depuis le NAS (le jeton dans une variable du shell, pas dans l'historique d'un fichier) :
+
+```sh
+curl -s -H "Authorization: Bearer $CARNET_HA_TOKEN" http://localhost:8096/ha/anniversaires | head -c 600
+```
+
 ## Exports à déposer
 
 | Source | Où le faire | Fichier |

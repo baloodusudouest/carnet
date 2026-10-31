@@ -470,6 +470,13 @@ def ha_personnes():
     return carnet().ha_personnes()
 
 
+@app.get("/ha/anniversaires")
+def ha_anniversaires():
+    """Calendrier « Anniversaires » : tous les contacts vérifiés qui ont une date de naissance
+    (nom identique à /ha/personnes), triés par mois puis jour. Lecture seule."""
+    return carnet().ha_anniversaires()
+
+
 @app.get("/ha/invite")
 def ha_invite(nom: str):
     """Journal de naissance : date de naissance de l'invité écrit dans la réservation."""
