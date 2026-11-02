@@ -61,6 +61,16 @@ CREATE TABLE IF NOT EXISTS etat (
 """
 
 
+def _migration_2(cx) -> None:
+    """Index pour retrouver vite une source par son identifiant d'origine (UID iCloud, profil LinkedIn)."""
+    cx.execute("CREATE INDEX IF NOT EXISTS idx_sources_uid ON sources(source, uid)")
+
+
+# Migrations numérotées : n → fonction qui fait passer le schéma de n-1 à n
+MIGRATIONS = {2: _migration_2}
+VERSION_SCHEMA = max(MIGRATIONS, default=1)
+
+
 class Base:
     def __init__(self, chemin: Path, cle: str):
         chemin.parent.mkdir(parents=True, exist_ok=True)
@@ -77,6 +87,29 @@ class Base:
         self._cx.execute("PRAGMA foreign_keys = ON")
         self._cx.execute("PRAGMA journal_mode = WAL")
         self._cx.executescript(SCHEMA)
+        self.generation = 0   # augmente à chaque écriture : sert à invalider les caches en mémoire
+        self._migrer(chemin)
+
+    def _migrer(self, chemin: Path) -> None:
+        """Version du schéma (PRAGMA user_version). Avant chaque migration, une copie chiffrée de la
+        base est faite à côté (« <base>.avant-v<n> ») : une migration ratée se rattrape en la remettant."""
+        version = self._cx.execute("PRAGMA user_version").fetchone()[0]
+        vide = not self._cx.execute("SELECT 1 FROM imports LIMIT 1").fetchone()
+        if version == 0:   # base neuve, ou créée avant le suivi des versions (schéma 1)
+            version = 1
+        for cible in sorted(n for n in MIGRATIONS if n > version):
+            if not vide:
+                self.copier(chemin.with_name(f"{chemin.name}.avant-v{cible}"))
+            with self.transaction() as cx:
+                MIGRATIONS[cible](cx)
+                cx.execute(f"PRAGMA user_version = {cible}")
+        if self._cx.execute("PRAGMA user_version").fetchone()[0] == 0:
+            self._cx.execute(f"PRAGMA user_version = {VERSION_SCHEMA}")
+
+    @property
+    def version(self) -> int:
+        with self._verrou:
+            return self._cx.execute("PRAGMA user_version").fetchone()[0]
 
     @contextmanager
     def transaction(self) -> Iterator[sqlcipher3.Connection]:
@@ -88,6 +121,7 @@ class Base:
                 self._cx.execute("ROLLBACK")
                 raise
             self._cx.execute("COMMIT")
+            self.generation += 1
 
     def lire(self, sql: str, params: tuple | dict = ()) -> list[sqlcipher3.Row]:
         with self._verrou:
@@ -108,6 +142,20 @@ class Base:
                 "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
                 (cle, json.dumps(valeur, ensure_ascii=False)),
             )
+
+    def modifier_etat(self, cle: str, defaut: Any, fonction) -> Any:
+        """Lire, modifier, écrire une valeur de `etat` d'un seul tenant (dans une transaction) :
+        une tâche longue qui finit ne peut plus effacer un choix fait pendant qu'elle tournait,
+        à condition de ne toucher que ce qu'elle a changé. `fonction(valeur)` modifie sur place la
+        valeur reçue (dict ou liste) ; ce qu'elle renvoie est ignoré."""
+        with self.transaction() as cx:
+            ligne = cx.execute("SELECT valeur FROM etat WHERE cle = ?", (cle,)).fetchone()
+            valeur = json.loads(ligne["valeur"]) if ligne else defaut
+            fonction(valeur)
+            cx.execute("INSERT INTO etat(cle, valeur) VALUES(?, ?) "
+                       "ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur",
+                       (cle, json.dumps(valeur, ensure_ascii=False)))
+            return valeur
 
     def copier(self, destination: Path) -> None:
         """Copie complète et cohérente de la base, chiffrée avec la même clé (sqlcipher_export).

@@ -1,7 +1,9 @@
 """Opérations de carnet : import, rapprochement, révision, export, kit, archives."""
 from __future__ import annotations
 
+import copy
 import csv
+import functools
 import hashlib
 import io
 from collections import Counter
@@ -69,6 +71,24 @@ def _empreinte(fiche: dict, photo: bytes | None) -> str:
     return h.hexdigest()
 
 
+
+def _memorise(methode):
+    """Résultat gardé en mémoire tant que la base n'a pas changé (compteur d'écritures) et que la
+    configuration est la même : liste, statut et bilan ne relisent plus tout à chaque page.
+    Une copie est rendue : l'appelant peut la modifier sans abîmer le cache."""
+    nom = methode.__name__
+
+    @functools.wraps(methode)
+    def enveloppe(self):
+        memos = self.__dict__.setdefault("_memos", {})
+        cle = (self.base.generation, id(self.cfg))
+        if nom in memos and memos[nom][0] == cle:
+            return copy.deepcopy(memos[nom][1])
+        valeur = methode(self)
+        memos[nom] = (cle, valeur)   # clé d'avant le calcul : une écriture pendant le calcul le refera
+        return copy.deepcopy(valeur)
+    return enveloppe
+
 class Carnet:
     def __init__(self, cfg: Config, base: Base):
         self.cfg, self.base = cfg, base
@@ -79,6 +99,7 @@ class Carnet:
         self._tache: dict = {"etat": "repos"}
         self._plan: dict | None = None
         self._verrou_icloud = threading.Lock()
+        self._en_cours: str | None = None
         configurer_groupes(self.base.etat("groupes_perso", []))
         self._rattrapage_linkedin()
 
@@ -365,6 +386,7 @@ class Carnet:
             "raisons": json.loads(ligne["raisons"] or "[]"),
         }
 
+    @_memorise
     def liste(self) -> list[dict]:
         personnes = self.base.lire("SELECT * FROM personnes")
         sources: dict[str, list[dict]] = {}
@@ -905,6 +927,7 @@ class Carnet:
         self.base.ecrire_etat("societes_ignorees", ignores)
         return {"ok": True}
 
+    @_memorise
     def _societes_par_domaine(self) -> dict[str, Counter]:
         """Société déjà connue pour un domaine (chez un autre contact) : la meilleure proposition."""
         par_domaine: dict[str, Counter] = {}
@@ -1070,7 +1093,7 @@ class Carnet:
         utilisateur = self.cfg.icloud_user
         masque = (utilisateur[:2] + "…" + utilisateur[utilisateur.find("@"):]) if "@" in utilisateur else utilisateur
         return {"configure": bool(self.cfg.icloud_user and self.cfg.icloud_password), "compte": masque,
-                "tache": dict(self._tache), "plan": plan["resume"] if plan else None,
+                "tache": self.etat_tache(), "plan": plan["resume"] if plan else None,
                 "journal": self.base.etat("journal_icloud", []),
                 "veille": {"revision": bool(self.base.etat("veille_revision", False)),
                            "journal": self.base.etat("veille_journal", [])[:30]}}
@@ -1091,9 +1114,14 @@ class Carnet:
         return r.text, f"icloud-{nom}.vcf"
 
     def _lancer(self, nom: str, travail) -> dict:
+        """Une seule opération longue à la fois (iCloud, liaisons, photos, sauvegarde…). Le verrou
+        tient jusqu'à la fin du travail entier : une étape de la nuit qui se termine ne laisse
+        plus passer une autre opération au milieu de la nuit."""
         with self._verrou_icloud:
-            if self._tache.get("etat") in ("lecture", "ecriture"):
-                raise ErreurCarnet("Une opération iCloud est déjà en cours.")
+            if self._en_cours or self._tache.get("etat") in ("lecture", "ecriture"):
+                raise ErreurCarnet("Une opération est déjà en cours" + (
+                    f" ({self.LIBELLES_OPERATIONS.get(self._en_cours, self._en_cours)})." if self._en_cours else "."))
+            self._en_cours = nom
             self._tache = {"etat": "lecture" if nom in ("simulation", "veille") else "ecriture", "operation": nom,
                            "fait": 0, "total": 0, "message": "Connexion à iCloud…"}
 
@@ -1103,10 +1131,26 @@ class Carnet:
             except (ErreurICloud, ErreurCarnet, ErreurLien) as exc:
                 self._tache.update(etat="erreur", message=str(exc))
             except Exception as exc:  # noqa: BLE001 — affiché, et détaillé dans le journal du conteneur
-                log.exception("Opération iCloud %s", nom)
+                log.exception("Opération %s", nom)
                 self._tache.update(etat="erreur", message=f"Erreur inattendue : {exc}")
-        threading.Thread(target=executer, daemon=True, name=f"icloud-{nom}").start()
+            finally:
+                if self._tache.get("etat") in ("lecture", "ecriture"):
+                    self._tache["etat"] = "termine"
+                self._en_cours = None
+        threading.Thread(target=executer, daemon=True, name=f"carnet-{nom}").start()
         return {"ok": True}
+
+    LIBELLES_OPERATIONS = {"veille": "tâche de nuit", "simulation": "simulation iCloud", "ecriture": "écriture iCloud",
+                           "liens": "liaisons", "portraits": "photos HD", "affiches": "affiches", "logos": "logos",
+                           "sauvegarde": "sauvegarde"}
+
+    def etat_tache(self) -> dict:
+        """État de l'opération en cours : « en cours » tant que le travail entier n'est pas fini,
+        même si une de ses étapes s'est déjà déclarée terminée."""
+        t = dict(self._tache)
+        if self._en_cours and t.get("etat") not in ("lecture", "ecriture"):
+            t["etat"] = "lecture"
+        return t
 
     def _dav(self) -> CardDAV:
         return CardDAV(self.cfg.icloud_url, self.cfg.icloud_user, self.cfg.icloud_password,
@@ -2072,16 +2116,21 @@ class Carnet:
                 immich = self._immich()
             for pid, lien in cibles.items():
                 self._tache["fait"] += 1
-                fiche = verifiees.get(pid)
-                if fiche is None:
+                if pid not in verifiees:
                     continue
                 maj = False
+                image = None
                 if immich and lien.get("immich") and pid not in portraits_hd:   # un portrait HD n'est pas remplacé par la vignette
                     try:
                         image = immich.visage(lien["immich"])
                     except ErreurLien as exc:
                         bilan["erreurs"].append(str(exc))
-                        image = None
+                # Fiche relue après l'appel réseau : une retouche faite entre-temps n'est pas écrasée
+                ligne = self.base.un("SELECT statut, fiche FROM personnes WHERE id = ?", (pid,))
+                if not ligne or ligne["statut"] != "verifie" or not ligne["fiche"]:
+                    continue
+                fiche = regle_proches(completer(json.loads(ligne["fiche"])))
+                if True:
                     if image:
                         with self.base.transaction() as cx:
                             sid = self._source_immich(cx, pid, lien["immich"], image)
@@ -2227,6 +2276,7 @@ class Carnet:
                   if (pids is None or pid in pids) and (liens.get(pid) or {}).get("immich")
                   and self._portrait_eligible(pid, fiche)]
         bilan = {"le": _iso(quand), "contacts": len(cibles), "changees": 0, "sans_photo_hd": 0, "erreurs": []}
+        poses: dict[str, dict] = {}   # seuls ces portraits sont réécrits à la fin (pas les choix faits entre-temps)
         self._tache.update(total=len(cibles), fait=0, message="Portraits : lecture des photos Immich…")
         immich = self._immich()
         try:
@@ -2256,13 +2306,18 @@ class Carnet:
                     if actuel["asset"] == meilleur["asset"] or meilleur["score"] < note * 1.1:
                         continue
                 try:
-                    hd[pid] = self._poser_portrait(immich, pid, fiche, immich_id, meilleur, manuel=False)
+                    hd[pid] = poses[pid] = self._poser_portrait(immich, pid, fiche, immich_id, meilleur, manuel=False)
                     bilan["changees"] += 1
                 except ErreurLien as exc:
                     bilan["erreurs"].append(f"{nom_affiche(fiche)} : {exc}")
         finally:
             immich.fermer()
-            self.base.ecrire_etat("photos_hd", hd)
+
+            def fusionner_hd(actuel: dict) -> None:
+                for p, v in poses.items():
+                    if not (actuel.get(p) or {}).get("manuel"):   # ton choix fait pendant la recherche gagne
+                        actuel[p] = v
+            self.base.modifier_etat("photos_hd", {}, fusionner_hd)
             self.base.ecrire_etat("photos_hd_candidats", tous_candidats)
         bilan["erreurs"] = bilan["erreurs"][:20]
         self.base.ecrire_etat("photos_hd_journal", ([bilan] + journal)[:24])
@@ -2400,8 +2455,14 @@ class Carnet:
     def _cibles_affiches(self) -> list[tuple[str, dict, str]]:
         groupes = set(self.base.etat("affiches_groupes", []))
         liens = self.base.etat("liaisons", {})
-        return [(pid, fiche, liens[pid]["immich"]) for pid, fiche, _ in self._verifiees()
-                if set(fiche["groupes"]) & groupes and (liens.get(pid) or {}).get("immich")]
+        # Tout contact déjà validé une fois (même remis en révision depuis) garde son affiche et
+        # sa coche « posée » : seuls un contact mis de côté ou sorti des groupes la perdent
+        res = []
+        for p in self.base.lire("SELECT id, fiche FROM personnes WHERE statut != 'ecarte' AND fiche IS NOT NULL"):
+            fiche = regle_proches(completer(json.loads(p["fiche"])))
+            if set(fiche["groupes"]) & groupes and (liens.get(p["id"]) or {}).get("immich"):
+                res.append((p["id"], fiche, liens[p["id"]]["immich"]))
+        return sorted(res, key=lambda x: nom_affiche(x[1]).lower())
 
     def affiches(self) -> dict:
         faites = self.base.etat("affiches", {})
@@ -2449,6 +2510,7 @@ class Carnet:
                  "sans_photo": 0, "erreurs": []}
         self._tache.update(total=len(cibles), fait=0, message="Affiches : recherche des photos…")
         immich = self._immich()
+        partis: list[str] = []
         try:
             gardes = {pid for pid, _, _ in cibles}
             partis = [pid for pid in set(faites) | set(propositions) if pid not in gardes
@@ -2491,7 +2553,9 @@ class Carnet:
                         break
         finally:
             immich.fermer()
-            self.base.ecrire_etat("affiches", faites)
+            # Seules les affiches retirées sont enlevées : un choix ou une coche « posée » faits
+            # pendant la recherche restent
+            self.base.modifier_etat("affiches", {}, lambda actuel: [actuel.pop(p, None) for p in partis])
             self.base.ecrire_etat("affiches_candidats", reserve)
             self.base.ecrire_etat("affiches_propositions", propositions)
         bilan["erreurs"] = bilan["erreurs"][:20]
@@ -2521,7 +2585,7 @@ class Carnet:
                     raise ErreurCarnet("Cette photo n'est plus proposée : relance la recherche.")
                 if avant.get("source") == asset and avant.get("immich_asset"):
                     faites[pid] = dict(avant, manuel=True)   # préparée avant : ton choix la confirme
-                    self.base.ecrire_etat("affiches", faites)
+                    self._affiche_etat(pid, faites[pid])
                     return {"ok": True}
                 try:
                     image = portraits.affiche(self._image_haute(immich, cand), cand["boite"])
@@ -2530,8 +2594,17 @@ class Carnet:
                 faites[pid] = self._ranger_affiche(immich, pid, image, asset, avant)
         finally:
             immich.fermer()
-        self.base.ecrire_etat("affiches", faites)
+        self._affiche_etat(pid, faites.get(pid))
         return {"ok": True}
+
+    def _affiche_etat(self, pid: str, valeur: dict | None) -> None:
+        """Change l'affiche d'un seul contact dans `etat` sans toucher aux autres."""
+        def maj(actuel: dict) -> None:
+            if valeur:
+                actuel[pid] = valeur
+            else:
+                actuel.pop(pid, None)
+        self.base.modifier_etat("affiches", {}, maj)
 
     def _ranger_affiche(self, immich: Immich, pid: str, image: bytes, source: str, avant: dict) -> dict:
         """Envoie l'affiche dans l'album Immich (archivée) et retire l'ancienne."""
@@ -2556,7 +2629,7 @@ class Carnet:
             a["posee"] = _iso(maintenant())
         else:
             a.pop("posee", None)
-        self.base.ecrire_etat("affiches", faites)
+        self._affiche_etat(pid, a)
         return {"posee": a.get("posee")}
 
     def image_affiche(self, pid: str) -> tuple[bytes, str] | None:
@@ -2720,7 +2793,7 @@ class Carnet:
             faites[pid] = self._ranger_affiche(immich, pid, image, f"logo:{dom}:{int(n)}", faites.get(pid) or {})
         finally:
             immich.fermer()
-        self.base.ecrire_etat("affiches", faites)
+        self._affiche_etat(pid, faites[pid])
         return {"ok": True}
 
     # ================================================================ Home Assistant : réservations et journal de naissance
@@ -2983,10 +3056,22 @@ class Carnet:
     SEUIL_COUPE_CIRCUIT = 0.05   # au-delà de 5 % de fiches supprimées ou changées d'un coup : arrêt
 
     def nuit(self) -> dict:
-        """Tâche de 3 h : veille iCloud, puis sauvegarde (export daté + copie Synology)."""
+        """Tâche de 3 h : copie de la base d'abord (avant toute écriture), veille iCloud, liaisons,
+        photos du mois, puis sauvegarde (export daté + copie Synology). Chaque étape est isolée :
+        une étape en erreur n'empêche pas la sauvegarde."""
         def travail():
+            quand = maintenant()
+            base_copiee = None
+            try:
+                self._tache["message"] = "Nuit : copie de la base…"
+                base_copiee = self._copier_base(quand)
+            except Exception:  # noqa: BLE001 — refaite par la sauvegarde en fin de nuit
+                log.exception("Copie de la base en début de nuit")
             if self.cfg.icloud_user and self.cfg.icloud_password:
-                self._veiller()
+                try:
+                    self._veiller()
+                except Exception:  # noqa: BLE001
+                    log.exception("Veille de nuit")
             if self.base.etat("liaisons", {}) and (self.cfg.immich_cle or self.cfg.treemich_email):
                 try:
                     self._appliquer_liens(None)
@@ -3002,7 +3087,7 @@ class Carnet:
                         self._preparer_affiches()
                     except Exception:  # noqa: BLE001
                         log.exception("Affiches de nuit")
-            self._sauvegarder()
+            self._sauvegarder(base_copiee)
         return self._lancer("veille", travail)
 
     def sauvegarder(self) -> dict:
@@ -3022,14 +3107,15 @@ class Carnet:
                 f.unlink(missing_ok=True)
         return {"nom": nom, "taille": (dossier / nom).stat().st_size}
 
-    def _sauvegarder(self) -> None:
+    def _sauvegarder(self, base_copiee: dict | None = None) -> None:
         quand = maintenant()
-        entree = {"le": _iso(quand), "vcf": None, "base": None, "contacts": 0, "synology": None, "erreur": None}
+        entree = {"le": _iso(quand), "vcf": None, "base": base_copiee, "contacts": 0, "synology": None, "erreur": None}
         try:
-            # 0. Copie chiffrée de la base entière
+            # 0. Copie chiffrée de la base entière (déjà faite en début de nuit, avant toute écriture)
             self._tache["message"] = "Sauvegarde : copie de la base…"
             try:
-                entree["base"] = self._copier_base(quand)
+                if not base_copiee:
+                    entree["base"] = self._copier_base(quand)
             except Exception as exc:  # noqa: BLE001 — l'export .vcf et Synology passent quand même
                 log.exception("Copie de la base")
                 entree["erreur"] = f"Copie de la base impossible : {exc}"
@@ -3244,6 +3330,12 @@ class Carnet:
                 "modifies": len(v["modifies"]), "nouveaux": len(v["nouveaux"]), "supprimes": len(v["supprimes"])}
 
     def bilan(self) -> dict:
+        res = self._bilan()
+        res["tache"] = self.etat_tache()
+        return res
+
+    @_memorise
+    def _bilan(self) -> dict:
         """Accueil : tout ce qui attend une action, en nombres (chaque partie est indépendante :
         un service injoignable n'empêche pas le reste)."""
         res = {"statut": self.statut()}
@@ -3272,9 +3364,9 @@ class Carnet:
         restaurations = self.base.etat("restauration_journal", [])
         res["restauration"] = restaurations[0] and {k: restaurations[0].get(k) for k in ("le", "ok", "cle")} \
             if restaurations else None
-        res["tache"] = dict(self._tache)
         return res
 
+    @_memorise
     def statut(self) -> dict:
         compte = {l["statut"]: l["n"] for l in
                   self.base.lire("SELECT statut, count(*) AS n FROM personnes GROUP BY statut")}

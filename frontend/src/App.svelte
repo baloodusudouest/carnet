@@ -1,6 +1,6 @@
 <script>
   import { api } from './lib/api.js'
-  import { session, ref, statut, message, route, aller, ecran, choisirVue, bilan } from './lib/etat.svelte.js'
+  import { session, ref, statut, message, route, aller, ecran, choisirVue, bilan, chargerBilan } from './lib/etat.svelte.js'
   import Connexion from './pages/Connexion.svelte'
   import Accueil from './pages/Accueil.svelte'
   import Importer from './pages/Importer.svelte'
@@ -35,10 +35,7 @@
     route.page
     if (session.connecte && Date.now() - dernierBilan > 20000) {
       dernierBilan = Date.now()
-      api.get('/api/bilan').then((b) => {
-        bilan.donnees = b
-        Object.assign(statut, b.statut)
-      }).catch(() => {})
+      chargerBilan(api).catch(() => {})
     }
   })
   const compteurs = $derived.by(() => {

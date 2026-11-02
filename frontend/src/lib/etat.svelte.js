@@ -48,3 +48,16 @@ export function choisirVue(pc) {
 
 // Bilan des actions en attente (Accueil et compteurs des sous-onglets), rechargé à la navigation
 export const bilan = $state({ donnees: null })
+
+// Un seul appel à la fois (l'en-tête et l'Accueil le demandent ensemble au chargement)
+let bilanEnVol = null
+export function chargerBilan(api) {
+  if (!bilanEnVol) {
+    bilanEnVol = api.get('/api/bilan').then((b) => {
+      bilan.donnees = b
+      Object.assign(statut, b.statut)
+      return b
+    }).finally(() => (bilanEnVol = null))
+  }
+  return bilanEnVol
+}

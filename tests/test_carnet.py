@@ -1923,3 +1923,61 @@ def test_revision_noms_proches(client, monkeypatch):
     c.post(f"/api/personnes/{cl['id']}/detacher", json={"source_id": gm["id"]})
     p = c.get(f"/api/personnes/{cl['id']}/proches").json()
     assert len(p["contacts"]) == 1 and p["contacts"][0]["nom"] == "Claire MARTIN" and p["contacts"][0]["score"] == 100
+
+
+def test_filet_de_securite(client, monkeypatch, tmp_path):
+    """Lot 1 : une opération occupe carnet jusqu'au bout ; les écritures d'état d'une tâche longue ne
+    effacent pas un choix fait entre-temps ; version du schéma ; caches invalidés à chaque écriture."""
+    import threading
+    from app.main import etat
+    from app.db import VERSION_SCHEMA
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    assert cn.base.version == VERSION_SCHEMA >= 2
+    # 1. Verrou : une étape qui se déclare « terminée » au milieu ne libère pas carnet
+    feu, fin = threading.Event(), threading.Event()
+
+    def travail():
+        cn._tache.update(etat="termine", message="étape 1 finie")
+        feu.set()
+        fin.wait(5)
+    cn._lancer("veille", travail)
+    assert feu.wait(5)
+    assert c.get("/api/icloud").json()["tache"]["etat"] == "lecture"       # toujours occupé
+    r = c.post("/api/sauvegardes/forcer")
+    assert r.status_code == 400 and "déjà en cours" in r.json()["detail"]
+    fin.set()
+    assert _attendre(c)["tache"]["etat"] == "termine"
+    # 2. Écriture d'état d'un seul tenant : la coche faite pendant la tâche reste
+    cn.base.ecrire_etat("affiches", {"p1": {"immich_asset": "a1"}, "p2": {"immich_asset": "a2"}})
+    vue_par_la_tache = cn.base.etat("affiches", {})
+    cn._affiche_etat("p2", {"immich_asset": "a2", "posee": "maintenant"})   # coche pendant la tâche
+    partis = ["p1"]
+    cn.base.modifier_etat("affiches", {}, lambda actuel: [actuel.pop(p, None) for p in partis])
+    assert cn.base.etat("affiches") == {"p2": {"immich_asset": "a2", "posee": "maintenant"}}
+    assert vue_par_la_tache["p2"].get("posee") is None
+    # 3. Caches : servis tant que rien ne change, refaits après une écriture
+    s1 = c.get("/api/statut").json()
+    gen = cn.base.generation
+    assert c.get("/api/statut").json() == s1 and cn.base.generation == gen
+    p = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+    c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    assert c.get("/api/statut").json()["verifies"] == s1["verifies"] + 1
+    assert c.get("/api/bilan").json()["statut"]["verifies"] == s1["verifies"] + 1
+
+
+def test_migration_du_schema_garde_une_copie(tmp_path):
+    from app.db import Base, VERSION_SCHEMA
+    b = Base(tmp_path / "carnet.db", "k")
+    with b.transaction() as cx:   # base « ancienne » : version 1, avec des données
+        cx.execute("INSERT INTO imports(source, nom_fichier, sha256, importe_le, expire_le) VALUES('icloud','x','s','t','t')")
+        cx.execute("PRAGMA user_version = 1")
+    b.fermer()
+    b = Base(tmp_path / "carnet.db", "k")
+    assert b.version == VERSION_SCHEMA
+    copie = tmp_path / f"carnet.db.avant-v{VERSION_SCHEMA}"
+    assert copie.exists() and Base.verifier(copie, "k")["comptes"]["imports"] == 1
+    b.fermer()

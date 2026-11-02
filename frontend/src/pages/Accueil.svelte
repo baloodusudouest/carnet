@@ -1,13 +1,13 @@
 <script>
   // Accueil : chercher un contact, et le bilan de tout ce qui attend une action.
   import { api } from '../lib/api.js'
-  import { bilan, ecran } from '../lib/etat.svelte.js'
+  import { bilan, ecran, chargerBilan } from '../lib/etat.svelte.js'
   import { cleTexte, dateCourte, pluriel } from '../lib/cles.js'
 
   let contacts = $state([])
   let recherche = $state('')
   api.get('/api/contacts').then((l) => (contacts = l.filter((p) => p.statut !== 'ecarte')))
-  api.get('/api/bilan').then((b) => (bilan.donnees = b)).catch(() => {})
+  chargerBilan(api).catch(() => {})
 
   const resultats = $derived.by(() => {
     const q = cleTexte(recherche)

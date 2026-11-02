@@ -54,10 +54,18 @@ def _veille_nocturne(carnet: Carnet, cfg, arret: threading.Event) -> None:
             prochaine += timedelta(days=1)
         if arret.wait((prochaine - maintenant).total_seconds()):
             return
-        try:
-            carnet.nuit()
-        except Exception:  # noqa: BLE001 — opération déjà en cours : la veille attend la nuit suivante
-            log.exception("Veille iCloud non lancée")
+        # Une opération lancée à la main tourne encore : nouvel essai toutes les 10 min pendant 3 h
+        for _ in range(18):
+            try:
+                carnet.nuit()
+                break
+            except ErreurCarnet as exc:
+                log.info("Tâche de nuit reportée de 10 min : %s", exc)
+                if arret.wait(600):
+                    return
+            except Exception:  # noqa: BLE001
+                log.exception("Tâche de nuit non lancée")
+                break
 
 
 @asynccontextmanager
