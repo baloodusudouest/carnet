@@ -65,23 +65,51 @@
   // Enregistrer des affiches dans Photos par la feuille de partage de l'iPhone (« Enregistrer N images »).
   // Safari n'ouvre la feuille de partage que juste après un toucher : les images sont d'abord
   // préparées (téléchargées), puis un second toucher ouvre le partage. Par lots de 20.
+  // Cet appareil retient ce qui est déjà dans sa pellicule (une affiche changée est reproposée).
   const LOT = 20
-  let pret = $state(null)        // { titre, fichiers: File[] } prêt à partager
-  let lot = $state(0)
+  const CLE_DEJA = 'carnet-affiches-enregistrees'
+  function lireDeja() {
+    try {
+      return JSON.parse(localStorage.getItem(CLE_DEJA) || '{}')
+    } catch {
+      return {}
+    }
+  }
+  let deja = $state(lireDeja())    // pid → identifiant de l'affiche déjà enregistrée sur cet appareil
+  function noterDeja(lignesFaites) {
+    for (const l of lignesFaites) deja[l.pid] = l.affiche
+    try {
+      localStorage.setItem(CLE_DEJA, JSON.stringify(deja))
+    } catch {
+      /* navigation privée : non retenu */
+    }
+  }
+  function toutReproposer() {
+    deja = {}
+    try {
+      localStorage.removeItem(CLE_DEJA)
+    } catch {
+      /* rien */
+    }
+  }
+  let pret = $state(null)        // { titre, fichiers: File[], lignes } prêt à partager
   const toutes = $derived(affiches ? affiches.lignes.filter((x) => x.affiche) : [])
+  const restantes = $derived(toutes.filter((x) => deja[x.pid] !== x.affiche))
+  const lotCourant = $derived(restantes.slice(0, LOT))
 
   async function preparer(lignesAffiches, titre) {
     occupe = true
     pret = null
     try {
-      const fichiers = []
+      const fichiers = [], lignesOk = []
       for (const l of lignesAffiches) {
         const r = await fetch(`/api/affiches/image/${l.pid}`, { credentials: 'same-origin' })
         if (!r.ok) continue
         fichiers.push(new File([await r.blob()], `affiche-${l.nom.replace(/[^\p{L}\p{N}]+/gu, '-')}.jpg`, { type: 'image/jpeg' }))
+        lignesOk.push(l)
       }
       if (!fichiers.length) throw new Error('Aucune affiche trouvée dans Immich.')
-      pret = { titre, fichiers }
+      pret = { titre, fichiers, lignes: lignesOk }
     } catch (e) {
       annoncer(e.message, true)
     } finally {
@@ -90,15 +118,16 @@
   }
 
   async function partager() {
-    const { fichiers } = pret
+    const { fichiers, lignes: faites } = pret
     try {
       if (navigator.canShare?.({ files: fichiers })) {
         await navigator.share({ files: fichiers })
+        noterDeja(faites)
         pret = null
-        if (fichiers.length === LOT && (lot + 1) * LOT < toutes.length) lot += 1
       } else {
         for (const f of fichiers) window.open(URL.createObjectURL(f), '_blank')
         annoncer("Partage indisponible ici : appuie longuement sur chaque image puis « Ajouter à Photos ».")
+        noterDeja(faites)
         pret = null
       }
     } catch (e) {
@@ -106,8 +135,8 @@
     }
   }
 
-  const enregistrer = (l) => preparer([l], `l'affiche de ${l.nom}`)
-  const lotCourant = $derived(toutes.slice(lot * LOT, (lot + 1) * LOT))
+  const pluralAff = (n) => (n > 1 ? `les ${n} affiches` : "l'affiche")
+  const enregistrer = (l) => preparer([{ ...l, affiche: affiches.lignes.find((x) => x.pid === l.pid)?.affiche }], `l'affiche de ${l.nom}`)
 </script>
 
 <h1 class="titre text-2xl mb-3">Photos</h1>
@@ -129,18 +158,19 @@
 </div>
 
 {#if mode === 'affiche' && toutes.length}
-  <div class="rounded-2xl border border-onglet/50 bg-reliure p-3 mb-3 text-sm">
-    <p class="text-papier">{toutes.length} affiche{toutes.length > 1 ? 's' : ''} choisie{toutes.length > 1 ? 's' : ''}</p>
-    <p class="text-xs text-mine mb-2">Les mettre dans ta pellicule, puis Contacts › Photo et affiche du contact › Photos.</p>
-    <button class="w-full h-11 rounded-xl border border-onglet text-onglet disabled:opacity-50" disabled={occupe}
-      onclick={() => preparer(lotCourant, toutes.length > LOT ? `les affiches ${lot * LOT + 1} à ${lot * LOT + lotCourant.length}` : 'toutes les affiches')}>
-      {occupe ? 'Préparation…' : toutes.length > LOT ? `Préparer les affiches ${lot * LOT + 1} à ${lot * LOT + lotCourant.length}` : 'Préparer toutes les affiches'}</button>
-    {#if toutes.length > LOT}
-      <div class="flex justify-between mt-2 text-xs">
-        <button class="text-mine underline disabled:opacity-40" disabled={lot === 0 || occupe} onclick={() => { lot -= 1; pret = null }}>Lot précédent</button>
-        <span class="text-mine">lot {lot + 1} sur {Math.ceil(toutes.length / LOT)}</span>
-        <button class="text-mine underline disabled:opacity-40" disabled={(lot + 1) * LOT >= toutes.length || occupe} onclick={() => { lot += 1; pret = null }}>Lot suivant</button>
-      </div>
+  <div class="rounded-2xl border {restantes.length ? 'border-onglet/50' : 'border-couture'} bg-reliure p-3 mb-3 text-sm">
+    <p class="text-papier">{toutes.length} affiche{toutes.length > 1 ? 's' : ''} choisie{toutes.length > 1 ? 's' : ''}
+      {#if restantes.length}<span class="text-mine"> · {restantes.length} encore à enregistrer</span>{/if}</p>
+    {#if restantes.length}
+      <p class="text-xs text-mine mb-2">Les mettre dans ta pellicule, puis Contacts › Photo et affiche du contact › Photos.</p>
+      <button class="w-full h-11 rounded-xl border border-onglet text-onglet disabled:opacity-50" disabled={occupe}
+        onclick={() => preparer(lotCourant, restantes.length > LOT ? `${lotCourant.length} affiches sur les ${restantes.length} restantes` : 'les dernières affiches')}>
+        {occupe ? 'Préparation…' : restantes.length > LOT ? `Préparer ${LOT} affiches (sur ${restantes.length})` : `Préparer ${pluralAff(restantes.length)}`}</button>
+      <button class="text-xs text-mine underline mt-2" disabled={occupe} onclick={() => noterDeja(restantes)}>
+        Déjà dans ma pellicule : ne plus les proposer</button>
+    {:else}
+      <p class="text-xs text-valide mt-1">✓ Toutes tes affiches sont déjà enregistrées sur cet iPhone.</p>
+      <button class="text-xs text-mine underline mt-2" onclick={toutReproposer}>Tout réenregistrer</button>
     {/if}
   </div>
 {/if}
