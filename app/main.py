@@ -690,6 +690,43 @@ def marquer_affiche_posee(corps: AffichePosee):
     return carnet().marquer_affiche_posee(corps.pid, corps.posee)
 
 
+@app.get("/api/logos")
+def logos_liste():
+    return carnet().logos()
+
+
+@app.post("/api/logos/groupes")
+def logos_groupes(corps: GroupesAffiches):
+    return carnet().logos_groupes(corps.groupes)
+
+
+@app.post("/api/logos/recherche")
+def chercher_logos(relire: bool = False):
+    return carnet().relire_logos() if relire else carnet().chercher_logos()
+
+
+class ChoixLogo(BaseModel):
+    pid: str
+    n: int
+    sorte: str   # photo | affiche
+
+
+@app.post("/api/logos/choix")
+def choisir_logo(corps: ChoixLogo):
+    return carnet().choisir_logo(corps.pid, corps.n, corps.sorte)
+
+
+@app.get("/api/logos/apercu/{pid}/{n}")
+def apercu_logo(pid: str, n: int, sorte: str = "photo"):
+    try:
+        image = carnet().apercu_logo(pid, n, sorte)
+    except Exception:  # noqa: BLE001
+        image = None
+    if not image:
+        raise HTTPException(404, "Pas d'aperçu.")
+    return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=3600"})
+
+
 @app.get("/api/affiches/image/{pid}")
 def image_affiche(pid: str):
     image = carnet().image_affiche(pid)

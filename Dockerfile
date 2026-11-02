@@ -20,8 +20,8 @@ LABEL org.opencontainers.image.title="carnet" \
       org.opencontainers.image.description="Rassemble, vérifie et fusionne les contacts iCloud, Gmail et Outlook" \
       org.opencontainers.image.source="https://github.com/baloodusudouest/carnet"
 
-# gosu : abandon des droits root ; tzdata : dates françaises
-RUN apt-get update && apt-get install -y --no-install-recommends gosu tzdata \
+# gosu : abandon des droits root ; tzdata : dates françaises ; police DejaVu : nom de la société sur les affiches de logo
+RUN apt-get update && apt-get install -y --no-install-recommends gosu tzdata fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=roues /wheels /wheels

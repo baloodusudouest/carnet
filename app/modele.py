@@ -60,7 +60,7 @@ TYPES = {
 # Ordre de préférence pour proposer une valeur unique (prénom, société…)
 PRIORITE_SOURCES = ["icloud", "gmail", "outlook", "linkedin"]
 LIBELLES_SOURCES = {"icloud": "iCloud", "gmail": "Gmail", "outlook": "Outlook", "linkedin": "LinkedIn",
-                    "immich": "Immich"}
+                    "immich": "Immich", "logo": "Logo"}
 
 
 def fiche_vide() -> dict:

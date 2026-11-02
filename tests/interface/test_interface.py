@@ -238,3 +238,14 @@ def test_pc_ajouter_des_contacts_a_un_groupe(navigateur, serveur):
     expect(lignes.filter(has_text="Clients")).to_have_count(2)
     assert erreurs == []
     page.context.close()
+
+
+def test_iphone_onglet_logos(navigateur, serveur):
+    page, erreurs = _page(navigateur, serveur, "iphone")
+    page.goto(f"{serveur}/#/photos")
+    page.get_by_role("tab", name="Logos").click()
+    expect(page.get_by_role("group", name="Groupes concernés")).to_be_visible()
+    expect(page.get_by_role("button", name="Clients")).to_have_attribute("aria-pressed", "true")
+    assert not _deborde(page)
+    assert erreurs == []
+    page.context.close()

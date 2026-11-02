@@ -5,6 +5,7 @@
   import { api } from '../lib/api.js'
   import { annoncer } from '../lib/etat.svelte.js'
   import { cleTexte } from '../lib/cles.js'
+  import Logos from '../components/Logos.svelte'
 
   let mode = $state('hd')                 // hd | affiche
   let filtre = $state('a_choisir')
@@ -157,13 +158,16 @@
 
 <h1 class="titre text-2xl mb-3">Photos</h1>
 
-<div class="grid grid-cols-2 p-1 rounded-xl bg-reliure border border-couture text-sm mb-3" role="tablist" aria-label="Type de photo">
-  {#each [['hd', 'Photo du contact'], ['affiche', 'Affiche iPhone']] as [v, t]}
+<div class="grid grid-cols-3 p-1 rounded-xl bg-reliure border border-couture text-sm mb-3" role="tablist" aria-label="Type de photo">
+  {#each [['hd', 'Photo'], ['affiche', 'Affiche'], ['logo', 'Logos']] as [v, t]}
     <button role="tab" aria-selected={mode === v} class="h-9 rounded-lg {mode === v ? 'bg-couture text-papier' : 'text-mine'}"
       onclick={() => { mode = v; vue = null }}>{t}</button>
   {/each}
 </div>
 
+{#if mode === 'logo'}
+  <Logos />
+{:else}
 <input class="w-full h-11 !rounded-xl !px-4 text-base mb-2" type="search" placeholder="Filtrer par nom" bind:value={recherche}
   aria-label="Filtrer par nom" autocomplete="off" />
 <div class="flex flex-wrap gap-2 text-sm mb-3" role="group" aria-label="Filtre">
@@ -268,4 +272,5 @@
         {vue.ligne.choisie === vue.cand.asset && vue.ligne.manuel ? 'Déjà choisie' : 'Choisir cette photo'}</button>
     </div>
   </div>
+{/if}
 {/if}

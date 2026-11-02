@@ -43,6 +43,8 @@ Photos HD (même onglet) : pour chaque contact lié sans photo ou avec la vignet
 
 Affiches iPhone (même onglet) : pour les contacts des groupes cochés, carnet propose jusqu'à 6 photos Immich qui se prêtent au plein écran (visage de face, net, de la place autour), déjà cadrées au format écran d'iPhone, dans un tableau (agrandies au survol). Rien n'est envoyé sans ton choix : la photo choisie est rangée, archivée, dans l'album Immich « Affiches de contacts ». Les propositions sont rafraîchies chaque mois ; un choix n'est jamais changé. L'affiche de contact (plein écran à l'appel) se crée ensuite à la main sur l'iPhone : Apple ne permet pas de la remplir par CardDAV.
 
+Logos de sociétés (onglet Photos › Logos) : pour les contacts vérifiés des groupes choisis (Clients et Artisans et services par défaut) qui n'ont pas de vraie photo, carnet lit le site de leur société — adresse du site de la fiche, sinon domaine du courriel professionnel — et y prend les icônes déclarées (apple-touch-icon, icon, og:image ; pas de service tiers, les SVG sont ignorés). Chaque logo est proposé en photo ronde du contact (fond de sa couleur) et en affiche iPhone (logo et nom de la société) ; rien n'est posé sans ton choix. Les logos téléchargés sont gardés dans `/state/logos`, et chaque site n'est lu qu'une fois (« Relire tous les sites » pour recommencer).
+
 #### Droits de la clé d'API Immich
 
 | Fonction | Droits |
