@@ -1818,3 +1818,55 @@ def test_affiche_porte_le_nom_de_la_personne():
     assert img.getexif()[0x9C9B].decode("utf-16-le").rstrip("\0") == "Agnès STEVENIN"
     assert "Agnès STEVENIN".encode() in legendee and b"dc:title" in legendee
     assert img.size == (400, 860)
+
+
+def test_logos_des_societes(client, monkeypatch):
+    import io as _io
+    import httpx
+    from PIL import Image
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    icone = _io.BytesIO()
+    Image.new("RGB", (180, 180), (200, 30, 40)).save(icone, "PNG")
+    lus = []
+
+    def site(r):
+        lus.append(str(r.url))
+        if r.url.host == "boulangerie-du-port.fr" and r.url.path == "/":
+            return httpx.Response(200, headers={"content-type": "text/html"}, text=(
+                '<html><head><link rel="apple-touch-icon" sizes="180x180" href="/img/touch.png">'
+                '<link rel="icon" href="/logo.svg"></head></html>'))
+        if r.url.path == "/img/touch.png":
+            return httpx.Response(200, content=icone.getvalue(), headers={"content-type": "image/png"})
+        return httpx.Response(404)
+    monkeypatch.setattr(cn, "transport_logos", httpx.MockTransport(site), raising=False)
+    p = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+    f.update(groupes=["Clients"], photo=None, sites=[{"valeur": "https://www.boulangerie-du-port.fr", "type": "site"}])
+    c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    l = c.get("/api/logos").json()
+    assert l["groupes"] == ["Clients", "Artisans et services"]
+    ligne = next(x for x in l["lignes"] if x["pid"] == p["id"])
+    assert ligne["domaine"] == "boulangerie-du-port.fr" and ligne["cands"] == []
+    c.post("/api/logos/recherche")
+    assert _attendre(c)["tache"]["etat"] == "termine"
+    ligne = next(x for x in c.get("/api/logos").json()["lignes"] if x["pid"] == p["id"])
+    assert len(ligne["cands"]) == 1 and ligne["cands"][0]["largeur"] == 180            # le SVG est ignoré
+    assert not any(u.endswith(".svg") for u in lus)
+    assert c.get(f"/api/logos/apercu/{p['id']}/0?sorte=affiche").headers["content-type"] == "image/jpeg"
+    c.post("/api/logos/recherche")                                                     # déjà lu : pas relu
+    _attendre(c)
+    assert sum(u.endswith("/img/touch.png") for u in lus) == 1
+    assert c.post("/api/logos/choix", json={"pid": p["id"], "n": 0, "sorte": "photo"}).status_code == 200
+    d = c.get(f"/api/personnes/{p['id']}").json()
+    assert d["statut"] == "verifie" and any(s["source"] == "logo" and s["id"] == d["fiche"]["photo"] for s in d["sources"])
+    img = Image.open(_io.BytesIO(c.get(f"/api/photos/{d['fiche']['photo']}").content))
+    assert img.size == (800, 800)
+    assert next(x for x in c.get("/api/logos").json()["lignes"] if x["pid"] == p["id"])["photo"] == 0
+    assert "logo" not in [a["source"] for a in c.get("/api/archives").json()]
+    # Un contact avec une vraie photo n'est jamais proposé
+    f["photo"] = None
+    assert c.post("/api/logos/choix", json={"pid": "inconnu", "n": 0, "sorte": "photo"}).status_code == 400

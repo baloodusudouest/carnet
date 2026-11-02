@@ -23,7 +23,7 @@ import httpx
 from fastapi import HTTPException
 from rapidfuzz import fuzz
 
-from . import anniversaires, doublons, export, fusion, portraits, synchro
+from . import anniversaires, doublons, export, fusion, logos, portraits, synchro
 from .carddav import CardDAV, Conflit, ErreurICloud
 from .liens import TYPES_FAMILLE, ErreurLien, Immich, Treemich, relations_de
 from .config import Config
@@ -1852,25 +1852,29 @@ class Carnet:
 
     def _source_immich(self, cx, pid: str, immich_id: str, image: tuple[bytes, str]) -> int:
         """Visage Immich rangé comme une fiche source « Immich » (complément) du contact."""
-        imp = cx.execute("SELECT id FROM imports WHERE source = 'immich'").fetchone()
+        return self._source_photo(cx, "immich", "Immich", pid, immich_id, image)
+
+    def _source_photo(self, cx, source: str, libelle: str, pid: str, uid: str, image: tuple[bytes, str]) -> int:
+        """Photo venue d'ailleurs (visage Immich, logo de société) rangée comme une fiche source
+        de complément du contact, sans aucune donnée : seule sa photo sert."""
+        imp = cx.execute("SELECT id FROM imports WHERE source = ?", (source,)).fetchone()
         if imp:
             import_id = imp["id"]
         else:
-            quand = maintenant()
             import_id = cx.execute(
                 "INSERT INTO imports(source, nom_fichier, sha256, archive, importe_le, expire_le, nb_lus) "
-                "VALUES('immich', 'Immich', 'immich', NULL, ?, '9999-12-31T00:00:00+00:00', 0)",
-                (_iso(quand),)).lastrowid
-        existante = cx.execute("SELECT id FROM sources WHERE source = 'immich' AND personne_id = ?", (pid,)).fetchone()
+                "VALUES(?, ?, ?, NULL, ?, '9999-12-31T00:00:00+00:00', 0)",
+                (source, libelle, source, _iso(maintenant()))).lastrowid
+        existante = cx.execute("SELECT id FROM sources WHERE source = ? AND personne_id = ?", (source, pid)).fetchone()
         emp = hashlib.sha256(image[0]).hexdigest()
         if existante:
             cx.execute("UPDATE sources SET uid = ?, empreinte = ?, photo = ?, photo_type = ? WHERE id = ?",
-                       (immich_id, emp, image[0], image[1], existante["id"]))
+                       (uid, emp, image[0], image[1], existante["id"]))
             return existante["id"]
         return cx.execute(
             "INSERT INTO sources(import_id, source, uid, empreinte, donnees, photo, photo_type, enrichissement, personne_id) "
-            "VALUES(?, 'immich', ?, ?, ?, ?, ?, 1, ?)",
-            (import_id, immich_id, emp, json.dumps(fiche_vide()), image[0], image[1], pid)).lastrowid
+            "VALUES(?, ?, ?, ?, ?, ?, ?, 1, ?)",
+            (import_id, source, uid, emp, json.dumps(fiche_vide()), image[0], image[1], pid)).lastrowid
 
     def _appliquer_liens(self, pids: list[str] | None) -> None:
         """Photos depuis Immich, relations depuis Treemich, pour les contacts liés.
@@ -2236,6 +2240,13 @@ class Carnet:
                            "manuel": bool(a.get("manuel")), "le": a.get("le"),
                            "propositions": [{k: c.get(k) for k in ("asset", "le", "nettete", "face", "ecran")}
                                             for c in propositions.get(pid, [])]})
+        vus = {l["pid"] for l in lignes}
+        for pid, fiche, _ in self._verifiees():   # affiches faites d'un logo (contacts sans Immich)
+            a = faites.get(pid) or {}
+            if pid not in vus and str(a.get("source", "")).startswith("logo:") and a.get("immich_asset"):
+                lignes.append({"pid": pid, "nom": nom_affiche(fiche), "groupes": fiche["groupes"], "choisie": a["source"],
+                               "affiche": a["immich_asset"], "posee": a.get("posee"), "manuel": True, "le": a.get("le"),
+                               "propositions": []})
         lignes.sort(key=lambda l: (l["manuel"], l["nom"].lower()))
         return {"groupes": self.base.etat("affiches_groupes", []), "lignes": lignes,
                 "journal": self.base.etat("affiches_journal", [])[:10]}
@@ -2266,7 +2277,8 @@ class Carnet:
         immich = self._immich()
         try:
             gardes = {pid for pid, _, _ in cibles}
-            partis = [pid for pid in set(faites) | set(propositions) if pid not in gardes]
+            partis = [pid for pid in set(faites) | set(propositions) if pid not in gardes
+                      and not str((faites.get(pid) or {}).get("source", "")).startswith("logo:")]
             anciennes = [faites[p]["immich_asset"] for p in partis if (faites.get(p) or {}).get("immich_asset")]
             immich.supprimer_images(anciennes)
             bilan["retirees"] = len(anciennes)
@@ -2341,19 +2353,23 @@ class Carnet:
                     image = portraits.affiche(self._image_haute(immich, cand), cand["boite"])
                 except ValueError as exc:
                     raise ErreurCarnet(f"Affiche impossible : {exc}.") from exc
-                nom = nom_affiche(completer(json.loads(self._personne(pid)["fiche"] or "{}")))
-                fichier = re.sub(r"[^\w.-]+", "-", f"affiche-{nom}", flags=re.UNICODE).strip("-") + ".jpg"
-                album = immich.album(self.ALBUM_AFFICHES, self.base.etat("affiches_album"))
-                self.base.ecrire_etat("affiches_album", album)
-                nouvel = immich.envoyer_image(image, fichier, _iso(maintenant()))
-                immich.ajouter_album(album, [nouvel])
-                if avant.get("immich_asset") and avant["immich_asset"] != nouvel:
-                    immich.supprimer_images([avant["immich_asset"]])
-                faites[pid] = {"source": asset, "immich_asset": nouvel, "manuel": True, "le": _iso(maintenant())}
+                faites[pid] = self._ranger_affiche(immich, pid, image, asset, avant)
         finally:
             immich.fermer()
         self.base.ecrire_etat("affiches", faites)
         return {"ok": True}
+
+    def _ranger_affiche(self, immich: Immich, pid: str, image: bytes, source: str, avant: dict) -> dict:
+        """Envoie l'affiche dans l'album Immich (archivée) et retire l'ancienne."""
+        nom = nom_affiche(completer(json.loads(self._personne(pid)["fiche"] or "{}")))
+        fichier = re.sub(r"[^\w.-]+", "-", f"affiche-{nom}", flags=re.UNICODE).strip("-") + ".jpg"
+        album = immich.album(self.ALBUM_AFFICHES, self.base.etat("affiches_album"))
+        self.base.ecrire_etat("affiches_album", album)
+        nouvel = immich.envoyer_image(image, fichier, _iso(maintenant()))
+        immich.ajouter_album(album, [nouvel])
+        if avant.get("immich_asset") and avant["immich_asset"] != nouvel:
+            immich.supprimer_images([avant["immich_asset"]])
+        return {"source": source, "immich_asset": nouvel, "manuel": True, "le": _iso(maintenant())}
 
     def marquer_affiche_posee(self, pid: str, posee: bool) -> dict:
         """Coche tenue à la main : l'affiche a été posée sur l'iPhone (Apple ne la met pas dans la
@@ -2410,6 +2426,128 @@ class Carnet:
             cache.clear()
         cache[cle] = image
         return image
+
+    # ================================================================ logos de sociétés (clients, artisans…)
+
+    LOGOS_GROUPES_DEFAUT = ["Clients", "Artisans et services"]
+
+    def _dossier_logos(self) -> Path:
+        return self.cfg.state / "logos"
+
+    def _cibles_logos(self) -> list[tuple[str, dict, str]]:
+        """Contacts vérifiés des groupes choisis, avec un domaine, et sans autre photo que celle
+        d'un logo (une vraie photo de la personne n'est jamais remplacée)."""
+        groupes = set(self.base.etat("logos_groupes", self.LOGOS_GROUPES_DEFAUT))
+        res = []
+        for pid, fiche, sources in self._verifiees():
+            if not set(fiche["groupes"]) & groupes:
+                continue
+            if fiche.get("photo") and not any(s["id"] == fiche["photo"] and s["source"] == "logo" for s in sources):
+                continue
+            dom = logos.domaine_de(fiche, domaine_pro)
+            if dom:
+                res.append((pid, fiche, dom))
+        return res
+
+    def logos(self) -> dict:
+        trouves = self.base.etat("logos_trouves", {})
+        choix = self.base.etat("logos_choix", {})
+        faites = self.base.etat("affiches", {})
+        lignes = []
+        for pid, fiche, dom in self._cibles_logos():
+            t = trouves.get(dom) or {}
+            c = choix.get(pid) or {}
+            a = faites.get(pid) or {}
+            lignes.append({"pid": pid, "nom": nom_affiche(fiche), "societe": fiche["societe"], "domaine": dom,
+                           "cherche_le": t.get("le"), "cands": t.get("cands", []),
+                           "photo": c.get("photo"), "affiche": a.get("source") if str(a.get("source", "")).startswith("logo:") else None})
+        lignes.sort(key=lambda l: (l["photo"] is not None, l["nom"].lower()))
+        return {"groupes": self.base.etat("logos_groupes", self.LOGOS_GROUPES_DEFAUT), "lignes": lignes,
+                "immich": bool(self.cfg.immich_cle), "journal": self.base.etat("logos_journal", [])[:5]}
+
+    def logos_groupes(self, groupes: list[str]) -> dict:
+        connus = set(groupes_reconnus())
+        self.base.ecrire_etat("logos_groupes", [g for g in groupes if g in connus])
+        return self.logos()
+
+    def chercher_logos(self) -> dict:
+        return self._lancer("logos", self._chercher_logos)
+
+    def _chercher_logos(self) -> None:
+        """Pour chaque domaine pas encore cherché : les logos du site, rangés dans /state/logos."""
+        trouves = self.base.etat("logos_trouves", {})
+        domaines = sorted({dom for _, _, dom in self._cibles_logos()} - set(trouves))
+        bilan = {"le": _iso(maintenant()), "domaines": len(domaines), "avec_logo": 0}
+        self._tache.update(total=len(domaines), fait=0, message="Logos : lecture des sites…")
+        for dom in domaines:
+            self._tache["fait"] += 1
+            self._tache["message"] = f"Logos : {dom}…"
+            try:
+                res = logos.chercher(dom, transport=getattr(self, "transport_logos", None))
+            except Exception:  # noqa: BLE001 — un site injoignable n'arrête pas la recherche
+                log.warning("Logos : %s illisible", dom, exc_info=True)
+                res = []
+            dossier = self._dossier_logos() / re.sub(r"[^a-z0-9.-]", "_", dom)
+            dossier.mkdir(parents=True, exist_ok=True)
+            cands = []
+            for n, r in enumerate(res):
+                (dossier / f"{n}.img").write_bytes(r["octets"])
+                cands.append({"n": n, "url": r["url"], "largeur": r["largeur"], "hauteur": r["hauteur"]})
+            trouves[dom] = {"le": _iso(maintenant()), "cands": cands}
+            bilan["avec_logo"] += bool(cands)
+            self.base.ecrire_etat("logos_trouves", trouves)
+        self.base.ecrire_etat("logos_journal", ([bilan] + self.base.etat("logos_journal", []))[:10])
+        self._tache.update(etat="termine", message=(
+            f"Logos : {bilan['domaines']} site(s) lu(s), {bilan['avec_logo']} avec un logo." if domaines
+            else "Logos : tous les sites ont déjà été lus (« Relire les sites » pour recommencer)."))
+
+    def relire_logos(self) -> dict:
+        self.base.ecrire_etat("logos_trouves", {})
+        return self.chercher_logos()
+
+    def _logo(self, pid: str, n: int) -> tuple[bytes, dict, str]:
+        cible = next(((f, d) for p, f, d in self._cibles_logos() if p == pid), None)
+        if not cible:
+            raise ErreurCarnet("Ce contact n'attend pas de logo (photo déjà présente, ou hors des groupes choisis).")
+        fiche, dom = cible
+        chemin = self._dossier_logos() / re.sub(r"[^a-z0-9.-]", "_", dom) / f"{int(n)}.img"
+        if not chemin.is_file():
+            raise ErreurCarnet("Logo introuvable : relance la recherche.")
+        return chemin.read_bytes(), fiche, dom
+
+    def apercu_logo(self, pid: str, n: int, sorte: str) -> tuple[bytes, str]:
+        contenu, fiche, _ = self._logo(pid, n)
+        if sorte == "affiche":
+            image = logos.affiche(contenu, fiche["societe"] or nom_affiche(fiche))
+            return portraits.vignette_affiche(image, 900), "image/jpeg"
+        return portraits.alleger((logos.photo(contenu, 400), "image/jpeg"))
+
+    def choisir_logo(self, pid: str, n: int, sorte: str) -> dict:
+        """Ton choix : le logo devient la photo du contact (iCloud suivra à la prochaine écriture)
+        ou son affiche iPhone (rangée dans l'album Immich, comme les autres)."""
+        contenu, fiche, dom = self._logo(pid, n)
+        if sorte == "photo":
+            image = (logos.photo(contenu), "image/jpeg")
+            with self.base.transaction() as cx:
+                sid = self._source_photo(cx, "logo", "Logos", pid, f"{dom}#{n}", image)
+            self._remplacer_fiche_validee(pid, dict(fiche, photo=sid))
+            choix = self.base.etat("logos_choix", {})
+            choix.setdefault(pid, {})["photo"] = int(n)
+            self.base.ecrire_etat("logos_choix", choix)
+            return {"ok": True}
+        if sorte != "affiche":
+            raise ErreurCarnet("Choix inconnu.")
+        if not self.cfg.immich_cle:
+            raise ErreurCarnet("Les affiches passent par l'album Immich : renseigne CARNET_IMMICH_CLE.")
+        image = logos.affiche(contenu, fiche["societe"] or nom_affiche(fiche))
+        faites = self.base.etat("affiches", {})
+        immich = self._immich()
+        try:
+            faites[pid] = self._ranger_affiche(immich, pid, image, f"logo:{dom}:{int(n)}", faites.get(pid) or {})
+        finally:
+            immich.fermer()
+        self.base.ecrire_etat("affiches", faites)
+        return {"ok": True}
 
     # ================================================================ Home Assistant : réservations et journal de naissance
 
@@ -2884,7 +3022,7 @@ class Carnet:
     def archives(self) -> list[dict]:
         aujourdhui = maintenant()
         res = []
-        for imp in self.base.lire("SELECT * FROM imports WHERE source != 'immich' ORDER BY importe_le DESC"):
+        for imp in self.base.lire("SELECT * FROM imports WHERE source NOT IN ('immich', 'logo') ORDER BY importe_le DESC"):
             expire = datetime.fromisoformat(imp["expire_le"])
             jours = (expire - aujourdhui).days
             noms = sorted({nom_affiche(completer(json.loads(l["donnees"]))) for l in self.base.lire(

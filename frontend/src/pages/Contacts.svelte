@@ -99,7 +99,7 @@
   </select>
   <select bind:value={source} aria-label="Source">
     <option value="">Toutes les sources</option>
-    {#each Object.entries(ref.sources).filter(([k]) => k !== 'immich') as [k, v]}<option value={k}>{v}</option>{/each}
+    {#each Object.entries(ref.sources).filter(([k]) => !['immich', 'logo'].includes(k)) as [k, v]}<option value={k}>{v}</option>{/each}
   </select>
   <label class="flex items-center gap-2 text-sm text-mine">
     <input type="checkbox" bind:checked={injoignables} /> Sans téléphone ni courriel

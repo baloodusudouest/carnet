@@ -357,3 +357,13 @@ def legender(contenu: bytes, legende: str) -> bytes:
     except (ValueError, OSError):   # pas un JPEG d'origine : nouvelle compression, de bonne qualité
         img.convert("RGB").save(sortie, "JPEG", quality=92, exif=exif, xmp=xmp)
     return sortie.getvalue()
+
+
+def vignette_affiche(contenu: bytes, hauteur: int) -> bytes:
+    """Affiche réduite (aperçu), proportions gardées."""
+    img = _ouvrir(contenu)
+    if img.height > hauteur:
+        img = img.resize((max(1, int(img.width * hauteur / img.height)), hauteur), Image.Resampling.LANCZOS)
+    sortie = io.BytesIO()
+    img.save(sortie, "JPEG", quality=85, optimize=True)
+    return sortie.getvalue()
