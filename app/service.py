@@ -2365,7 +2365,15 @@ class Carnet:
             contenu = immich.image(a["immich_asset"], "original")
         finally:
             immich.fermer()
-        return (contenu, "image/jpeg") if contenu else None
+        if not contenu:
+            return None
+        # Le nom dans la photo : Photos (iPhone) la retrouve en cherchant « Prénom NOM »
+        nom = nom_affiche(completer(json.loads(self._personne(pid)["fiche"] or "{}")))
+        try:
+            contenu = portraits.legender(contenu, nom)
+        except Exception:  # noqa: BLE001 — image servie telle quelle plutôt que pas du tout
+            log.warning("Affiche : nom non écrit dans l'image", exc_info=True)
+        return contenu, "image/jpeg"
 
     def apercu_proposition(self, pid: str, asset: str, grand: bool = False) -> tuple[bytes, str] | None:
         """Proposition cadrée comme l'affiche finale, en petit (tableau) ou en grand (survol)."""

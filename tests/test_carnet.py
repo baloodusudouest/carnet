@@ -1801,3 +1801,14 @@ def test_ajouter_plusieurs_contacts_a_un_groupe(client):
     assert c.post("/api/contacts/groupe", json={"ids": [claire["id"]], "groupe": "Clients"}).json()["modifies"] == 0
     c.post("/api/contacts/groupe", json={"ids": [claire["id"]], "groupe": "Clients", "retirer": True})
     assert "Clients" not in c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["groupes"]
+
+
+def test_affiche_porte_le_nom_de_la_personne():
+    import io as _io
+    from PIL import Image
+    from app import portraits
+    legendee = portraits.legender(_jpeg(400, 860, (0.3, 0.2, 0.7, 0.4)), "Agnès STEVENIN")
+    img = Image.open(_io.BytesIO(legendee))
+    assert img.getexif()[0x9C9B].decode("utf-16-le").rstrip("\0") == "Agnès STEVENIN"
+    assert "Agnès STEVENIN".encode() in legendee and b"dc:title" in legendee
+    assert img.size == (400, 860)

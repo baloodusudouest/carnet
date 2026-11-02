@@ -105,7 +105,7 @@
       for (const l of lignesAffiches) {
         const r = await fetch(`/api/affiches/image/${l.pid}`, { credentials: 'same-origin' })
         if (!r.ok) continue
-        fichiers.push(new File([await r.blob()], `affiche-${l.nom.replace(/[^\p{L}\p{N}]+/gu, '-')}.jpg`, { type: 'image/jpeg' }))
+        fichiers.push(new File([await r.blob()], `${l.nom.replace(/[\\/:*?"<>|]+/g, ' ').trim()}.jpg`, { type: 'image/jpeg' }))
         lignesOk.push(l)
       }
       if (!fichiers.length) throw new Error('Aucune affiche trouvée dans Immich.')
