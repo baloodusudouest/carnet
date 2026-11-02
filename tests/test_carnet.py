@@ -1,6 +1,7 @@
 """Tests de bout en bout sur des contacts fictifs (tests/donnees/)."""
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -801,6 +802,13 @@ def test_icloud_photo_par_lien(client, monkeypatch):
     # Photo disparue d'iCloud lors d'une écriture précédente : reprise dans la sauvegarde
     serveur.modifier_sur_iphone("BBBB-2222", "\r\n".join(
         l for l in serveur.texte("BBBB-2222").replace("\r\n ", "").split("\r\n") if not l.startswith("PHOTO")))
+    # La carte a changé sur l'iPhone depuis l'écriture : pas réécrite d'office, remise en révision
+    c.post("/api/icloud/simulation")
+    t = _attendre(c)
+    assert t["plan"]["modifier"] == [] and [x["nom"] for x in t["plan"]["conflits"]] == ["Jean-Pierre DUBOIS"]
+    d = c.get(f"/api/personnes/{dubois['id']}").json()
+    assert d["statut"] == "a_reviser" and "iPhone" in d["a_revoir"]
+    c.put(f"/api/personnes/{dubois['id']}", json={"fiche": d["fiche"], "valider": True})   # revalidée
     c.post("/api/icloud/simulation")
     assert [x["nom"] for x in _attendre(c)["plan"]["modifier"]] == ["Jean-Pierre DUBOIS"]
     c.post("/api/icloud/ecriture", json={"essai": True})
@@ -921,7 +929,7 @@ def test_groupes_personnalises(client):
 
 def test_veille_icloud(client, monkeypatch):
     """Veille : après une écriture, rien ne bouge ; puis modification, ajout et suppression sur
-    l'iPhone sont repérés. En mode journal rien n'est remis en révision, en mode révision si."""
+    l'iPhone sont repérés et remis en révision ; une fiche supprimée n'est pas recréée sans accord."""
     from app.main import etat
     from tests.faux_icloud import FauxICloud
     c = client
@@ -958,15 +966,26 @@ def test_veille_icloud(client, monkeypatch):
     assert v["modifies"][0]["ecarts"][0]["champ"] == "telephones"
     assert [n["nom"] for n in v["nouveaux"]] == ["Nina Neuf"]
     assert [s["nom"] for s in v["supprimes"]] == ["Jean-Pierre DUBOIS"]
-    assert _personne(c, "Claire")["statut"] == "verifie"                      # mode journal : rien ne bouge
     assert c.get("/status").json()["veille"]["modifies"] == 1
-
-    # Mode révision : Claire repasse à réviser, Nina est importée
-    c.post("/api/icloud/veille/mode", json={"revision": True})
+    # Tout repasse en révision : Claire (modifiée), Nina (nouvelle), Jean-Pierre (supprimé)
+    assert v["importes"] == 2
+    claire, jp = _personne(c, "Claire"), _personne(c, "Jean-Pierre")
+    assert claire["statut"] == "a_reviser" and _personne(c, "Nina")["statut"] == "a_reviser"
+    assert jp["statut"] == "a_reviser" and jp["a_revoir"].startswith("supprimée de l'iPhone")
+    d = c.get(f"/api/personnes/{claire['id']}").json()
+    assert any(s["source"] == "icloud" and "+33 6 99 99 99 99" in json.dumps(s["donnees"]) for s in d["sources"])
+    # Jean-Pierre n'est pas recréé tant qu'il n'est pas revalidé ; revalidé, il l'est
+    c.post("/api/icloud/simulation")
+    plan = _attendre(c)["plan"]
+    assert "Jean-Pierre DUBOIS" not in [x["nom"] for x in plan["creer"]]
+    f = c.get(f"/api/personnes/{jp['id']}").json()["fiche"]
+    c.put(f"/api/personnes/{jp['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/icloud/simulation")
+    assert "Jean-Pierre DUBOIS" in [x["nom"] for x in _attendre(c)["plan"]["creer"]]
+    # Veille suivante sans changement : rien de neuf (les cartes vues ne sont plus signalées)
     c.post("/api/icloud/veille")
     v = _attendre(c)["veille"]["journal"][0]
-    assert v["importes"] == 2
-    assert _personne(c, "Claire")["statut"] == "a_reviser" and _personne(c, "Nina")["statut"] == "a_reviser"
+    assert (len(v["modifies"]), len(v["nouveaux"]), len(v["supprimes"])) == (0, 0, 0), v
 
 
 def test_linkedin_par_api(client, monkeypatch):
@@ -1981,3 +2000,70 @@ def test_migration_du_schema_garde_une_copie(tmp_path):
     copie = tmp_path / f"carnet.db.avant-v{VERSION_SCHEMA}"
     assert copie.exists() and Base.verifier(copie, "k")["comptes"]["imports"] == 1
     b.fermer()
+
+
+def test_iphone_ne_perd_rien(client, monkeypatch):
+    """Lot 2 : une carte changée sur l'iPhone entre la veille et l'écriture n'est pas écrasée ;
+    une carte créée par carnet (« carnet-… ») revient à son contact par l'UID ; après une fusion,
+    la carte du contact absorbé est proposée au retrait au lieu de rester en double."""
+    from app.main import etat
+    from tests.faux_icloud import FauxICloud
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    _importer(c, "gmail.vcf", "gmail")
+    serveur = FauxICloud((DONNEES / "icloud.vcf").read_text())
+    cn = etat["carnet"]
+    monkeypatch.setattr(cn, "transport_icloud", serveur.transport())
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "icloud_user": "moi@icloud.com",
+                                                        "icloud_password": "abcd-efgh-ijkl-mnop"}))
+    for p in c.get("/api/contacts").json():
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        f["groupes"] = f["groupes"] or ["Amis"]
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/icloud/simulation")
+    _attendre(c)
+    c.post("/api/icloud/ecriture", json={"confirme": True})
+    _attendre(c)
+    c.post("/api/icloud/veille")                      # point de départ : tout est vu
+    _attendre(c)
+
+    # 1. Modifiée sur l'iPhone après la veille, puis la fiche carnet change aussi : pas d'écrasement
+    claire = _personne(c, "Claire")
+    serveur.modifier_sur_iphone("AAAA-1111", serveur.texte("AAAA-1111").replace("+33 6 12 34 56 78", "+33 6 11 11 11 11"))
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    f["notes"] = "changée dans carnet"
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/icloud/simulation")
+    t = _attendre(c)
+    assert [x["nom"] for x in t["plan"]["conflits"]] == ["Claire MARTIN"]
+    assert "Claire MARTIN" not in [x["nom"] for x in t["plan"]["modifier"]]
+    assert "+33 6 11 11 11 11" in serveur.texte("AAAA-1111")                        # rien écrasé
+    d = c.get(f"/api/personnes/{claire['id']}").json()
+    assert d["statut"] == "a_reviser" and "iPhone" in d["a_revoir"]
+    assert any("+33 6 11 11 11 11" in json.dumps(s["donnees"]) for s in d["sources"] if s["source"] == "icloud")
+
+    # 2. Carte créée par carnet, modifiée sur l'iPhone : rattachée à son contact (pas un nouveau)
+    nb_avant = len(c.get("/api/contacts").json())
+    uid_carnet = next(u for u in [*(x["uid"] for x in cn.base.etat("icloud_suivi").values())] if u.startswith("carnet-"))
+    pid_carnet = uid_carnet[len("carnet-"):]
+    serveur.modifier_sur_iphone(uid_carnet, serveur.texte(uid_carnet).replace("END:VCARD", "NOTE:ajout iPhone\r\nEND:VCARD"))
+    c.post("/api/icloud/veille")
+    v = _attendre(c)["veille"]["journal"][0]
+    assert [m["pid"] for m in v["modifies"]] == [pid_carnet] and v["nouveaux"] == []
+    assert len(c.get("/api/contacts").json()) == nb_avant
+    d = c.get(f"/api/personnes/{pid_carnet}").json()
+    assert d["statut"] == "a_reviser" and any(s["source"] == "icloud" for s in d["sources"])
+
+    # 3. Fusion : la carte du contact absorbé devient un ancien UID du contact gardé
+    jp = _personne(c, "Jean-Pierre")
+    cn.base.modifier_etat("liaisons", {}, lambda l: l.update({pid_carnet: {"immich": "im-x"}}))
+    c.post(f"/api/personnes/{jp['id']}/fusionner", json={"autre": pid_carnet})
+    suivi = cn.base.etat("icloud_suivi")
+    assert pid_carnet not in suivi and uid_carnet in suivi[jp["id"]]["anciens_uids"]
+    assert cn.base.etat("liaisons")[jp["id"]] == {"immich": "im-x"}
+    f = c.get(f"/api/personnes/{jp['id']}").json()["fiche"]
+    c.put(f"/api/personnes/{jp['id']}", json={"fiche": f, "valider": True})
+    c.post("/api/icloud/simulation")
+    plan = _attendre(c)["plan"]
+    assert [x["motif"] for x in plan["supprimer"] if x["pid"] == jp["id"]] == ["doublon créé par carnet, la fiche d'origine est gardée"]

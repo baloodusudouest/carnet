@@ -10,3 +10,10 @@
 - Version du schéma de la base (`PRAGMA user_version`), migrations numérotées, copie `carnet.db.avant-vN` avant chaque migration.
 - Images Docker étiquetées `latest`, `1.3.0` et `sha-<commit>` : retour à une image précédente possible dans Portainer.
 - Liste, statut et bilan gardés en mémoire tant que la base ne change pas ; un seul appel au bilan au chargement.
+
+### Lot 2 · L'iPhone ne perd plus rien
+- La veille de nuit remet toujours en Révision ce qui a changé sur l'iPhone (le mode « journal » disparaît) : fiche modifiée, vérifiée ou pas encore, fiche nouvelle, fiche supprimée.
+- Une fiche supprimée sur l'iPhone n'est plus recréée en silence : le contact repasse en Révision (« Valider » la recrée, « Mettre de côté » la laisse supprimée).
+- Avant d'écrire, carnet compare l'ETag de chaque carte à la dernière lecture : une carte changée sur l'iPhone entre-temps n'est pas écrasée, elle part en Révision avec sa nouvelle version.
+- Une carte créée par carnet (UID « carnet-… ») et modifiée sur l'iPhone revient à son contact par l'UID au lieu de devenir un nouveau contact.
+- Fusion : liaisons Immich/Treemich, photo HD, affiche et fiche iCloud du contact absorbé passent au contact gardé ; sa carte iCloud en double est proposée au retrait.
