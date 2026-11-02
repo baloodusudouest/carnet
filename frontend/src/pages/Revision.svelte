@@ -5,6 +5,7 @@
   import { CLES, texteItem, anniversaireLisible, dateCourte, rechercheLinkedin } from '../lib/cles.js'
   import Fusion from '../components/Fusion.svelte'
   import Aide from '../components/Aide.svelte'
+  import Proches from '../components/Proches.svelte'
 
   const SIMPLES = [
     { champ: 'prenom', libelle: 'Prénom', toujours: true },
@@ -492,6 +493,8 @@
       </button>
     </div>
   </div>
+
+  {#key dossier.id}<Proches pid={dossier.id} bind:fiche reunir={fusionner} />{/key}
 
   <!-- Tableau à largeur fixe : tout tient à l'écran, les valeurs trop longues sont raccourcies
        (le texte complet s'affiche au survol). Sur un écran étroit (vue PC sur iPhone), il garde
