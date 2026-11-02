@@ -182,13 +182,28 @@
     affiches = await api.post('/api/affiches/groupes', { groupes })
   }
   let filtreAffiches = $state('a_choisir')
-  // Loupe : la proposition survolée, en grand, à côté du pointeur
+  // Loupe : la proposition en grand, toujours entière à l'écran.
+  // Souris : à côté du pointeur, au survol. Écran tactile : un toucher l'ouvre au centre,
+  // avec « Choisir » (un toucher ne choisit donc plus la photo par erreur).
+  const tactile = matchMedia('(hover: none)').matches
   let loupe = $state(null)
+  function tailleLoupe() {
+    const L = document.documentElement.clientWidth, H = window.visualViewport?.height ?? window.innerHeight
+    const hauteur = Math.min(650, H - 32, (L - 32) * 19.5 / 9)
+    return { largeur: Math.round(hauteur * 9 / 19.5), hauteur: Math.round(hauteur), L, H }
+  }
   function montrerLoupe(e, l, p) {
-    const largeur = 300, hauteur = Math.round(largeur * 19.5 / 9)
-    const x = e.clientX + 24 + largeur > window.innerWidth ? e.clientX - 24 - largeur : e.clientX + 24
-    const y = Math.min(Math.max(e.clientY - hauteur / 2, 8), window.innerHeight - hauteur - 8)
+    if (tactile) return
+    const { largeur, hauteur, L, H } = tailleLoupe()
+    const x = e.clientX + 24 + largeur > L ? Math.max(8, e.clientX - 24 - largeur) : e.clientX + 24
+    const y = Math.min(Math.max(e.clientY - hauteur / 2, 8), H - hauteur - 8)
     loupe = { src: `/api/affiches/proposition/${l.pid}/${p.asset}?grand=true`, x, y, largeur, hauteur }
+  }
+  function toucherProposition(l, p) {
+    if (!tactile) return choisirAffiche(l, p.asset)
+    const { largeur, hauteur, L, H } = tailleLoupe()
+    loupe = { src: `/api/affiches/proposition/${l.pid}/${p.asset}?grand=true`, x: (L - largeur) / 2, y: (H - hauteur - 56) / 2,
+      largeur, hauteur: hauteur - 56, ligne: l, asset: p.asset, ouvert: Date.now() }
   }
   async function choisirAffiche(l, asset) {
     occupe = l.pid
@@ -246,7 +261,19 @@
   </span>
 {/snippet}
 
-{#if loupe}
+{#if loupe && loupe.ligne}
+  <!-- Écran tactile : la proposition en entier, au centre ; toucher le fond referme -->
+  <div class="fixed inset-0 z-50 bg-black/85" role="dialog" aria-modal="true" aria-label={`Affiche de ${loupe.ligne.nom}`}
+    onclick={() => { if (Date.now() - loupe.ouvert > 500) loupe = null }}>
+    <img class="absolute rounded-xl object-contain" style={`left:${loupe.x}px;top:${loupe.y}px;width:${loupe.largeur}px;height:${loupe.hauteur}px`}
+      src={loupe.src} alt="" />
+    <div class="absolute inset-x-4 flex gap-2" style={`top:${loupe.y + loupe.hauteur + 8}px`}>
+      <button class="flex-1 h-11 rounded-xl bg-onglet text-onglet-sombre font-semibold disabled:opacity-50" disabled={occupe !== null}
+        onclick={(e) => { e.stopPropagation(); const { ligne, asset } = loupe; loupe = null; choisirAffiche(ligne, asset) }}>Choisir cette photo</button>
+      <button class="h-11 px-4 rounded-xl border border-couture text-papier bg-reliure" onclick={() => (loupe = null)}>Fermer</button>
+    </div>
+  </div>
+{:else if loupe}
   <div class="fixed z-50 pointer-events-none rounded-xl overflow-hidden border border-onglet/60 shadow-2xl bg-couture"
     style={`left:${loupe.x}px;top:${loupe.y}px;width:${loupe.largeur}px;height:${loupe.hauteur}px`}>
     <img class="w-full h-full object-cover" src={loupe.src} alt="" />
@@ -617,10 +644,10 @@
                         <td class="px-1 py-2 text-center">
                           {#if p}
                             <button class="w-20 rounded-lg overflow-hidden border-2 {l.choisie === p.asset ? 'border-onglet' : 'border-transparent hover:border-couture'}"
-                              disabled={occupe !== null} onclick={() => choisirAffiche(l, p.asset)}
+                              disabled={occupe !== null} onclick={() => toucherProposition(l, p)}
                               aria-label={`Photo ${k + 1} pour l'affiche de ${l.nom}`} aria-pressed={l.choisie === p.asset}>
                               <img class="w-full aspect-[9/19.5] object-cover bg-couture" src={`/api/affiches/proposition/${l.pid}/${p.asset}`} alt="" loading="lazy"
-                                onmouseenter={(e) => montrerLoupe(e, l, p)} onmousemove={(e) => montrerLoupe(e, l, p)} onmouseleave={() => (loupe = null)} />
+                                onmouseenter={(e) => montrerLoupe(e, l, p)} onmousemove={(e) => montrerLoupe(e, l, p)} onmouseleave={() => { if (!tactile) loupe = null }} />
                               <span class="block text-[10px] text-mine leading-tight py-0.5">{netteteLisible(p.nettete, p.ecran)}{faceLisible(p.face)}{p.le ? ` · ${p.le.slice(0, 4)}` : ''}</span>
                             </button>
                           {/if}
