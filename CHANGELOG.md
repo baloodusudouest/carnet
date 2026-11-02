@@ -23,3 +23,10 @@
 - Une personne Immich ou Treemich ne peut plus être liée à deux contacts (validation refusée).
 - LinkedIn : la relation est reconnue par l'adresse de son profil. Un réimport identique ne change rien ; un nouveau poste, une nouvelle société ou un nouveau courriel remplace l'ancienne ligne et, si la fiche portait encore l'ancienne valeur, va dans son brouillon avec le motif « LinkedIn · Poste : X → Y ». Si tu avais retenu autre chose, rien ne te dérange.
 - Migration 3 : les lignes LinkedIn déjà importées reçoivent leur identifiant de profil et les doublons laissés par les réimports passés sont retirés (copie de la base faite avant).
+
+### Lot 5 · Synchro iCloud autonome
+- Chaque nuit, après la veille et les liaisons, carnet écrit dans iCloud les fiches validées qui ont changé. Les deux premières semaines sont « à blanc » : le plan est noté au journal, rien n'est écrit (passage anticipé possible).
+- Garde-fous : aucune suppression la nuit (contacts mis de côté, doublons, groupes : elles attendent ton accord dans la page iCloud) ; au plus max(10, 5 %) créations et max(20, 10 %) modifications par nuit, sinon rien n'est écrit et une alerte est notée ; rien d'écrit si la veille de la nuit est en erreur ; interrupteur pour couper.
+- « Synchroniser maintenant » : même plan, mêmes garde-fous, écriture réelle.
+- `/status` (Home Assistant) expose la dernière synchro : mode, compteurs, alerte.
+- Sauvegardes d'iCloud avant écriture : toutes celles des 14 derniers jours, puis une par mois pendant un an.
