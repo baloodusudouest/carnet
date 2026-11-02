@@ -283,7 +283,7 @@
 <div class="max-w-7xl">
   <div class="flex flex-wrap items-end gap-4 mb-2">
     <div>
-      <h1 class="titre text-3xl">Liaisons Immich et Treemich</h1>
+      <h1 class="titre text-2xl md:text-3xl">Liaisons Immich et Treemich</h1>
       <p class="text-mine text-sm max-w-3xl">Une fois un contact lié, son visage Immich devient sa photo et ses relations
         Treemich (conjoint, parents, enfants, frères et sœurs) complètent ses noms associés. Tout se met à jour chaque nuit ;
         une relation qui contredit ce que tu as saisi passe par la Revue.</p>

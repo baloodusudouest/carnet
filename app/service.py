@@ -2045,7 +2045,26 @@ class Carnet:
         self.base.ecrire_etat("liens_cache", None)
 
     def liaisons(self, rafraichir: bool = False) -> dict:
-        """Contacts vérifiés liés à Immich / Treemich, et propositions à valider."""
+        """Contacts vérifiés liés à Immich / Treemich, et propositions à valider (gardé en mémoire
+        tant que rien ne change, sauf relecture demandée)."""
+        return self._liaisons_calcul(True) if rafraichir else self._liaisons_memo()
+
+    @_memorise
+    def _liaisons_memo(self) -> dict:
+        return self._liaisons_calcul(False)
+
+    def liaisons_auto(self) -> list[dict]:
+        """Liaisons faites seules ces trois dernières nuits (pour « Annuler » dans À traiter)."""
+        liens = self.base.etat("liaisons", {})
+        limite = maintenant() - timedelta(days=3)
+        res = []
+        for e in self.base.etat("liaisons_auto", []):
+            if datetime.fromisoformat(e["le"]) < limite:
+                break
+            res += [dict(x, le=e["le"]) for x in e["liees"] if (liens.get(x["pid"]) or {}).get("auto")]
+        return res
+
+    def _liaisons_calcul(self, rafraichir: bool) -> dict:
         d = self._donnees_liens(rafraichir)
         liens = self.base.etat("liaisons", {})
         refus = set(self.base.etat("liaisons_refusees", []))

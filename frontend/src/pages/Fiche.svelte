@@ -1,6 +1,6 @@
 <script>
   // Vue iPhone : fiche d'un contact en lecture, avec les actions de l'iPhone
-  // (appeler, message, courriel, Plans). La modification se fait sur PC, dans la Révision.
+  // (appeler, message, courriel, Plans). « Modifier la fiche » ouvre la Révision (PC ou iPhone).
   import { api } from '../lib/api.js'
   import { route, annoncer, ecran } from '../lib/etat.svelte.js'
   import { anniversaireLisible, texteItem } from '../lib/cles.js'
@@ -103,10 +103,6 @@
       {#each f.groupes as g}<span class="text-xs rounded-full px-2.5 py-1 border border-couture text-mine">{g}</span>{/each}
     </div>
   {/if}
-  {#if ecran.etroit && !ecran.forcerPC}
-    <p class="text-xs text-mine mt-6 text-center">Pour modifier ce contact, ouvre carnet sur ton PC.</p>
-  {:else}
-    <p class="mt-6 text-center"><a class="bouton" href={`#/revision/${route.id}`}>Modifier dans la Révision</a></p>
-  {/if}
+  <p class="mt-6 text-center"><a class="bouton min-h-11" href={`#/revision/${route.id}`}>Modifier la fiche</a></p>
 {/if}
 </div>

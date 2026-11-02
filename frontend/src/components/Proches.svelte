@@ -117,22 +117,22 @@
     </span>
     <span class="flex flex-wrap gap-1.5 text-xs">
       {#if !p.lie && !p.lie_a}
-        <button class="h-8 px-3 rounded-full bg-onglet text-onglet-sombre font-medium disabled:opacity-50" disabled={occupe}
+        <button class="h-8 pointer-coarse:h-11 px-3 rounded-full bg-onglet text-onglet-sombre font-medium disabled:opacity-50" disabled={occupe}
           onclick={() => lier(cote, p)}>Lier</button>
       {/if}
       {#if dateUtile(p)}
-        <button class="h-8 px-3 rounded-full border border-couture text-papier hover:border-onglet" onclick={() => prendreDate(p)}
+        <button class="h-8 pointer-coarse:h-11 px-3 rounded-full border border-couture text-papier hover:border-onglet" onclick={() => prendreDate(p)}
           title="Reprendre cette date dans la fiche">Prendre la date</button>
       {/if}
       {#if !memeOrthographe(p.nom) && cle(p.nom) !== '' && nomFiche}
-        <button class="h-8 px-3 rounded-full border border-couture text-papier hover:border-onglet" onclick={() => prendreNom(p)}
+        <button class="h-8 pointer-coarse:h-11 px-3 rounded-full border border-couture text-papier hover:border-onglet" onclick={() => prendreNom(p)}
           title="La fiche prend l'orthographe de {cote === 'immich' ? 'Immich' : 'Treemich'}">Nom → fiche</button>
-        <button class="h-8 px-3 rounded-full border border-couture text-papier hover:border-onglet disabled:opacity-50" disabled={occupe}
+        <button class="h-8 pointer-coarse:h-11 px-3 rounded-full border border-couture text-papier hover:border-onglet disabled:opacity-50" disabled={occupe}
           onclick={() => renommer(cote, p)} title="Renommer dans {cote === 'immich' ? 'Immich' : 'Treemich'} : « {nomFiche} »">
           Fiche → {cote === 'immich' ? 'Immich' : 'Treemich'}</button>
       {/if}
       {#if !p.lie}
-        <button class="h-8 px-2 text-mine hover:text-alerte" onclick={() => refuser(p)} title="Pas la même personne : ne plus proposer">✕</button>
+        <button class="h-8 pointer-coarse:h-11 px-2 text-mine hover:text-alerte" onclick={() => refuser(p)} title="Pas la même personne : ne plus proposer">✕</button>
       {/if}
     </span>
   </li>
@@ -173,7 +173,7 @@
                     <span class="block text-xs text-mine truncate">{[c.statut === 'verifie' ? 'vérifié' : 'à relire',
                       c.telephone, c.anniversaire && anniversaireLisible(c.anniversaire), c.groupes.join(', ')].filter(Boolean).join(' · ')}</span>
                   </span>
-                  <button class="h-8 px-3 rounded-full border border-onglet text-onglet text-xs" onclick={() => reunir(c)}
+                  <button class="h-8 pointer-coarse:h-11 px-3 rounded-full border border-onglet text-onglet text-xs" onclick={() => reunir(c)}
                     title="Même personne : réunir ses fiches dans ce contact">Réunir ici</button>
                 </li>
               {/each}

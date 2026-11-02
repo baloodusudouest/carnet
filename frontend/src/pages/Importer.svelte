@@ -85,7 +85,7 @@
 
 <div class="grid gap-10 lg:grid-cols-[1fr_340px]">
   <section>
-    <h1 class="titre text-3xl mb-2">Importer des exports</h1>
+    <h1 class="titre text-2xl md:text-3xl mb-2">Importer des exports</h1>
     <p class="text-mine max-w-2xl mb-6">
       Dépose ici les exports d'iCloud, Gmail, Outlook et LinkedIn. Chaque fichier est archivé
       avant d'être lu, puis les doublons sont regroupés pour la révision.

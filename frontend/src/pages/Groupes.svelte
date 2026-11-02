@@ -69,7 +69,7 @@
 </script>
 
 <div class="max-w-4xl">
-  <h1 class="titre text-3xl mb-2">Groupes</h1>
+  <h1 class="titre text-2xl md:text-3xl mb-2">Groupes</h1>
   <p class="text-mine mb-6">
     Les groupes intégrés portent les règles de carnet et ne se modifient pas. Ceux que tu crées se renomment ou se
     suppriment ici. iCloud suit à la prochaine écriture : un groupe renommé y est recréé sous son nouveau nom.
@@ -118,7 +118,7 @@
             <span class="w-56 truncate {g.fixe ? 'text-mine' : 'text-papier'}">{g.nom}</span>
             <span class="text-xs text-mine w-24">règle : {libelleRegle(g.regle)}</span>
             <span class="text-sm text-mine tabular-nums w-28">{pluriel(g.nb, 'contact', 'contacts')}</span>
-            <button class="text-sm rounded-full border px-2.5 py-0.5 {groupeLi === g.nom ? 'border-onglet text-papier' : 'border-couture text-mine hover:text-papier'}"
+            <button class="text-sm rounded-full border px-2.5 py-0.5 pointer-coarse:min-h-11 pointer-coarse:px-3.5 {groupeLi === g.nom ? 'border-onglet text-papier' : 'border-couture text-mine hover:text-papier'}"
               disabled={!g.nb} aria-expanded={groupeLi === g.nom} onclick={() => ouvrirLinkedin(g.nom)}>LinkedIn</button>
             {#if g.fixe}
               <span class="ml-auto text-xs text-mine/70">intégré</span>
@@ -143,10 +143,10 @@
                       <a href={`#/revision/${p.id}`} class="w-56 truncate hover:text-onglet">{p.nom}</a>
                       <span class="w-40 truncate text-xs text-mine">{p.societe}</span>
                       {#if p.linkedin}
-                        <a class="rounded-full border border-valide/60 bg-valide/15 text-valide px-2.5 py-0.5 text-xs" href={p.linkedin}
+                        <a class="rounded-full border border-valide/60 bg-valide/15 text-valide px-2.5 py-0.5 text-xs pointer-coarse:min-h-11 pointer-coarse:flex pointer-coarse:items-center" href={p.linkedin}
                           target="_blank" rel="noopener noreferrer">LinkedIn ✓</a>
                       {:else}
-                        <a class="rounded-full border border-couture text-mine hover:text-papier px-2.5 py-0.5 text-xs"
+                        <a class="rounded-full border border-couture text-mine hover:text-papier px-2.5 py-0.5 text-xs pointer-coarse:min-h-11 pointer-coarse:flex pointer-coarse:items-center"
                           href={rechercheLinkedin(p.nom, p.societe)} target="_blank" rel="noopener noreferrer">Chercher sur LinkedIn</a>
                         <form class="flex flex-1 min-w-56 gap-2" onsubmit={(e) => { e.preventDefault(); ajouterProfil(p) }}>
                           <input class="flex-1 !py-0.5 text-xs" placeholder="linkedin.com/in/…" bind:value={profils[p.id]}

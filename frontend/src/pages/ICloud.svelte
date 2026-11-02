@@ -43,10 +43,11 @@
 </script>
 
 <div class="max-w-5xl">
-  <h1 class="titre text-3xl mb-2">Écriture dans iCloud</h1>
+  <h1 class="titre text-2xl md:text-3xl mb-2">iCloud en détail</h1>
   <p class="text-mine mb-6">
-    carnet met à jour tes contacts iCloud avec les fiches vérifiées, crée les groupes et retire les doublons et
-    les contacts mis de côté. Rien n'est écrit sans simulation, et une sauvegarde complète d'iCloud est faite juste avant.
+    La synchro de nuit (onglet État) écrit seule les créations et mises à jour. Ici, tu vois le plan complet et tu
+    confirmes ce qu'elle ne fait jamais seule : les suppressions (doublons, contacts mis de côté, groupes absents de
+    carnet). Une sauvegarde complète d'iCloud est faite juste avant chaque écriture.
   </p>
 
   {#if infos && !infos.configure}
@@ -154,12 +155,8 @@ CARNET_ICLOUD_PASSWORD=xxxx-xxxx-xxxx-xxxx</pre>
         </div>
         <button class="bouton ml-auto" disabled={enCours} onclick={() => lancer('/api/icloud/veille')}>Vérifier maintenant</button>
       </div>
-      <label class="flex items-start gap-2 text-sm mb-4">
-        <input type="checkbox" class="mt-1" checked={infos.veille.revision}
-          onchange={async (e) => { await api.post('/api/icloud/veille/mode', { revision: e.currentTarget.checked }); await charger() }} />
-        <span>Remettre en révision les contacts modifiés ou créés sur l'iPhone.
-          <span class="text-mine">Décoché : mode journal, les écarts sont seulement notés (conseillé les deux premières semaines).</span></span>
-      </label>
+      <p class="text-sm text-mine mb-4">Ce qui a changé sur l'iPhone (fiche modifiée, ajoutée ou supprimée) repasse en Révision :
+        rien n'est repris ni recréé sans toi.</p>
       {#if infos.veille.journal.length}
         <ul class="divide-y divide-couture border-y border-couture text-sm">
           {#each infos.veille.journal as v, i}
@@ -171,7 +168,7 @@ CARNET_ICLOUD_PASSWORD=xxxx-xxxx-xxxx-xxxx</pre>
                     <span class="text-alerte">{v.erreur}</span>
                   {:else}
                     <span class="text-mine">{v.lus} lus : {v.modifies.length} modifié(s), {v.nouveaux.length} nouveau(x), {v.supprimes.length} supprimé(s){v.forme ? `, ${v.forme} réécrit(s) par iCloud sans changement` : ''}</span>
-                    <span class="text-xs text-mine ml-auto">{v.revision ? `${v.importes} remis en révision` : 'mode journal'}</span>
+                    <span class="text-xs text-mine ml-auto">{v.revision ? `${v.importes} remis en révision` : 'noté seulement'}</span>
                   {/if}
                 </summary>
                 {#if v.modifies.length}
