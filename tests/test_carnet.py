@@ -2064,6 +2064,7 @@ def test_iphone_ne_perd_rien(client, monkeypatch):
     assert cn.base.etat("liaisons")[jp["id"]] == {"immich": "im-x"}
     f = c.get(f"/api/personnes/{jp['id']}").json()["fiche"]
     c.put(f"/api/personnes/{jp['id']}", json={"fiche": f, "valider": True})
-    c.post("/api/icloud/simulation")
+    _attendre(c)                                       # liaison héritée appliquée à la validation
+    assert c.post("/api/icloud/simulation").status_code == 200
     plan = _attendre(c)["plan"]
     assert [x["motif"] for x in plan["supprimer"] if x["pid"] == jp["id"]] == ["doublon créé par carnet, la fiche d'origine est gardée"]
