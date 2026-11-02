@@ -18,11 +18,19 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Étiquettes : latest, la version de l'appli (app/__init__.py) et le commit, pour pouvoir
+      # revenir à une image précédente dans Portainer (ghcr.io/…/carnet:1.3.0 ou :sha-abc1234)
+      - name: Étiquettes de l'image
+        id: etiquettes
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' app/__init__.py)
+          depot=ghcr.io/${{ github.repository_owner }}/carnet
+          echo "tags=$depot:latest,$depot:$version,$depot:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/carnet:latest
+          tags: ${{ steps.etiquettes.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
