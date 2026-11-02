@@ -81,7 +81,7 @@
       de la fiche, sinon domaine du courriel pro) et propose son logo.</p>
     <div class="flex flex-wrap gap-1.5 mb-3" role="group" aria-label="Groupes concernés">
       {#each ref.groupes as g}
-        <button class="h-8 px-3 rounded-full border text-xs {donnees.groupes.includes(g) ? 'border-onglet text-papier bg-onglet/10' : 'border-couture text-mine'}"
+        <button class="h-8 pointer-coarse:h-11 px-3 rounded-full border text-xs {donnees.groupes.includes(g) ? 'border-onglet text-papier bg-onglet/10' : 'border-couture text-mine'}"
           aria-pressed={donnees.groupes.includes(g)} onclick={() => basculerGroupe(g)}>{g}</button>
       {/each}
     </div>
@@ -97,7 +97,7 @@
     aria-label="Filtrer les contacts" autocomplete="off" />
   <div class="flex flex-wrap gap-2 text-sm mb-3" role="group" aria-label="Filtre">
     {#each [['a_choisir', 'À choisir'], ['choisies', 'Choisies'], ['sans', 'Sans logo trouvé'], ['tous', 'Tous']] as [v, t]}
-      <button class="h-8 px-3 rounded-full border {filtre === v ? 'border-onglet text-papier' : 'border-couture text-mine'}"
+      <button class="h-8 pointer-coarse:h-11 px-3 rounded-full border {filtre === v ? 'border-onglet text-papier' : 'border-couture text-mine'}"
         aria-pressed={filtre === v} onclick={() => (filtre = v)}>{t}</button>
     {/each}
   </div>

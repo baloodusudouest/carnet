@@ -2,11 +2,13 @@
 export const session = $state({ connecte: null })
 export const ref = $state({ groupes: [], regles: {}, types: {}, sources: {}, groupe_verifies: '✓ Vérifiés' })
 export const statut = $state({ total: 0, verifies: 0, a_reviser: 0 })
-export const message = $state({ texte: '', erreur: false, id: 0 })
+export const message = $state({ texte: '', erreur: false, id: 0, action: null })
 
-export function annoncer(texte, erreur = false) {
+// Message bref en bas de l'écran ; `action` = { libelle, faire } ajoute un bouton (« Annuler », « Rouvrir »…)
+export function annoncer(texte, erreur = false, action = null) {
   message.texte = texte
   message.erreur = erreur
+  message.action = action
   message.id += 1
 }
 
@@ -60,4 +62,19 @@ export function chargerBilan(api) {
     }).finally(() => (bilanEnVol = null))
   }
   return bilanEnVol
+}
+
+// Liste des contacts partagée entre les pages : servie tout de suite depuis la mémoire, puis
+// rafraîchie en arrière-plan (la recherche s'ouvre sans attendre)
+export const contacts = $state({ liste: null, le: 0 })
+let contactsEnVol = null
+export function chargerContacts(api, forcer = false) {
+  if (!contactsEnVol && (forcer || !contacts.liste || Date.now() - contacts.le > 15000)) {
+    contactsEnVol = api.get('/api/contacts').then((l) => {
+      contacts.liste = l
+      contacts.le = Date.now()
+      return l
+    }).finally(() => (contactsEnVol = null))
+  }
+  return contactsEnVol ?? Promise.resolve(contacts.liste)
 }

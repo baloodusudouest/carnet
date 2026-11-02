@@ -1,14 +1,14 @@
 <script>
   // Vue iPhone : recherche dans les contacts vérifiés, liste au pouce, fiche en un toucher.
   import { api } from '../lib/api.js'
-  import { ref } from '../lib/etat.svelte.js'
+  import { ref, contacts, chargerContacts } from '../lib/etat.svelte.js'
   import { cleTexte } from '../lib/cles.js'
 
-  let tous = $state(null)
   let recherche = $state('')
   let groupe = $state('')
 
-  api.get('/api/contacts').then((l) => (tous = l.filter((p) => p.statut !== 'ecarte')))
+  chargerContacts(api).catch(() => {})
+  const tous = $derived(contacts.liste ? contacts.liste.filter((p) => p.statut !== 'ecarte') : null)
 
   const MAX = 150   // au-delà, affiner la recherche (la liste reste fluide)
   const filtres = $derived.by(() => {
@@ -23,14 +23,14 @@
 </script>
 
 <h1 class="sr-only">Chercher un contact</h1>
-<div class="sticky top-[calc(3rem+env(safe-area-inset-top))] z-10 -mx-4 px-4 pt-1 pb-3 bg-cuir/95 backdrop-blur-md">
+<div class="sticky top-[calc(5.75rem+env(safe-area-inset-top))] z-10 -mx-4 px-4 pt-1 pb-3 bg-cuir/95 backdrop-blur-md">
   <input class="w-full h-11 !rounded-xl !px-4 text-base" type="search" placeholder="Nom, société, courriel, numéro"
     bind:value={recherche} aria-label="Rechercher un contact" autocomplete="off" enterkeyhint="search" />
   <div class="flex gap-2 mt-2 overflow-x-auto -mx-4 px-4 pb-1" data-defile>
-    <button class="shrink-0 h-8 px-3 rounded-full border text-sm {groupe === '' ? 'border-onglet text-papier' : 'border-couture text-mine'}"
+    <button class="shrink-0 h-11 px-3.5 rounded-full border text-sm {groupe === '' ? 'border-onglet text-papier' : 'border-couture text-mine'}"
       onclick={() => (groupe = '')}>Tous</button>
     {#each ref.groupes as g}
-      <button class="shrink-0 h-8 px-3 rounded-full border text-sm {groupe === g ? 'border-onglet text-papier' : 'border-couture text-mine'}"
+      <button class="shrink-0 h-11 px-3.5 rounded-full border text-sm {groupe === g ? 'border-onglet text-papier' : 'border-couture text-mine'}"
         aria-pressed={groupe === g} onclick={() => (groupe = groupe === g ? '' : g)}>{g}</button>
     {/each}
   </div>

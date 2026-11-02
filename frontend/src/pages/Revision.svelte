@@ -37,6 +37,8 @@
   let fusionOuverte = $state(false)
   let aideOuverte = $state(false)
   let occupe = $state(false)
+  let detailOuvert = $state(false)   // vue iPhone : champs identiques dépliés
+  const mobile = $derived(ecran.etroit && !ecran.forcerPC)
   let chargeLe = ''
   let minuteur = null
 
@@ -45,10 +47,25 @@
     Object.assign(statut, await api.get('/api/statut'))
   }
 
+  // Fiche suivante chargée d'avance : elle s'affiche sans attendre après « Valider » ou « Passer »
+  const enAvance = new Map()   // id → { dossier, le }
+  function precharger() {
+    const pos = dossier ? file.findIndex((p) => p.id === dossier.id) : -1
+    for (const p of [file[pos + 1], file[pos - 1]]) {
+      if (p && !enAvance.has(p.id)) {
+        enAvance.set(p.id, { promesse: api.get(`/api/personnes/${p.id}`), le: Date.now() })
+        enAvance.get(p.id).promesse.catch(() => enAvance.delete(p.id))
+      }
+    }
+  }
+
   async function ouvrir(id) {
+    if (dossier?.id === id) return
     await sauverMaintenant()
     try {
-      dossier = await api.get(`/api/personnes/${id}`)
+      const pret = enAvance.get(id)
+      enAvance.delete(id)
+      dossier = pret && Date.now() - pret.le < 60000 ? await pret.promesse : await api.get(`/api/personnes/${id}`)
     } catch (e) {
       annoncer(e.message, true)
       dossier = null
@@ -62,6 +79,9 @@
     }
     actif = 0
     edition = null
+    detailOuvert = false
+    window.scrollTo?.({ top: 0 })
+    precharger()
   }
 
   // Ouverture : l'identifiant de l'ancre, sinon le premier de la file
@@ -96,6 +116,7 @@
     const texte = JSON.stringify(fiche)
     if (texte === chargeLe) return enVol
     const id = dossier.id
+    enAvance.delete(id)
     const corps = { fiche: $state.snapshot(fiche), valider: false }
     enVol = enVol.then(async () => {
       try {
@@ -161,6 +182,34 @@
   const position = $derived(dossier ? file.findIndex((p) => p.id === dossier.id) : -1)
   const raisons = $derived(dossier ? [...new Set(dossier.raisons.flatMap((r) => r.raisons))] : [])
   const profilLinkedin = $derived(fiche?.sites?.find((x) => x.type === 'linkedin'))
+
+  // ------------------------------------------------------------ vue iPhone : une carte par champ
+
+  // Valeurs distinctes d'un champ simple, avec les sources qui les donnent
+  function options(l) {
+    const res = new Map()
+    l.valeurs.forEach((v, ci) => {
+      if (!v) return
+      const k = l.champ === 'photo' ? `p${v}` : String(v)
+      if (!res.has(k)) res.set(k, { valeur: v, sources: [] })
+      res.get(k).sources.push(colonnes[ci].libelle)
+    })
+    return [...res.values()]
+  }
+  const estChoisie = (l, v) => (l.champ === 'photo' ? fiche.photo === v : egal(fiche[l.champ], v))
+  // Champ sans décision à prendre : une seule valeur (ou aucune) et c'est celle retenue
+  function identique(l) {
+    if (l.type !== 'simple') return false
+    const o = options(l)
+    if (o.length > 1) return false
+    const v = o[0]?.valeur ?? (l.champ === 'photo' ? null : '')
+    return l.champ === 'photo' ? (fiche.photo ?? null) === v : egal(fiche[l.champ], v)
+  }
+  const simplesAChoisir = $derived(lignes.filter((l) => l.type === 'simple' && !identique(l)))
+  const simplesIdentiques = $derived(lignes.filter((l) => l.type === 'simple' && identique(l)))
+  const multiples = $derived(MULTIPLES.map((m) => ({ ...m, items: lignes.filter((l) => l.type === 'multiple' && l.champ === m.champ) })))
+  const sourcesDe = (l) => l.presence.map((p, ci) => (p ? colonnes[ci].libelle : null)).filter(Boolean)
+  const indexDe = (l) => navigables.indexOf(l)
 
   // ------------------------------------------------------------ actions sur la fiche
 
@@ -263,11 +312,13 @@
     clearTimeout(minuteur)
     try {
       await enVol
+      const valide = { id: dossier.id, nom: [fiche.prenom, fiche.nom].filter(Boolean).join(' ') || fiche.societe || 'Contact' }
       await api.put(`/api/personnes/${dossier.id}`, { fiche, valider: true })
       chargeLe = JSON.stringify(fiche)
+      enAvance.delete(valide.id)
       const pos = position
       await chargerFile()
-      annoncer('Contact vérifié.')
+      annoncer(`${valide.nom} vérifié.`, false, { libelle: 'Rouvrir', faire: () => aller('revision', valide.id) })
       const suivant = file[Math.max(0, Math.min(pos < 0 ? 0 : pos, file.length - 1))]
       if (suivant) aller('revision', suivant.id)
       else { dossier = null; aller('revision') }
@@ -423,29 +474,202 @@
 
 <svelte:window onkeydown={clavier} onbeforeunload={() => sauverMaintenant(true)} />
 
-{#if ecran.etroit && !ecran.forcerPC}
-  <!-- Sur iPhone : la révision (colonnes côte à côte, clavier) se fait sur PC -->
-  <div class="max-w-md mx-auto text-center py-16">
-    <h1 class="titre text-2xl mb-2">Révision : à faire sur PC</h1>
-    <p class="text-mine text-sm mb-6">La fusion champ par champ compare les sources en colonnes et se pilote au clavier ;
-      elle n'est pas faite pour un écran de téléphone.
-      {statut.a_reviser ? `${statut.a_reviser} fiche(s) t'y attendent.` : 'Rien à relire pour l\'instant.'}</p>
-    <div class="flex flex-col gap-2">
-      <a class="bouton justify-center h-11" href="#/chercher">Chercher un contact</a>
-      <button class="text-sm text-mine underline underline-offset-2" onclick={() => choisirVue(true)}>Afficher quand même la vue PC</button>
-    </div>
-  </div>
-{:else if !dossier || !fiche}
+{#if !dossier || !fiche}
   <div class="max-w-xl mx-auto text-center py-24">
-    <h1 class="titre text-3xl mb-3">Rien à relire</h1>
-    <p class="text-mine mb-6">Tous les contacts importés sont vérifiés. Importe un nouvel export ou passe à l'export.</p>
+    <h1 class="titre text-2xl md:text-3xl mb-3">Rien à relire</h1>
+    <p class="text-mine mb-6">Toutes les fiches sont vérifiées. La synchro de nuit les écrit dans iCloud.</p>
     <div class="flex justify-center gap-3">
-      <a class="bouton" href="#/importer">Importer</a>
-      <a class="bouton bouton-principal" href="#/export">Exporter</a>
+      <a class="bouton" href="#/accueil">À traiter</a>
+      <a class="bouton" href="#/importer">Importer un export</a>
     </div>
   </div>
+{:else if mobile}
+  <!-- Vue iPhone : la fiche retenue en haut, un choix par carte, les actions en bas au pouce -->
+  <div class="-mt-2">
+    <div class="flex items-center gap-2 mb-2 text-sm">
+      <a href="#/accueil" class="min-h-11 flex items-center text-onglet">‹ À traiter</a>
+      <span class="flex-1 text-center text-mine tabular-nums">{#if position >= 0}Fiche {position + 1} / {file.length}{:else}{dossier.statut === 'verifie' ? 'Déjà vérifiée' : 'Hors file'}{/if}</span>
+      <button class="min-h-11 px-2 text-mine" onclick={() => deplacer(-1)} aria-label="Fiche précédente">‹ Préc.</button>
+    </div>
+
+    <section class="rounded-2xl border border-onglet/50 bg-retenue p-4 mb-3" aria-label="Fiche retenue">
+      <div class="flex items-center gap-3">
+        <span class="relative w-14 h-14 shrink-0 rounded-full overflow-hidden bg-couture grid place-items-center text-mine text-lg">
+          {(fiche.prenom || fiche.nom || fiche.societe || '?')[0]}
+          {#if fiche.photo}<img class="absolute inset-0 w-full h-full object-cover" src={`/api/photos/${fiche.photo}?taille=112`} alt=""
+            onerror={(e) => e.currentTarget.remove()} />{/if}
+        </span>
+        <div class="min-w-0">
+          <h1 class="titre text-2xl leading-tight break-words">{[fiche.prenom, fiche.nom].filter(Boolean).join(' ') || fiche.societe || '(sans nom)'}</h1>
+          <p class="text-sm text-mine truncate">{[fiche.societe && (fiche.prenom || fiche.nom) ? fiche.societe : null, colonnes.map((c) => c.libelle).join(' + ')].filter(Boolean).join(' · ')}</p>
+        </div>
+      </div>
+      {#if dossier.a_revoir || raisons.length || dossier.statut === 'ecarte'}
+        <div class="flex flex-wrap gap-1.5 mt-3">
+          {#if dossier.statut === 'ecarte'}<span class="text-xs rounded-full border border-alerte/60 text-alerte px-2 py-0.5">Mis de côté</span>{/if}
+          {#if dossier.a_revoir}<span class="text-xs rounded-full border border-onglet/60 text-onglet px-2 py-0.5">{dossier.a_revoir}</span>{/if}
+          {#each raisons as r}<span class="text-xs rounded-full bg-couture text-mine px-2 py-0.5">{r}</span>{/each}
+        </div>
+      {/if}
+    </section>
+
+    {#key dossier.id}<Proches pid={dossier.id} bind:fiche reunir={fusionner} />{/key}
+
+    {#each simplesAChoisir as l (l.cle)}
+      <section class="rounded-2xl border border-couture bg-reliure p-3 mb-3" aria-label={l.libelle}>
+        <div class="flex items-center mb-2">
+          <h2 class="flex-1 text-sm text-mine">{l.libelle}</h2>
+          {#if l.champ !== 'photo'}
+            <button class="min-h-11 px-2 text-sm text-onglet" onclick={() => (edition = edition === l.cle ? null : l.cle)}>{edition === l.cle ? 'OK' : 'Modifier'}</button>
+          {/if}
+        </div>
+        {#if edition === l.cle}
+          <div data-edition>
+            {#if l.champ === 'notes'}
+              <textarea rows="4" class="w-full" bind:value={fiche.notes}></textarea>
+            {:else}
+              <input class="w-full h-11" bind:value={fiche[l.champ]} placeholder={l.champ === 'anniversaire' ? '15/03/1985 ou 15 mars' : ''} />
+            {/if}
+          </div>
+        {:else}
+          <div class="grid gap-2" role="radiogroup" aria-label={l.libelle}>
+            {#each options(l) as o}
+              {@const oui = estChoisie(l, o.valeur)}
+              <button role="radio" aria-checked={oui} onclick={() => choisir(l, o.valeur)}
+                class="flex items-center gap-3 min-h-12 px-3 py-2 rounded-xl border text-left {oui ? 'border-onglet bg-onglet/15' : 'border-couture'}">
+                <span class="w-5 h-5 shrink-0 rounded-full border-2 grid place-items-center {oui ? 'border-onglet' : 'border-champ'}">
+                  {#if oui}<span class="w-2.5 h-2.5 rounded-full bg-onglet"></span>{/if}</span>
+                {#if l.champ === 'photo'}
+                  <img class="w-12 h-12 rounded-full object-cover bg-couture" src={`/api/photos/${o.valeur}?taille=96`} alt="" onerror={(e) => e.currentTarget.remove()} />
+                {:else}
+                  <span class="flex-1 min-w-0 break-words {l.champ === 'notes' ? 'whitespace-pre-line line-clamp-4' : ''}">{affichage(l.champ, o.valeur)}</span>
+                {/if}
+                <span class="shrink-0 ml-auto text-xs text-mine text-right">{o.sources.join(', ')}</span>
+              </button>
+            {/each}
+            {#if l.champ !== 'photo' && fiche[l.champ] && !options(l).some((o) => estChoisie(l, o.valeur))}
+              <p class="px-3 text-sm text-papier">Saisi : {affichage(l.champ, fiche[l.champ])}</p>
+            {/if}
+            <button role="radio" aria-checked={l.champ === 'photo' ? !fiche.photo : !fiche[l.champ]}
+              onclick={() => choisir(l, l.champ === 'photo' ? null : '')}
+              class="min-h-11 px-3 rounded-xl text-left text-sm {(l.champ === 'photo' ? !fiche.photo : !fiche[l.champ]) ? 'text-onglet' : 'text-mine'}">
+              {l.champ === 'photo' ? 'Aucune photo' : 'Laisser vide'}</button>
+          </div>
+        {/if}
+      </section>
+    {/each}
+
+    {#if simplesIdentiques.length}
+      <section class="rounded-2xl border border-couture bg-reliure mb-3">
+        <button class="w-full min-h-12 px-3 flex items-center gap-2 text-left text-sm" aria-expanded={detailOuvert} onclick={() => (detailOuvert = !detailOuvert)}>
+          <span class="flex-1 text-mine">{simplesIdentiques.length} champ{simplesIdentiques.length > 1 ? 's' : ''} sans choix à faire</span>
+          <span class="text-mine">{detailOuvert ? '▾' : '▸'}</span>
+        </button>
+        {#if detailOuvert}
+          <ul class="divide-y divide-couture border-t border-couture">
+            {#each simplesIdentiques as l (l.cle)}
+              <li class="px-3 py-2">
+                {#if edition === l.cle}
+                  <div data-edition class="flex gap-2 items-center">
+                    <span class="w-24 shrink-0 text-xs text-mine">{l.libelle}</span>
+                    {#if l.champ === 'notes'}<textarea rows="3" class="flex-1" bind:value={fiche.notes}></textarea>
+                    {:else}<input class="flex-1 h-11" bind:value={fiche[l.champ]} />{/if}
+                    <button class="min-h-11 px-2 text-sm text-onglet" onclick={() => (edition = null)}>OK</button>
+                  </div>
+                {:else}
+                  <button class="w-full flex gap-2 items-baseline text-left min-h-11" disabled={l.champ === 'photo'} onclick={() => (edition = l.cle)}>
+                    <span class="w-24 shrink-0 text-xs text-mine">{l.libelle}</span>
+                    <span class="flex-1 min-w-0 break-words {fiche[l.champ] ? 'text-papier' : 'text-mine/70 italic'}">
+                      {l.champ === 'photo' ? (fiche.photo ? 'photo retenue' : 'aucune') : fiche[l.champ] ? affichage(l.champ, fiche[l.champ]) : 'vide'}</span>
+                  </button>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </section>
+    {/if}
+
+    {#each multiples as m (m.champ)}
+      <section class="rounded-2xl border border-couture bg-reliure p-3 mb-3" aria-label={m.libelle}>
+        <div class="flex items-center mb-1">
+          <h2 class="flex-1 text-sm text-mine">{m.libelle}</h2>
+          <button class="min-h-11 px-2 text-sm text-onglet" onclick={() => ajouter(m.champ)}>Ajouter</button>
+        </div>
+        {#if !m.items.length}<p class="text-sm text-mine/70 pb-1">Aucun{m.champ === 'adresses' ? 'e' : ''} {m.unite}.</p>{/if}
+        <ul class="grid gap-2">
+          {#each m.items as l (l.cle)}
+            {@const item = l.inclus ? fiche[l.champ][l.index] : l.item}
+            <li class="rounded-xl border {l.inclus ? 'border-onglet/60' : 'border-couture'} p-2">
+              <div class="flex items-start gap-3">
+                <input type="checkbox" class="mt-2.5 shrink-0 accent-[#d9a441]" checked={l.inclus} onchange={() => basculer(l)}
+                  aria-label={`Garder ${texteItem(l.champ, item) || m.unite}`} />
+                <div class="flex-1 min-w-0">
+                  {#if edition === l.cle && l.inclus}
+                    <div data-edition class="grid gap-1.5">
+                      {#if l.champ === 'adresses'}
+                        <textarea rows="2" class="w-full" placeholder="Rue" bind:value={item.rue}></textarea>
+                        <div class="flex gap-1.5"><input class="w-24 h-11" placeholder="CP" bind:value={item.cp} /><input class="flex-1 min-w-0 h-11" placeholder="Ville" bind:value={item.ville} /></div>
+                        <input class="w-full h-11" placeholder="Pays" bind:value={item.pays} />
+                      {:else}
+                        <input class="w-full h-11" bind:value={item.valeur}
+                          oninput={() => { if (l.champ === 'telephones') { item.affichage = item.valeur; item.valide = true } }} />
+                      {/if}
+                      <button class="justify-self-start min-h-11 text-sm text-onglet" onclick={() => (edition = null)}>OK</button>
+                    </div>
+                  {:else}
+                    <button class="w-full text-left min-h-11 py-1.5 break-words {l.inclus ? 'text-papier' : 'text-mine/70 line-through decoration-mine'}"
+                      onclick={() => (l.inclus ? (edition = l.cle) : basculer(l))}>{texteItem(l.champ, item) || '…'}</button>
+                  {/if}
+                  <p class="text-xs text-mine">{sourcesDe(l).join(', ') || 'saisi'}{item?.valide === false ? ' · non reconnu' : ''}</p>
+                </div>
+                <select class="shrink-0 w-28 h-11 !px-2 text-sm" value={item.type} onchange={(e) => changerType(l, e.currentTarget.value)} aria-label="Type">
+                  {#each ref.types[l.champ] ?? [] as t}<option value={t}>{t}</option>{/each}
+                </select>
+              </div>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/each}
+
+    <section class="rounded-2xl border border-couture bg-reliure p-3 mb-3" aria-label="Groupes">
+      <h2 class="text-sm text-mine mb-2">Groupes</h2>
+      <div class="flex flex-wrap gap-1.5">
+        {#each fiche.groupes.filter((g) => !ref.groupes.includes(g)) as ancien}
+          <button class="pastille !border-dashed !border-onglet !text-onglet" onclick={() => basculerGroupe(ancien)}>{ancien} (à classer) ×</button>
+        {/each}
+        {#each ref.groupes as g}
+          <button class="pastille" aria-pressed={fiche.groupes.includes(g)} onclick={() => basculerGroupe(g)}>{g}</button>
+        {/each}
+      </div>
+    </section>
+
+    <div class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-mine mb-2">
+      <button class="min-h-11 underline underline-offset-2" onclick={() => (fusionOuverte = true)}>Fusionner avec un autre contact…</button>
+      <button class="min-h-11 underline underline-offset-2" onclick={repartir}>Revenir à la proposition automatique</button>
+      {#each colonnes.filter((c) => colonnes.filter((x) => !x.enrichissement).length > 1 || c.enrichissement) as c}
+        <button class="min-h-11 underline underline-offset-2 hover:text-alerte" onclick={() => detacher(c)}>Séparer la fiche {c.libelle}</button>
+      {/each}
+    </div>
+  </div>
+
+  <!-- Barre d'actions au pouce, toujours visible -->
+  <div class="fixed inset-x-0 bottom-0 z-30 border-t border-couture bg-reliure/95 backdrop-blur-md px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]">
+    <div class="grid grid-cols-[1fr_1fr_1.6fr] gap-2">
+      <button class="h-14 rounded-xl border border-couture text-papier" onclick={() => deplacer(1)}>Passer</button>
+      {#if dossier.statut === 'ecarte'}
+        <button class="h-14 rounded-xl border border-couture text-papier" onclick={restaurer}>Remettre</button>
+      {:else}
+        <button class="h-14 rounded-xl border border-couture text-papier disabled:opacity-50" disabled={occupe} onclick={ecarter}>De côté</button>
+      {/if}
+      <button class="h-14 rounded-xl bg-onglet text-onglet-sombre font-semibold disabled:opacity-50" disabled={occupe} onclick={valider}>Valider</button>
+    </div>
+  </div>
+  {#if fusionOuverte}<Fusion exclure={dossier.id} choisir={fusionner} fermer={() => (fusionOuverte = false)} />{/if}
 {:else}
-  <div class="flex flex-wrap items-end gap-x-6 gap-y-2 mb-3">
+  <!-- En-tête et boutons restent en haut de l'écran : Valider est toujours à portée -->
+  <div class="sticky top-0 z-10 -mx-6 px-6 pt-2 pb-2 mb-3 bg-cuir/95 backdrop-blur-md flex flex-wrap items-end gap-x-6 gap-y-2">
     <div>
       <p class="text-sm text-mine tabular-nums">
         {#if position >= 0}Fiche {position + 1} sur {file.length} à relire{:else}Contact {dossier.statut === 'verifie' ? 'déjà vérifié' : 'hors file'}{/if}
@@ -526,7 +750,7 @@
               </span>
             </th>
           {/each}
-          <th class="text-left px-3 py-2 align-bottom bg-papier text-[#2a211c]">
+          <th class="text-left px-3 py-2 align-bottom bg-retenue text-papier">
             <span class="titre text-base">Fiche retenue</span>
           </th>
         </tr>
@@ -537,8 +761,8 @@
             {#if !l.vide}
               <tr class="border-t border-couture">
                 <td class="px-3 pt-2 pb-0.5 text-xs text-mine" colspan={colonnes.length + 1}>{l.libelle}</td>
-                <td class="px-3 pt-2 pb-0.5 bg-papier text-right">
-                  <button class="text-xs text-[#6b5a48] hover:text-[#2a211c] underline underline-offset-2"
+                <td class="px-3 pt-2 pb-0.5 bg-retenue text-right">
+                  <button class="text-xs text-mine hover:text-papier underline underline-offset-2"
                     onclick={() => ajouter(l.champ)}>Ajouter</button>
                 </td>
               </tr>
@@ -559,11 +783,12 @@
                   <td class="px-1.5 py-0.5 border-l border-couture/60 align-top">
                     {#if v}
                       <button class="w-full min-w-0 text-left rounded-md px-1.5 py-0.5 border transition-colors
-                          {choisie ? 'border-onglet/70 text-papier' : 'border-transparent text-mine hover:text-papier hover:border-tranche'}"
+                          {choisie ? 'bg-onglet/15 border-onglet text-papier' : 'border-transparent text-mine hover:text-papier hover:border-tranche'}"
                         title={l.champ === 'photo' ? undefined : affichage(l.champ, v)}
                         onclick={(e) => { e.stopPropagation(); actif = i; choisir(l, v) }}>
                         {#if l.champ === 'photo'}
-                          <img src={`/api/photos/${v}?taille=72`} alt={`Photo ${colonnes[ci].libelle}`} class="w-9 h-9 rounded-full object-cover" />
+                          <img src={`/api/photos/${v}?taille=72`} alt="" class="w-9 h-9 rounded-full object-cover bg-couture"
+                            onerror={(e) => e.currentTarget.replaceWith(Object.assign(document.createElement('span'), { className: 'text-xs text-mine', textContent: 'photo illisible' }))} />
                         {:else}
                           <span class="block {l.champ === 'notes' ? 'line-clamp-2 whitespace-pre-line break-words' : 'truncate'}">{affichage(l.champ, v)}</span>
                         {/if}
@@ -571,38 +796,39 @@
                     {/if}
                   </td>
                 {/each}
-                <td class="px-3 py-0.5 bg-papier text-[#2a211c] align-top" data-edition={edition === l.cle ? '' : undefined}>
+                <td class="px-3 py-0.5 bg-retenue text-papier align-top" data-edition={edition === l.cle ? '' : undefined}>
                   {#if edition === l.cle}
                     {#if l.champ === 'notes'}
-                      <textarea rows="3" class="w-full resize-none !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={fiche.notes}
+                      <textarea rows="3" class="w-full resize-none !bg-cuir !text-papier !border-champ" bind:value={fiche.notes}
                         onblur={() => (edition = null)}></textarea>
                     {:else}
-                      <input class="w-full !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={fiche[l.champ]}
+                      <input class="w-full !py-0.5 !bg-cuir !text-papier !border-champ" bind:value={fiche[l.champ]}
                         placeholder={l.champ === 'anniversaire' ? '15/03/1985 ou 15 mars' : ''}
                         onblur={() => (edition = null)} />
                     {/if}
                   {:else if l.champ === 'photo'}
-                    {#if fiche.photo}<img src={`/api/photos/${fiche.photo}?taille=72`} alt="Retenue" class="w-9 h-9 rounded-full object-cover" />{:else}<span class="text-[#9a8a76] italic">aucune</span>{/if}
+                    {#if fiche.photo}<img src={`/api/photos/${fiche.photo}?taille=72`} alt="" class="w-9 h-9 rounded-full object-cover bg-couture"
+                      onerror={(e) => e.currentTarget.replaceWith(Object.assign(document.createElement('span'), { className: 'text-xs text-mine', textContent: 'photo illisible' }))} />{:else}<span class="text-mine/70 italic">aucune</span>{/if}
                   {:else if l.champ === 'societe' && estDeduite(l)}
                     <!-- Proposition déduite de l'adresse e-mail : fond ocre jusqu'à ce que tu la modifies -->
                     <button class="w-full min-w-0 flex items-baseline gap-2 text-left py-0.5"
                       ondblclick={() => editer(i)}
                       title={`Société ${dossier.societe_deduite.origine} : vérifie-la (E pour modifier, 0 pour vider)`}>
-                      <span class="truncate rounded px-1.5 bg-[#f3d797] border border-dashed border-[#b07d1c]">{fiche.societe}</span>
-                      <span class="shrink-0 text-xs text-[#8a5a12] truncate">{dossier.societe_deduite.origine}</span>
+                      <span class="truncate rounded px-1.5 bg-onglet/20 border border-dashed border-onglet">{fiche.societe}</span>
+                      <span class="shrink-0 text-xs text-onglet truncate">{dossier.societe_deduite.origine}</span>
                     </button>
                   {:else if l.champ === 'societe' && !fiche.societe && dossier.societe_deduite}
-                    <button class="w-full min-w-0 text-left py-0.5 text-[#8a5a12]"
+                    <button class="w-full min-w-0 text-left py-0.5 text-onglet"
                       onclick={() => (fiche.societe = dossier.societe_deduite.valeur)}
                       title={`Société ${dossier.societe_deduite.origine}`}>
-                      <span class="rounded px-1.5 border border-dashed border-[#b07d1c]">Proposer « {dossier.societe_deduite.valeur} »</span>
+                      <span class="rounded px-1.5 border border-dashed border-onglet">Proposer « {dossier.societe_deduite.valeur} »</span>
                     </button>
                   {:else}
                     <button class="w-full min-w-0 text-left py-0.5 {l.champ === 'nom' ? 'tracking-wide' : ''}"
                       ondblclick={() => editer(i)} title={fiche[l.champ] ? `${affichage(l.champ, fiche[l.champ])}\n(double-clic ou E pour modifier)` : 'Double-clic ou E pour modifier'}>
                       {#if fiche[l.champ]}
                         <span class="block {l.champ === 'notes' ? 'line-clamp-2 whitespace-pre-line break-words' : 'truncate'} {l.champ === 'prenom' || l.champ === 'nom' ? 'titre text-base' : ''}">{affichage(l.champ, fiche[l.champ])}</span>
-                      {:else}<span class="text-[#9a8a76] italic">vide</span>{/if}
+                      {:else}<span class="text-mine/70 italic">vide</span>{/if}
                     </button>
                   {/if}
                 </td>
@@ -617,36 +843,36 @@
                     {/if}
                   </td>
                 {/each}
-                <td class="px-3 py-0.5 bg-papier text-[#2a211c] align-top" data-edition={edition === l.cle ? '' : undefined}>
+                <td class="px-3 py-0.5 bg-retenue text-papier align-top" data-edition={edition === l.cle ? '' : undefined}>
                   <div class="flex items-center gap-2 min-w-0">
-                    <input type="checkbox" class="accent-[#8a5a12] w-4 h-4 shrink-0" checked={l.inclus}
+                    <input type="checkbox" class="accent-[#d9a441] w-4 h-4 shrink-0" checked={l.inclus}
                       onchange={() => basculer(l)} aria-label="Garder cette valeur" />
                     <div class="flex-1 min-w-0">
                       {#if edition === l.cle && l.inclus}
                         {@const item = fiche[l.champ][l.index]}
                         {#if l.champ === 'adresses'}
                           <div class="grid gap-1 py-1 w-full min-w-0">
-                            <textarea rows="2" class="w-full min-w-0 resize-none !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Rue (plusieurs lignes possibles)" bind:value={item.rue}></textarea>
+                            <textarea rows="2" class="w-full min-w-0 resize-none !bg-cuir !text-papier !border-champ" placeholder="Rue (plusieurs lignes possibles)" bind:value={item.rue}></textarea>
                             <!-- une ligne par paire de champs : rien ne déborde sur le menu du type -->
                             <div class="flex gap-1 min-w-0">
-                              <input size="5" class="w-20 shrink-0 !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="CP" bind:value={item.cp} />
-                              <input size="5" class="flex-1 min-w-0 !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Ville" bind:value={item.ville} />
+                              <input size="5" class="w-20 shrink-0 !py-0.5 !bg-cuir !text-papier !border-champ" placeholder="CP" bind:value={item.cp} />
+                              <input size="5" class="flex-1 min-w-0 !py-0.5 !bg-cuir !text-papier !border-champ" placeholder="Ville" bind:value={item.ville} />
                             </div>
-                            <input size="5" class="w-full min-w-0 !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" placeholder="Pays" bind:value={item.pays}
+                            <input size="5" class="w-full min-w-0 !py-0.5 !bg-cuir !text-papier !border-champ" placeholder="Pays" bind:value={item.pays}
                               onblur={() => (edition = null)} />
                           </div>
                         {:else}
-                          <input class="w-full !py-0.5 !bg-white !text-[#2a211c] !border-[#c9b9a3]" bind:value={item.valeur}
+                          <input class="w-full !py-0.5 !bg-cuir !text-papier !border-champ" bind:value={item.valeur}
                             oninput={() => { if (l.champ === 'telephones') { item.affichage = item.valeur; item.valide = true } }}
                             onblur={() => (edition = null)} />
                         {/if}
                       {:else}
                         {@const texte = texteItem(l.champ, l.inclus ? fiche[l.champ][l.index] : l.item) || '…'}
-                        <button class="block w-full min-w-0 text-left truncate py-0.5 {l.inclus ? '' : 'text-[#9a8a76] line-through decoration-[#b9a68f]'}"
+                        <button class="block w-full min-w-0 text-left truncate py-0.5 {l.inclus ? '' : 'text-mine/70 line-through decoration-mine'}"
                           title={texte} ondblclick={() => editer(i)}>{texte}</button>
                       {/if}
                     </div>
-                    <select class="shrink-0 w-24 self-start mt-0.5 !py-0 !px-1 text-xs !bg-transparent !text-[#2a211c] !border-[#c9b9a3]"
+                    <select class="shrink-0 w-24 self-start mt-0.5 !py-0 !px-1 text-xs !bg-transparent !text-papier !border-champ"
                       value={l.inclus ? fiche[l.champ][l.index].type : l.item.type}
                       onchange={(e) => changerType(l, e.currentTarget.value)} aria-label="Type">
                       {#each ref.types[l.champ] ?? [] as t}<option value={t}>{t}</option>{/each}
@@ -663,10 +889,10 @@
             <td class="px-3 py-1.5 text-xs text-mine" colspan={colonnes.length + 1}>
               Aucune valeur : {vides.map((v) => v.libelle.toLowerCase()).join(', ')}
             </td>
-            <td class="px-3 py-1.5 bg-papier text-xs text-[#6b5a48]">
+            <td class="px-3 py-1.5 bg-retenue text-xs text-mine">
               Ajouter :
               {#each vides as v, k}
-                <button class="underline underline-offset-2 hover:text-[#2a211c]" onclick={() => ajouter(v.champ)}>{v.unite}</button>{k < vides.length - 1 ? ', ' : ''}
+                <button class="underline underline-offset-2 hover:text-papier" onclick={() => ajouter(v.champ)}>{v.unite}</button>{k < vides.length - 1 ? ', ' : ''}
               {/each}
             </td>
           </tr>
@@ -679,17 +905,17 @@
               {#if c.donnees.groupes?.length}<span class="mr-3">{c.libelle} : {c.donnees.groupes.join(', ')}</span>{/if}
             {/each}
           </td>
-          <td class="px-3 py-2 bg-papier">
+          <td class="px-3 py-2 bg-retenue">
             <div class="flex flex-wrap gap-1">
               {#each fiche.groupes.filter((g) => !ref.groupes.includes(g)) as ancien}
-                <button class="text-xs rounded-full px-2 py-0.5 border border-dashed border-[#8a5a12] text-[#8a5a12]"
+                <button class="text-xs rounded-full px-2 py-0.5 border border-dashed border-onglet text-onglet"
                   title="Ancien groupe : choisis Collègues ou Clients, puis clique ici pour le retirer"
                   onclick={() => basculerGroupe(ancien)}>{ancien} (à classer) ×</button>
               {/each}
               {#each ref.groupes as g}
                 {@const dedans = fiche.groupes.includes(g)}
                 <button class="text-xs rounded-full px-2 py-0.5 border transition-colors
-                    {dedans ? 'bg-[#2a211c] text-papier border-[#2a211c]' : 'border-[#c9b9a3] text-[#6b5a48] hover:border-[#2a211c]'}"
+                    {dedans ? 'bg-onglet text-onglet-sombre border-onglet' : 'border-couture text-mine hover:border-papier'}"
                   aria-pressed={dedans} onclick={() => basculerGroupe(g)}>
                   {g} <span class="opacity-60">{LETTRE_GROUPE[g]?.toUpperCase()}</span>
                 </button>

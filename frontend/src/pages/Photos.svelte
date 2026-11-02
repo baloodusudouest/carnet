@@ -3,8 +3,8 @@
   // Un toucher ouvre la proposition en grand ; « Choisir » l'applique. L'affiche choisie
   // s'enregistre dans Photos par la feuille de partage de l'iPhone.
   import { api } from '../lib/api.js'
-  import { annoncer } from '../lib/etat.svelte.js'
-  import { cleTexte } from '../lib/cles.js'
+  import { annoncer, ref } from '../lib/etat.svelte.js'
+  import { cleTexte, dateCourte } from '../lib/cles.js'
   import Logos from '../components/Logos.svelte'
 
   let mode = $state('hd')                 // hd | affiche
@@ -48,6 +48,35 @@
   })
   const vignette = (l, c) => mode === 'hd' ? `/api/portraits/apercu/${l.pid}/${c.asset}` : `/api/affiches/proposition/${l.pid}/${c.asset}`
   const grande = (l, c) => mode === 'hd' ? `/api/portraits/apercu/${l.pid}/${c.asset}` : `/api/affiches/proposition/${l.pid}/${c.asset}?grand=true`
+
+  // Recherche des propositions (photos HD, affiches) lancée d'ici, sur PC comme sur iPhone
+  let tache = $state(null)
+  const recherche_en_cours = $derived(['lecture', 'ecriture'].includes(tache?.etat))
+  async function suivre() {
+    tache = (await api.get('/api/icloud')).tache
+    if (['lecture', 'ecriture'].includes(tache?.etat)) setTimeout(suivre, 1000)
+    else {
+      if (tache?.message) annoncer(tache.message, tache.etat === 'erreur')
+      await charger()
+    }
+  }
+  async function lancerRecherche() {
+    try {
+      await api.post(mode === 'hd' ? '/api/portraits/recherche' : '/api/affiches/preparation')
+      await suivre()
+    } catch (e) {
+      annoncer(e.message, true)
+    }
+  }
+  async function basculerGroupeAffiche(g) {
+    const groupes = affiches.groupes.includes(g) ? affiches.groupes.filter((x) => x !== g) : [...affiches.groupes, g]
+    try {
+      affiches = await api.post('/api/affiches/groupes', { groupes })
+    } catch (e) {
+      annoncer(e.message, true)
+    }
+  }
+  const derniereRecherche = $derived(mode === 'hd' ? portraits?.journal?.[0]?.le : affiches?.journal?.[0]?.le)
 
   async function choisir() {
     const { ligne, cand } = vue
@@ -160,7 +189,7 @@
 
 <div class="grid grid-cols-3 p-1 rounded-xl bg-reliure border border-couture text-sm mb-3" role="tablist" aria-label="Type de photo">
   {#each [['hd', 'Photo'], ['affiche', 'Affiche'], ['logo', 'Logos']] as [v, t]}
-    <button role="tab" aria-selected={mode === v} class="h-9 rounded-lg {mode === v ? 'bg-couture text-papier' : 'text-mine'}"
+    <button role="tab" aria-selected={mode === v} class="h-9 pointer-coarse:h-11 rounded-lg {mode === v ? 'bg-couture text-papier' : 'text-mine'}"
       onclick={() => { mode = v; vue = null }}>{t}</button>
   {/each}
 </div>
@@ -173,7 +202,7 @@
 <div class="flex flex-wrap gap-2 text-sm mb-3" role="group" aria-label="Filtre">
   {#each (mode === 'affiche' ? [['a_choisir', 'À choisir'], ['a_poser', 'À poser'], ['posees', 'Posées'], ['tous', 'Tous']]
     : [['a_choisir', 'À choisir'], ['choisies', 'Choisies'], ['tous', 'Tous']]) as [v, t]}
-    <button class="h-8 px-3 rounded-full border {filtre === v ? 'border-onglet text-papier' : 'border-couture text-mine'}"
+    <button class="h-8 pointer-coarse:h-11 px-3 rounded-full border {filtre === v ? 'border-onglet text-papier' : 'border-couture text-mine'}"
       aria-pressed={filtre === v} onclick={() => (filtre = v)}>{t}</button>
   {/each}
 </div>
@@ -184,7 +213,7 @@
       <span class="text-mine"> · {toutes.length - aPoser.length} posée{toutes.length - aPoser.length > 1 ? 's' : ''} sur l'iPhone</span></p>
     <div class="grid grid-cols-2 p-1 rounded-lg bg-cuir border border-couture text-xs my-2" role="group" aria-label="Affiches à exporter">
       {#each [['a_poser', `À poser (${aPoser.length})`], ['toutes', `Toutes (${toutes.length})`]] as [v, t]}
-        <button class="h-8 rounded-md {portee === v ? 'bg-couture text-papier' : 'text-mine'}" aria-pressed={portee === v}
+        <button class="h-8 pointer-coarse:h-11 rounded-md {portee === v ? 'bg-couture text-papier' : 'text-mine'}" aria-pressed={portee === v}
           onclick={() => { portee = v; pret = null }}>{t}</button>
       {/each}
     </div>
@@ -217,20 +246,38 @@
 {#if (mode === 'hd' && !portraits) || (mode === 'affiche' && !affiches)}
   <p class="text-mine">Chargement…</p>
 {:else}
-  {#if mode === 'affiche' && !affiches.groupes.length}
-    <p class="text-sm text-mine mb-3">Aucun groupe choisi pour les affiches : coche-les sur PC, onglet Liaisons › Affiches iPhone.</p>
-  {/if}
+  <details class="rounded-2xl border border-couture bg-reliure px-3 mb-3 text-sm" open={mode === 'affiche' && !affiches.groupes.length}>
+    <summary class="min-h-11 flex items-center gap-2 cursor-pointer text-papier">
+      <span class="flex-1">{mode === 'hd' ? 'Chercher de nouvelles photos dans Immich' : 'Groupes et recherche des affiches'}</span>
+      <span class="text-xs text-mine">{derniereRecherche ? `dernière le ${dateCourte(derniereRecherche)}` : 'jamais lancée'}</span>
+    </summary>
+    <div class="pb-3">
+      {#if mode === 'affiche'}
+        <p class="text-xs text-mine mb-2">Contacts concernés : ceux des groupes cochés, liés à Immich.</p>
+        <div class="flex flex-wrap gap-1.5 mb-3" role="group" aria-label="Groupes des affiches">
+          {#each ref.groupes as g}
+            <button class="pastille" aria-pressed={affiches.groupes.includes(g)} onclick={() => basculerGroupeAffiche(g)}>{g}</button>
+          {/each}
+        </div>
+      {:else}
+        <p class="text-xs text-mine mb-2">Pour chaque contact lié à Immich : le visage entier le plus grand, le plus net et le plus de face. Refait seul une fois par mois.</p>
+      {/if}
+      <button class="w-full min-h-11 rounded-xl border border-onglet text-onglet disabled:opacity-50"
+        disabled={recherche_en_cours || (mode === 'affiche' && !affiches.groupes.length)} onclick={lancerRecherche}>
+        {recherche_en_cours ? (tache?.message ?? 'Recherche…') : mode === 'hd' ? 'Chercher les photos HD' : 'Chercher les affiches'}</button>
+    </div>
+  </details>
   <ul class="space-y-3">
     {#each lignes as l (l.pid)}
       <li class="rounded-2xl border border-couture bg-reliure p-3">
         <div class="flex items-center gap-2 mb-2">
           <span class="flex-1 min-w-0 truncate text-papier">{l.nom}</span>
           {#if mode === 'affiche' && l.affiche}
-            <button class="text-xs h-8 px-3 rounded-full border {l.posee ? 'border-valide/60 bg-valide/15 text-valide' : 'border-couture text-mine'}"
+            <button class="text-xs h-8 pointer-coarse:h-11 px-3 rounded-full border {l.posee ? 'border-valide/60 bg-valide/15 text-valide' : 'border-couture text-mine'}"
               aria-pressed={!!l.posee} onclick={() => marquerPosee(l, !l.posee)}>{l.posee ? 'Posée ✓' : 'Marquer posée'}</button>
           {:else if l.manuel}<span class="text-xs text-valide">choisie ✓</span>{/if}
           {#if mode === 'affiche' && l.affiche}
-            <button class="text-xs h-8 px-3 rounded-full border border-onglet text-onglet disabled:opacity-50" disabled={occupe}
+            <button class="text-xs h-8 pointer-coarse:h-11 px-3 rounded-full border border-onglet text-onglet disabled:opacity-50" disabled={occupe}
               onclick={() => enregistrer(l)}>Enregistrer dans Photos</button>
           {/if}
         </div>
@@ -249,7 +296,13 @@
         {/if}
       </li>
     {:else}
-      <li class="text-sm text-mine py-6 text-center">Rien dans ce filtre.</li>
+      <li class="text-sm text-mine py-6 text-center">
+        {#if (mode === 'hd' ? portraits.lignes : affiches.lignes).length === 0}
+          {mode === 'affiche' && !affiches.groupes.length ? 'Coche au moins un groupe ci-dessus, puis lance la recherche.'
+            : 'Aucun contact lié à Immich ici : les liaisons se font dans À traiter (ou seules la nuit), puis la recherche ci-dessus.'}
+        {:else if filtre === 'a_choisir'}Rien à choisir : tout est fait. Le filtre « Tous » montre chaque contact.
+        {:else}Aucun contact dans ce filtre.{/if}
+      </li>
     {/each}
   </ul>
 {/if}

@@ -79,7 +79,7 @@
 
 <div class="flex flex-wrap items-end gap-4 mb-6">
   <div>
-    <h1 class="titre text-3xl">Contacts</h1>
+    <h1 class="titre text-2xl md:text-3xl">Contacts</h1>
     <p class="text-mine text-sm tabular-nums">{affiches.length} sur {tous.length}</p>
   </div>
   <input class="ml-auto w-72" type="search" placeholder="Nom, société, courriel, téléphone" bind:value={recherche}

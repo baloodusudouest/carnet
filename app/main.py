@@ -621,6 +621,11 @@ class Deliaison(BaseModel):
     refuser: bool = False
 
 
+@app.get("/api/liaisons/auto")
+def liaisons_auto():
+    return carnet().liaisons_auto()
+
+
 @app.post("/api/liaisons/delier")
 def delier(corps: Deliaison):
     return carnet().delier(corps.pid, corps.refuser)

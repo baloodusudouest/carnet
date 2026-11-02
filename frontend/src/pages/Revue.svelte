@@ -137,7 +137,7 @@
 
 <div class="flex flex-wrap items-end gap-4 mb-6">
   <div>
-    <h1 class="titre text-3xl">Revue des contacts vérifiés</h1>
+    <h1 class="titre text-2xl">À compléter</h1>
     <p class="text-mine text-sm">{revue ? (total ? `${pluriel(total, 'point', 'points')} à compléter` : 'Tout est complet.') : ''}</p>
   </div>
 </div>
@@ -146,7 +146,7 @@
   <div class="flex gap-8">
     <!-- Sommaire, façon onglets de carnet -->
     <nav class="sticky top-6 self-start w-72 shrink-0 hidden lg:flex flex-col gap-0.5" aria-label="Sections">
-      {#each SECTIONS as s}
+      {#each SECTIONS.filter((s) => revue[s.cle].length) as s}
         {@const n = revue[s.cle].length}
         <a href={`#/revue`} onclick={(e) => { e.preventDefault(); document.getElementById(s.cle)?.scrollIntoView({ behavior: 'smooth' }) }}
           class="flex items-center gap-2 px-3 py-1.5 rounded-l-md text-sm {n ? 'text-papier hover:bg-couture' : 'text-mine/60'}">
@@ -157,11 +157,17 @@
     </nav>
 
     <div class="flex-1 min-w-0 space-y-8">
-      {#each SECTIONS as s}
+      {#if !total}
+        <div class="rounded-2xl border border-couture bg-reliure p-6 text-center">
+          <p class="titre text-xl">Rien à compléter</p>
+          <p class="text-sm text-mine mt-1">Les contacts vérifiés ont tout ce qu'il faut : anniversaires, sociétés, numéros.</p>
+        </div>
+      {/if}
+      {#each SECTIONS.filter((s) => revue[s.cle].length) as s}
         {@const liste = revue[s.cle]}
         <section id={s.cle} class="scroll-mt-6">
           <h2 class="titre text-xl">{s.titre} <span class="text-mine text-base font-normal tabular-nums">({liste.length})</span></h2>
-          <p class="text-sm text-mine mb-2">{liste.length ? s.aide : 'Rien à signaler.'}</p>
+          <p class="text-sm text-mine mb-2">{s.aide}</p>
           {#if liste.length}
             {#if s.cle === 'relations_treemich'}
               <ul class="rounded-xl border border-couture divide-y divide-couture overflow-hidden">

@@ -79,7 +79,7 @@
 
 <div class="grid gap-10 lg:grid-cols-2">
   <section>
-    <h1 class="titre text-3xl mb-2">Export propre</h1>
+    <h1 class="titre text-2xl md:text-3xl mb-2">Sauvegardes et export</h1>
     <p class="text-mine mb-5">
       Un fichier .vcf avec tous les contacts vérifiés, aux formats retenus. Importe-le d'abord sur un
       compte iCloud de test pour contrôler le résultat.
@@ -198,7 +198,7 @@
               placeholder="Clé de la base (Enpass)" aria-label="Clé de la base notée dans Enpass" />
             <button class="bouton bouton-principal !py-1" type="submit" disabled={!cleEnpass || testEnCours || !sauvegardes.bases.length}>Tester avec cette clé</button>
           </form>
-          <button class="text-xs text-mine underline underline-offset-2 hover:text-papier mt-2" disabled={testEnCours || !sauvegardes.bases.length}
+          <button class="text-xs text-mine underline underline-offset-2 hover:text-papier mt-2 pointer-coarse:min-h-11" disabled={testEnCours || !sauvegardes.bases.length}
             onclick={() => testerRestauration(false)}>Tester avec la clé de la stack</button>
           {#if sauvegardes.restaurations.length}
             <ul class="mt-4 divide-y divide-couture border-y border-couture">

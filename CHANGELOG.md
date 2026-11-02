@@ -30,3 +30,11 @@
 - « Synchroniser maintenant » : même plan, mêmes garde-fous, écriture réelle.
 - `/status` (Home Assistant) expose la dernière synchro : mode, compteurs, alerte.
 - Sauvegardes d'iCloud avant écriture : toutes celles des 14 derniers jours, puis une par mois pendant un an.
+
+### Lot 3 · Au pouce
+- Même navigation sur PC et iPhone : **À traiter** (boîte unique : fiches à relire classées par motif, liaisons à confirmer en un toucher, liaisons faites seules la nuit à annuler, points à compléter, photos), **Contacts** (recherche, groupes, import), **Photos** (photo HD, affiche, logos), **État** (synchro iCloud, veille, sauvegardes, test de restauration, archives). Badges : nombre à traiter, pastille rouge sur État en cas de souci.
+- Révision sur iPhone : fiche retenue en haut, une carte par champ à trancher (choix de 48 px), champs sans choix repliés, téléphones/courriels/adresses cochables et modifiables, groupes, noms proches, barre Passer · De côté · Valider fixée en bas. La fiche suivante est chargée d'avance.
+- Révision sur PC : colonne « Fiche retenue » sombre (mode sombre respecté), valeur choisie en fond plein, en-tête et boutons qui restent visibles, photo illisible signalée au lieu d'une image cassée.
+- Photos : groupes des affiches et recherches lancées depuis l'onglet (plus besoin du PC) ; états vides qui disent quoi faire.
+- Ergonomie : champs en 16 px sur écran tactile (plus de zoom Safari), cibles de 44 px, bord des champs contrasté (3,4:1), boutons désactivés reconnaissables, « À compléter » sans sections vides, messages qui s'effacent au changement de page et proposent « Rouvrir » après une validation.
+- La fiche contact sur iPhone ouvre la Révision (« Modifier la fiche »).

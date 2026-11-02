@@ -10,7 +10,7 @@
   const bientot = $derived(archives.filter((a) => a.bientot))
 </script>
 
-<h1 class="titre text-3xl mb-2">Archives</h1>
+<h1 class="titre text-2xl md:text-3xl mb-2">Archives</h1>
 <p class="text-mine max-w-2xl mb-6">
   Chaque export importé est gardé tel quel pendant {ref.archive_jours ?? 365} jours dans
   <code>carnet/archives</code>, puis supprimé automatiquement. Les fiches déjà fusionnées restent dans carnet.

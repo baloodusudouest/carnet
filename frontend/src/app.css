@@ -7,6 +7,8 @@
   --color-reliure: #241e1b;     /* surfaces */
   --color-couture: #3a302b;     /* filets, bordures */
   --color-tranche: #4d413a;     /* bordures actives */
+  --color-champ: #7d6e62;
+  --color-retenue: #2f2723;     /* colonne « Fiche retenue » de la Révision */       /* bord des champs de saisie (contraste ≥ 3:1 sur le fond) */
   --color-papier: #efe6d8;      /* texte principal */
   --color-mine: #a99b8b;        /* texte secondaire */
   --color-onglet: #d9a441;      /* accent : onglets, sélection */
@@ -31,7 +33,7 @@
   :focus-visible { outline: 2px solid var(--color-onglet); outline-offset: 2px; }
   input, select, textarea {
     background: var(--color-cuir);
-    border: 1px solid var(--color-couture);
+    border: 1px solid var(--color-champ);
     border-radius: 6px;
     padding: 0.35rem 0.55rem;
     color: var(--color-papier);
@@ -45,6 +47,13 @@
     border-bottom-width: 2px;
     border-radius: 4px;
     color: var(--color-mine);
+  }
+  /* Écran tactile : 16 px dans les champs (Safari ne zoome plus au toucher), cases à cocher
+     plus grandes, et aucune cible sous 44 px pour les boutons et liens d'action */
+  @media (pointer: coarse) {
+    input, select, textarea { font-size: 16px; }
+    input[type="checkbox"], input[type="radio"] { width: 1.375rem; height: 1.375rem; }
+    .bouton, .pastille { min-height: 2.75rem; }
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; animation: none !important; }
@@ -60,10 +69,19 @@
   }
   .bouton:hover { border-color: var(--color-mine); }
   .bouton:disabled { opacity: 0.45; cursor: not-allowed; }
+  .bouton-principal:disabled { background: transparent; border-color: var(--color-tranche); color: var(--color-mine); opacity: 1; }
+  /* Pastille de choix (groupes, filtres) : même forme partout, 44 px au doigt */
+  .pastille {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    min-height: 2rem; padding: 0 0.85rem; border-radius: 9999px;
+    border: 1px solid var(--color-couture); color: var(--color-mine); font-size: 0.875rem;
+  }
+  .pastille[aria-pressed="true"] { border-color: var(--color-onglet); color: var(--color-papier); background: color-mix(in srgb, var(--color-onglet) 12%, transparent); }
   .bouton-principal {
     background: var(--color-onglet); border-color: var(--color-onglet);
     color: #23190a; font-weight: 600;
   }
   .bouton-principal:hover { background: #e6b354; border-color: #e6b354; }
+  td.bg-retenue, th.bg-retenue { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-onglet) 55%, transparent); }
   .titre { font-family: var(--font-livre); font-weight: 600; letter-spacing: -0.01em; }
 }
