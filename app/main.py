@@ -559,6 +559,30 @@ class Refus(BaseModel):
     immich: str
 
 
+class LienRevision(BaseModel):
+    immich: str | None = None
+    treemich: str | None = None
+    prenom: str | None = None
+    nom: str | None = None
+
+
+@app.get("/api/personnes/{pid}/proches")
+def proches(pid: str):
+    """Révision : noms proches dans Immich, Treemich et les autres contacts."""
+    return carnet().proches(pid)
+
+
+@app.post("/api/personnes/{pid}/lier")
+def lier_depuis_revision(pid: str, corps: LienRevision):
+    return carnet().lier_depuis_revision(pid, corps.immich, corps.treemich)
+
+
+@app.post("/api/personnes/{pid}/renommer-liens")
+def renommer_depuis_revision(pid: str, corps: LienRevision):
+    """Immich et/ou Treemich prennent l'orthographe de la fiche."""
+    return carnet().renommer_depuis_revision(pid, corps.immich, corps.treemich, corps.prenom, corps.nom)
+
+
 @app.post("/api/liaisons/refuser")
 def refuser_liaison(corps: Refus):
     return carnet().refuser_liaison(corps.pid, corps.immich)

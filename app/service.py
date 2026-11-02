@@ -521,7 +521,7 @@ class Carnet:
     def enregistrer(self, pid: str, fiche: dict, valider: bool) -> dict:
         """Sans validation, seul le brouillon change : la fiche validée (celle qu'exportent
         l'export propre et le kit) n'est remplacée qu'au moment de « Valider la fiche »."""
-        self._personne(pid)
+        deja_verifie = self._personne(pid)["statut"] == "verifie"
         sources = self._sources_de(pid)
         try:
             propre = normaliser_fiche(fiche, self.cfg.region)
@@ -541,6 +541,12 @@ class Carnet:
             else:
                 cx.execute("UPDATE personnes SET brouillon = ?, modifie_le = ? WHERE id = ?",
                            (texte, quand, pid))
+        if valider and not deja_verifie and self.base.etat("liaisons", {}).get(pid):
+            # Lié depuis la Révision avant validation : photo Immich et relations de l'arbre maintenant
+            try:
+                self._lancer("liens", lambda: self._appliquer_liens([pid]))
+            except ErreurCarnet:
+                pass   # une autre opération tourne : la tâche de nuit s'en chargera
         return self.dossier(pid)
 
     def _retirer_moi_ailleurs(self, cx, pid: str) -> None:
@@ -1834,6 +1840,174 @@ class Carnet:
                 tm.fermer()
         self._oublier_liens()
         return {"nom": " ".join(x for x in (prenom, nom) if x)}
+
+    # ---------------------------------------------------------------- noms proches (Révision)
+
+    PROCHE_MIN = 80        # ressemblance minimale (0-100) pour signaler un nom proche
+    PROCHES_MAX = 5
+
+    @staticmethod
+    def _ressemblance(a: str, b: str) -> int:
+        """Ressemblance de deux noms déjà ramenés à leur clé (minuscules, sans accent ni tiret).
+        Ordre des mots indifférent ; même nom de famille avec un prénom qui commence pareil
+        (« fred » / « frederic », « loic » / « loick ») compte comme très proche."""
+        if not a or not b:
+            return 0
+        score = fuzz.token_sort_ratio(a, b)
+        ma, mb = a.split(), b.split()
+        if len(ma) >= 2 and len(mb) >= 2:
+            for x in ma:
+                for y in mb:
+                    if x == y and len(x) > 2:   # un mot commun (nom de famille)…
+                        reste_a, reste_b = [m for m in ma if m != x], [m for m in mb if m != y]
+                        pa, pb = " ".join(reste_a), " ".join(reste_b)
+                        if pa and pb and (pa[:3] == pb[:3] or fuzz.ratio(pa, pb) >= 75):
+                            score = max(score, 88)   # …et un prénom voisin
+        return int(round(score))
+
+    def _cles_nom(self, fiche: dict) -> set[str]:
+        return {cle_texte(f"{fiche.get('prenom', '')} {fiche.get('nom', '')}"), cle_texte(fiche.get("surnom") or "")} - {""}
+
+    def _naissance_treemich(self, tid: str) -> str:
+        """Date de naissance d'une personne de l'arbre, lue une fois puis gardée en mémoire
+        (Treemich limite le débit)."""
+        cache = self.__dict__.setdefault("_naissances_tree", {})
+        if tid not in cache:
+            try:
+                tm = self._treemich()
+                try:
+                    cache[tid] = tm.naissance(tid)
+                finally:
+                    tm.fermer()
+            except ErreurLien:
+                return ""
+        return cache[tid]
+
+    def proches(self, pid: str) -> dict:
+        """Révision : personnes Immich, personnes Treemich et autres contacts dont le nom
+        ressemble à celui de la fiche en cours (orthographe, accent, diminutif, ordre des mots).
+        Les personnes Immich / Treemich viennent de la dernière lecture (pas de relecture ici)."""
+        ligne = self._personne(pid)
+        fiche = self._fiche_courante(ligne, self._sources_de(pid))
+        cles = self._cles_nom(fiche)
+        liens = self.base.etat("liaisons", {})
+        lien = liens.get(pid) or {}
+        refus = set(self.base.etat("liaisons_refusees", []))
+        d = self._donnees_liens() if (self.cfg.immich_cle or self.cfg.treemich_email) else \
+            {"immich": [], "treemich": [], "erreurs": []}
+        pris = {}
+        for autre, l in liens.items():
+            for cote in ("immich", "treemich"):
+                if l.get(cote) and autre != pid:
+                    pris[(cote, l[cote])] = autre
+        noms_pris = {}
+        for autre in set(pris.values()):
+            l = self.base.un("SELECT fiche, brouillon FROM personnes WHERE id = ?", (autre,))
+            if l and (l["fiche"] or l["brouillon"]):
+                noms_pris[autre] = nom_affiche(completer(json.loads(l["fiche"] or l["brouillon"])))
+
+        def meilleurs(personnes: list[dict], cote: str) -> list[dict]:
+            res = []
+            for p in personnes:
+                cle = cle_texte(p["nom"])
+                score = max((self._ressemblance(c, cle) for c in cles), default=0)
+                deja = lien.get(cote) == p["id"]
+                if (score >= self.PROCHE_MIN or deja) and f"{pid}|{p['id']}" not in refus:
+                    autre = pris.get((cote, p["id"]))
+                    res.append({"id": p["id"], "nom": p["nom"], "score": 100 if deja else score,
+                                "exact": cle in cles, "lie": deja,
+                                "lie_a": autre and {"pid": autre, "nom": noms_pris.get(autre, "")},
+                                "naissance": (p.get("naissance") or "")[:10], "immich": p.get("immich")})
+            return sorted(res, key=lambda x: (-x["lie"], -x["score"], x["nom"].lower()))[:self.PROCHES_MAX]
+
+        immich = meilleurs(d["immich"], "immich")
+        treemich = meilleurs(d["treemich"], "treemich")
+        if self.cfg.treemich_email:
+            for t in treemich[:3]:
+                t["naissance"] = self._naissance_treemich(t["id"])[:10]
+        contacts = []
+        for autre in self.base.lire("SELECT id, statut, fiche, brouillon FROM personnes WHERE id != ? AND statut != 'ecarte'", (pid,)):
+            f = completer(json.loads(autre["brouillon"] or autre["fiche"] or "null") or {}) \
+                if (autre["brouillon"] or autre["fiche"]) else None
+            if f is None:   # jamais relu : la proposition de fusion de ses fiches
+                f = fusion.proposer(self._sources_de(autre["id"]))
+            score = max((self._ressemblance(c, k) for c in cles for k in self._cles_nom(f)), default=0)
+            if score >= self.PROCHE_MIN:
+                contacts.append({"id": autre["id"], "nom": nom_affiche(f), "statut": autre["statut"], "score": score,
+                                 "anniversaire": f.get("anniversaire") or "", "groupes": f.get("groupes", []),
+                                 "telephone": (f["telephones"][0].get("affichage") or f["telephones"][0].get("valeur"))
+                                 if f.get("telephones") else ""})
+        contacts.sort(key=lambda x: (-x["score"], x["nom"].lower()))
+        return {"immich_actif": bool(self.cfg.immich_cle), "treemich_actif": bool(self.cfg.treemich_email),
+                "lu_le": d.get("le"), "erreurs": d.get("erreurs", []),
+                "nom": nom_affiche(fiche), "anniversaire": fiche.get("anniversaire") or "",
+                "lien": lien, "immich": immich, "treemich": treemich, "contacts": contacts[:self.PROCHES_MAX]}
+
+    def lier_depuis_revision(self, pid: str, immich: str | None, treemich: str | None) -> dict:
+        """Lie la fiche en cours à une personne Immich et/ou Treemich. Une personne Immich déjà
+        reliée à une personne de l'arbre emmène celle-ci. Contact déjà vérifié : photo et
+        relations sont appliquées tout de suite ; sinon à la validation de la fiche."""
+        ligne = self._personne(pid)
+        d = self._donnees_liens()
+        if immich and not any(p["id"] == immich for p in d["immich"]):
+            raise ErreurCarnet("Personne Immich introuvable (relis Immich dans Liaisons).")
+        if treemich and not any(p["id"] == treemich for p in d["treemich"]):
+            raise ErreurCarnet("Personne Treemich introuvable (relis Treemich dans Liaisons).")
+        liens = self.base.etat("liaisons", {})
+        lien = dict(liens.get(pid) or {})
+        if immich:
+            lien["immich"] = immich
+            if not treemich and not lien.get("treemich"):
+                treemich = next((p["id"] for p in d["treemich"] if p.get("immich") == immich), None)
+        if treemich:
+            lien["treemich"] = treemich
+        if not (lien.get("immich") or lien.get("treemich")):
+            raise ErreurCarnet("Choisis une personne Immich ou Treemich.")
+        # Une personne ne peut être liée qu'à un seul contact
+        for autre, l in list(liens.items()):
+            if autre != pid:
+                for cote in ("immich", "treemich"):
+                    if l.get(cote) and l.get(cote) == lien.get(cote):
+                        raise ErreurCarnet("Cette personne est déjà liée à un autre contact : délie-la d'abord dans Liaisons.")
+        lien["le"] = _iso(maintenant())
+        liens[pid] = lien
+        self.base.ecrire_etat("liaisons", liens)
+        applique = False
+        if ligne["statut"] == "verifie":
+            try:
+                self._lancer("liens", lambda: self._appliquer_liens([pid]))
+                applique = True
+            except ErreurCarnet:
+                pass   # une autre opération tourne : la tâche de nuit s'en chargera
+        return {"lien": lien, "applique": applique}
+
+    def renommer_depuis_revision(self, pid: str, immich: str | None, treemich: str | None,
+                                 prenom: str | None = None, nom: str | None = None) -> dict:
+        """Orthographe : Immich et/ou Treemich prennent le nom « Prénom NOM » de la fiche en cours
+        (celui affiché dans la Révision, même pas encore enregistré, sinon celui de la fiche)."""
+        if prenom is None and nom is None:
+            fiche = self._fiche_courante(self._personne(pid), self._sources_de(pid))
+            prenom, nom = fiche.get("prenom") or "", fiche.get("nom") or ""
+        else:
+            self._personne(pid)
+            prenom, nom = formater_prenom(" ".join((prenom or "").split())), formater_nom(" ".join((nom or "").split()))
+        complet = " ".join(x for x in (prenom, nom) if x)
+        if not complet:
+            raise ErreurCarnet("La fiche n'a ni prénom ni nom.")
+        if immich:
+            im = self._immich()
+            try:
+                im.renommer(immich, complet)
+            finally:
+                im.fermer()
+        if treemich and self.cfg.treemich_email:
+            tm = self._treemich()
+            try:
+                tm.renommer(treemich, prenom, nom)
+            finally:
+                tm.fermer()
+        self._oublier_liens()
+        return {"nom": complet}
 
     def refuser_liaison(self, pid: str, immich: str) -> dict:
         refus = set(self.base.etat("liaisons_refusees", []))

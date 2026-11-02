@@ -1870,3 +1870,56 @@ def test_logos_des_societes(client, monkeypatch):
     # Un contact avec une vraie photo n'est jamais proposé
     f["photo"] = None
     assert c.post("/api/logos/choix", json={"pid": "inconnu", "n": 0, "sorte": "photo"}).status_code == 400
+
+
+def test_revision_noms_proches(client, monkeypatch):
+    """Révision : personnes Immich / Treemich et contacts au nom proche ; lier, renommer, refuser."""
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    _importer(c, "gmail.vcf", "gmail")
+    cn = etat["carnet"]
+    ecrits = []
+    t_im, t_tm = _faux_immich_treemich(ecrits)
+    monkeypatch.setattr(cn, "transport_immich", t_im, raising=False)
+    monkeypatch.setattr(cn, "transport_treemich", t_tm, raising=False)
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "immich_cle": "cle",
+                                                        "treemich_email": "moi@x.fr", "treemich_password": "tm"}))
+    assert cn._ressemblance("fred martin", "frederic martin") >= 80
+    assert cn._ressemblance("claire martin", "paul martin") < 80
+    # Jean-Pierre : « Duboiss » dans Immich (faute de frappe) : proposé, pas exact, avec sa date
+    jp = _personne(c, "Jean")
+    p = c.get(f"/api/personnes/{jp['id']}/proches").json()
+    assert [x["id"] for x in p["immich"]] == ["im-jp"]
+    assert not p["immich"][0]["exact"] and p["immich"][0]["naissance"] == "1970-07-02"
+    # Orthographe : Immich prend celle de la fiche (même pas encore enregistrée)
+    c.post(f"/api/personnes/{jp['id']}/renommer-liens", json={"immich": "im-jp", "prenom": "jean-pierre", "nom": "dubois"})
+    assert ("immich", "/api/people/im-jp", {"name": "Jean-Pierre DUBOIS"}) in ecrits
+    # Pas la même personne : plus proposé
+    c.post("/api/liaisons/refuser", json={"pid": jp["id"], "immich": "im-jp"})
+    assert c.get(f"/api/personnes/{jp['id']}/proches").json()["immich"] == []
+    # Claire : exacte dans Immich et Treemich (date de l'arbre), pas « Paul Martin »
+    cl = _personne(c, "Claire")
+    d = c.get(f"/api/personnes/{cl['id']}").json()
+    p = c.get(f"/api/personnes/{cl['id']}/proches").json()
+    assert [x["id"] for x in p["immich"]] == ["im-claire"] and p["immich"][0]["exact"]
+    assert [x["id"] for x in p["treemich"]] == ["t-claire"] and p["treemich"][0]["naissance"] == "1984-03-14"
+    # Lier avant validation : Treemich suit Immich, appliqué à la validation
+    r = c.post(f"/api/personnes/{cl['id']}/lier", json={"immich": "im-claire"}).json()
+    assert r["lien"]["treemich"] == "t-claire" and not r["applique"]
+    assert c.get(f"/api/personnes/{cl['id']}/proches").json()["immich"][0]["lie"]
+    c.put(f"/api/personnes/{cl['id']}", json={"fiche": d["fiche"], "valider": True})
+    t = _attendre(c)
+    assert t["tache"]["etat"] == "termine", t["tache"]
+    f = c.get(f"/api/personnes/{cl['id']}").json()
+    assert any(s["source"] == "immich" for s in f["sources"])
+    assert ("Léa Martin", "enfant") in {(n["valeur"], n["type"]) for n in f["fiche"]["noms_associes"]}
+    # Une personne Immich déjà liée ne se lie pas à un second contact
+    r = c.post(f"/api/personnes/{jp['id']}/lier", json={"immich": "im-claire"})
+    assert r.status_code == 400 and "déjà liée" in r.json()["detail"]
+    # Autre contact au même nom (fiche Gmail séparée) : signalé
+    gm = next(s for s in f["sources"] if s["source"] == "gmail")
+    c.post(f"/api/personnes/{cl['id']}/detacher", json={"source_id": gm["id"]})
+    p = c.get(f"/api/personnes/{cl['id']}/proches").json()
+    assert len(p["contacts"]) == 1 and p["contacts"][0]["nom"] == "Claire MARTIN" and p["contacts"][0]["score"] == 100

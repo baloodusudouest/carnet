@@ -45,6 +45,8 @@ Affiches iPhone (même onglet) : pour les contacts des groupes cochés, carnet p
 
 Logos de sociétés (onglet Photos › Logos) : pour les contacts vérifiés des groupes choisis (Clients et Artisans et services par défaut) qui n'ont pas de vraie photo, carnet lit le site de leur société — adresse du site de la fiche, sinon domaine du courriel professionnel — et y prend les icônes déclarées (apple-touch-icon, icon, og:image ; pas de service tiers, les SVG sont ignorés). Chaque logo est proposé en photo ronde du contact (fond de sa couleur) et en affiche iPhone (logo et nom de la société) ; rien n'est posé sans ton choix. Les logos téléchargés sont gardés dans `/state/logos`, et chaque site n'est lu qu'une fois (« Relire tous les sites » pour recommencer).
 
+Noms proches dans la Révision : en haut de chaque fiche à relire, carnet signale les personnes Immich, les personnes Treemich et les autres contacts dont le nom ressemble (faute de frappe, accent, tiret, diminutif, ordre des mots ; ressemblance ≥ 80 %), d'après la dernière lecture d'Immich et Treemich. Boutons : Lier (Treemich suit la personne Immich qui lui est reliée ; photo et relations ajoutées à la validation de la fiche), Prendre la date (si la fiche n'en a pas ; une date différente est signalée), Nom → fiche ou Fiche → Immich / Treemich pour l'orthographe, ✕ pour « pas la même personne », et « Réunir ici » pour un autre contact.
+
 #### Droits de la clé d'API Immich
 
 | Fonction | Droits |
