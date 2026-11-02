@@ -478,7 +478,7 @@
           title="Chercher sur LinkedIn ; colle ensuite l'adresse du profil dans « Ajouter : site »">Chercher sur LinkedIn</a>
       {/if}
     </div>
-    <div class="ml-auto flex gap-2">
+    <div class="ml-auto flex flex-wrap gap-2">
       <button class="bouton" onclick={() => deplacer(-1)} title="Précédent (←)">Précédent</button>
       <button class="bouton" onclick={() => deplacer(1)} title="Passer (→)">Passer</button>
       {#if dossier.statut === 'ecarte'}
@@ -494,9 +494,11 @@
   </div>
 
   <!-- Tableau à largeur fixe : tout tient à l'écran, les valeurs trop longues sont raccourcies
-       (le texte complet s'affiche au survol). -->
-  <div class="rounded-xl border border-couture overflow-hidden">
-    <table class="w-full table-fixed border-collapse text-sm">
+       (le texte complet s'affiche au survol). Sur un écran étroit (vue PC sur iPhone), il garde
+       une largeur lisible et défile de côté au doigt. -->
+  <div class="rounded-xl border border-couture {ecran.etroit ? 'overflow-x-auto overscroll-x-contain' : 'overflow-hidden'}" data-defile>
+    <table class="w-full table-fixed border-collapse text-sm"
+      style={ecran.etroit ? `min-width: ${7 + colonnes.length * 9 + 20}rem` : undefined}>
       <colgroup>
         <col class="w-28" />
         {#each colonnes as c (c.id)}<col />{/each}

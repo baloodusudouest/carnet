@@ -259,9 +259,18 @@ def test_iphone_en_vue_pc_bouton_menu(navigateur, serveur):
     page.get_by_role("button", name="Afficher la vue PC").click()
     expect(page.get_by_role("button", name="Vue iPhone")).to_be_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
-    page.mouse.wheel(0, 2000)
+    page.goto(f"{serveur}/#/revision")
+    tableau = page.locator("table").first
+    expect(tableau).to_be_visible()
+    # Révision en vue PC sur iPhone : le tableau garde sa largeur et défile de côté, la page non
+    assert tableau.evaluate("t => t.parentElement.scrollWidth > t.parentElement.clientWidth")
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    page.mouse.wheel(0, 600)
+    page.wait_for_timeout(400)
+    page.mouse.wheel(0, -200)                             # en remontant, le bouton revient
+    page.wait_for_timeout(400)
     menu = page.get_by_role("button", name="Menu", exact=True)
-    expect(menu).to_be_visible()
+    expect(menu).to_be_in_viewport()
     menu.click()
     page.locator("#menu-raccourci").get_by_role("link", name="Groupes").click()
     expect(page.locator("h1").first).to_have_text("Groupes")

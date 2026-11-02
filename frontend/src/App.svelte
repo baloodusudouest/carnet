@@ -118,11 +118,22 @@
   TACTILE.addEventListener('change', (e) => (tactile = e.matches))
   const raccourci = $derived(!mobile && (ecran.etroit || tactile))
   let menuOuvert = $state(false)
+  // Le bouton s'efface quand on descend (pour ne rien cacher) et revient dès qu'on remonte
+  let boutonCache = $state(false)
+  let dernierY = 0
+  function defilement() {
+    const y = window.scrollY
+    if (Math.abs(y - dernierY) < 8) return
+    boutonCache = y > dernierY && y > 120 && !menuOuvert
+    dernierY = y
+  }
   $effect(() => {
     route.page
     menuOuvert = false
   })
 </script>
+
+<svelte:window onscroll={defilement} />
 
 {#snippet icone(cle)}
   <svg viewBox="0 0 24 24" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -270,6 +281,7 @@
         </nav>
       {/if}
       <button class="fixed z-50 right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] w-14 h-14 rounded-full bg-onglet text-onglet-sombre shadow-2xl
+        transition-transform duration-200 {boutonCache ? 'translate-y-[calc(100%+2rem+env(safe-area-inset-bottom))]' : ''}
         flex items-center justify-center" aria-label="Menu" aria-expanded={menuOuvert} aria-controls="menu-raccourci"
         onclick={() => (menuOuvert = !menuOuvert)}>
         {#if menuOuvert}
