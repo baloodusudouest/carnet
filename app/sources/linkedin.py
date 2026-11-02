@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 
 from .. import normalisation as n
 from ..modele import fiche_vide
@@ -34,5 +35,12 @@ def lire(texte: str, region: str = "FR") -> tuple[list[FicheLue], list[str]]:
         if s:
             f["sites"].append(s)
         if f["prenom"] or f["nom"]:
-            fiches.append(FicheLue(fiche=f, brut=",".join(v.values())))
+            fiches.append(FicheLue(fiche=f, uid=uid_profil(v.get("URL", "")), brut=",".join(v.values())))
     return fiches, []
+
+
+def uid_profil(url: str) -> str | None:
+    """Identifiant stable d'une relation : l'adresse de son profil (« linkedin.com/in/claire-martin »),
+    sans protocole, sous-domaine ni paramètres. Un réimport retrouve ainsi la même relation."""
+    m = re.search(r"linkedin\.com/in/([^/?#\s]+)", url or "", re.I)
+    return f"linkedin.com/in/{m.group(1).lower()}" if m else None

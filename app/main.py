@@ -618,11 +618,12 @@ def renommer_immich(corps: RenommageImmich):
 
 class Deliaison(BaseModel):
     pid: str
+    refuser: bool = False
 
 
 @app.post("/api/liaisons/delier")
 def delier(corps: Deliaison):
-    return carnet().delier(corps.pid)
+    return carnet().delier(corps.pid, corps.refuser)
 
 
 @app.post("/api/liaisons/actualiser")
