@@ -1608,6 +1608,12 @@ def test_affiches_iphone(client, monkeypatch):
     assert albums == {"al1": "Affiches de contacts"} and len(envoyes) == 1
     ligne = c.get("/api/affiches").json()["lignes"][0]
     assert ligne["choisie"] == "b2" and ligne["manuel"]
+    assert ligne["posee"] is None
+    assert c.post("/api/affiches/posee", json={"pid": "inconnu"}).status_code == 400
+    c.post("/api/affiches/posee", json={"pid": p["id"]})                    # posée sur l'iPhone (coche manuelle)
+    assert c.get("/api/affiches").json()["lignes"][0]["posee"]
+    c.post("/api/affiches/posee", json={"pid": p["id"], "posee": False})
+    assert c.get("/api/affiches").json()["lignes"][0]["posee"] is None
     from PIL import Image
     import io as _io
     corps = envoyes[0]

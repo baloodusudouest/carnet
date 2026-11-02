@@ -37,12 +37,13 @@
       }))
     } else if (mode === 'affiche' && affiches) {
       l = affiches.lignes.map((x) => ({
-        pid: x.pid, nom: x.nom, choisie: x.choisie, manuel: x.manuel, affiche: x.affiche,
+        pid: x.pid, nom: x.nom, choisie: x.choisie, manuel: x.manuel, affiche: x.affiche, posee: x.posee,
         cands: x.propositions, a_choisir: !x.manuel && x.propositions.length,
       }))
     }
     return l.filter((x) => (!q || cleTexte(x.nom).includes(q)) &&
-      (filtre === 'tous' || (filtre === 'a_choisir' ? x.a_choisir : x.manuel)))
+      (filtre === 'tous' || (filtre === 'a_choisir' ? x.a_choisir : filtre === 'a_poser' ? x.affiche && !x.posee
+        : filtre === 'posees' ? x.posee : x.manuel)))
   })
   const vignette = (l, c) => mode === 'hd' ? `/api/portraits/apercu/${l.pid}/${c.asset}` : `/api/affiches/proposition/${l.pid}/${c.asset}`
   const grande = (l, c) => mode === 'hd' ? `/api/portraits/apercu/${l.pid}/${c.asset}` : `/api/affiches/proposition/${l.pid}/${c.asset}?grand=true`
@@ -94,7 +95,22 @@
   }
   let pret = $state(null)        // { titre, fichiers: File[], lignes } prêt à partager
   const toutes = $derived(affiches ? affiches.lignes.filter((x) => x.affiche) : [])
-  const restantes = $derived(toutes.filter((x) => deja[x.pid] !== x.affiche))
+  // Export : seulement celles pas encore posées sur l'iPhone, ou toutes
+  let portee = $state('a_poser')
+  const aPoser = $derived(toutes.filter((x) => !x.posee))
+  const perimetre = $derived(portee === 'a_poser' ? aPoser : toutes)
+  const restantes = $derived(perimetre.filter((x) => deja[x.pid] !== x.affiche))
+
+  // Coche « posée sur l'iPhone » (Apple ne met pas l'affiche dans iCloud : carnet ne peut pas le voir)
+  async function marquerPosee(l, posee) {
+    try {
+      const r = await api.post('/api/affiches/posee', { pid: l.pid, posee })
+      const x = affiches.lignes.find((y) => y.pid === l.pid)
+      if (x) x.posee = r.posee
+    } catch (e) {
+      annoncer(e.message, true)
+    }
+  }
   const lotCourant = $derived(restantes.slice(0, LOT))
 
   async function preparer(lignesAffiches, titre) {
@@ -150,8 +166,9 @@
 
 <input class="w-full h-11 !rounded-xl !px-4 text-base mb-2" type="search" placeholder="Filtrer par nom" bind:value={recherche}
   aria-label="Filtrer par nom" autocomplete="off" />
-<div class="flex gap-2 text-sm mb-3" role="group" aria-label="Filtre">
-  {#each [['a_choisir', 'À choisir'], ['choisies', 'Choisies'], ['tous', 'Tous']] as [v, t]}
+<div class="flex flex-wrap gap-2 text-sm mb-3" role="group" aria-label="Filtre">
+  {#each (mode === 'affiche' ? [['a_choisir', 'À choisir'], ['a_poser', 'À poser'], ['posees', 'Posées'], ['tous', 'Tous']]
+    : [['a_choisir', 'À choisir'], ['choisies', 'Choisies'], ['tous', 'Tous']]) as [v, t]}
     <button class="h-8 px-3 rounded-full border {filtre === v ? 'border-onglet text-papier' : 'border-couture text-mine'}"
       aria-pressed={filtre === v} onclick={() => (filtre = v)}>{t}</button>
   {/each}
@@ -160,7 +177,14 @@
 {#if mode === 'affiche' && toutes.length}
   <div class="rounded-2xl border {restantes.length ? 'border-onglet/50' : 'border-couture'} bg-reliure p-3 mb-3 text-sm">
     <p class="text-papier">{toutes.length} affiche{toutes.length > 1 ? 's' : ''} choisie{toutes.length > 1 ? 's' : ''}
-      {#if restantes.length}<span class="text-mine"> · {restantes.length} encore à enregistrer</span>{/if}</p>
+      <span class="text-mine"> · {toutes.length - aPoser.length} posée{toutes.length - aPoser.length > 1 ? 's' : ''} sur l'iPhone</span></p>
+    <div class="grid grid-cols-2 p-1 rounded-lg bg-cuir border border-couture text-xs my-2" role="group" aria-label="Affiches à exporter">
+      {#each [['a_poser', `À poser (${aPoser.length})`], ['toutes', `Toutes (${toutes.length})`]] as [v, t]}
+        <button class="h-8 rounded-md {portee === v ? 'bg-couture text-papier' : 'text-mine'}" aria-pressed={portee === v}
+          onclick={() => { portee = v; pret = null }}>{t}</button>
+      {/each}
+    </div>
+    {#if restantes.length}<p class="text-xs text-mine">{restantes.length} encore à enregistrer sur cet iPhone.</p>{/if}
     {#if restantes.length}
       <p class="text-xs text-mine mb-2">Les mettre dans ta pellicule, puis Contacts › Photo et affiche du contact › Photos.</p>
       <button class="w-full h-11 rounded-xl border border-onglet text-onglet disabled:opacity-50" disabled={occupe}
@@ -169,7 +193,7 @@
       <button class="text-xs text-mine underline mt-2" disabled={occupe} onclick={() => noterDeja(restantes)}>
         Déjà dans ma pellicule : ne plus les proposer</button>
     {:else}
-      <p class="text-xs text-valide mt-1">✓ Toutes tes affiches sont déjà enregistrées sur cet iPhone.</p>
+      <p class="text-xs text-valide mt-1">{perimetre.length ? '✓ Déjà toutes enregistrées sur cet iPhone.' : '✓ Toutes les affiches sont posées.'}</p>
       <button class="text-xs text-mine underline mt-2" onclick={toutReproposer}>Tout réenregistrer</button>
     {/if}
   </div>
@@ -197,7 +221,10 @@
       <li class="rounded-2xl border border-couture bg-reliure p-3">
         <div class="flex items-center gap-2 mb-2">
           <span class="flex-1 min-w-0 truncate text-papier">{l.nom}</span>
-          {#if l.manuel}<span class="text-xs text-valide">choisie ✓</span>{/if}
+          {#if mode === 'affiche' && l.affiche}
+            <button class="text-xs h-8 px-3 rounded-full border {l.posee ? 'border-valide/60 bg-valide/15 text-valide' : 'border-couture text-mine'}"
+              aria-pressed={!!l.posee} onclick={() => marquerPosee(l, !l.posee)}>{l.posee ? 'Posée ✓' : 'Marquer posée'}</button>
+          {:else if l.manuel}<span class="text-xs text-valide">choisie ✓</span>{/if}
           {#if mode === 'affiche' && l.affiche}
             <button class="text-xs h-8 px-3 rounded-full border border-onglet text-onglet disabled:opacity-50" disabled={occupe}
               onclick={() => enregistrer(l)}>Enregistrer dans Photos</button>

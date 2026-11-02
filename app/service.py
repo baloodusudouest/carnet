@@ -2232,7 +2232,7 @@ class Carnet:
         for pid, fiche, _ in self._cibles_affiches():
             a = faites.get(pid) or {}
             lignes.append({"pid": pid, "nom": nom_affiche(fiche), "groupes": fiche["groupes"],
-                           "choisie": a.get("source"), "affiche": a.get("immich_asset"),
+                           "choisie": a.get("source"), "affiche": a.get("immich_asset"), "posee": a.get("posee"),
                            "manuel": bool(a.get("manuel")), "le": a.get("le"),
                            "propositions": [{k: c.get(k) for k in ("asset", "le", "nettete", "face", "ecran")}
                                             for c in propositions.get(pid, [])]})
@@ -2354,6 +2354,20 @@ class Carnet:
             immich.fermer()
         self.base.ecrire_etat("affiches", faites)
         return {"ok": True}
+
+    def marquer_affiche_posee(self, pid: str, posee: bool) -> dict:
+        """Coche tenue à la main : l'affiche a été posée sur l'iPhone (Apple ne la met pas dans la
+        fiche iCloud, carnet ne peut pas le voir). Une nouvelle affiche choisie repart « à poser »."""
+        faites = self.base.etat("affiches", {})
+        a = faites.get(pid)
+        if not a or not a.get("immich_asset"):
+            raise ErreurCarnet("Choisis d'abord une affiche pour ce contact.")
+        if posee:
+            a["posee"] = _iso(maintenant())
+        else:
+            a.pop("posee", None)
+        self.base.ecrire_etat("affiches", faites)
+        return {"posee": a.get("posee")}
 
     def image_affiche(self, pid: str) -> tuple[bytes, str] | None:
         """L'affiche choisie, en pleine taille (pour l'enregistrer dans Photos sur l'iPhone)."""

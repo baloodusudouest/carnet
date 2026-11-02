@@ -680,6 +680,16 @@ def choisir_affiche(corps: ChoixAffiche):
     return carnet().choisir_affiche(corps.pid, corps.asset)
 
 
+class AffichePosee(BaseModel):
+    pid: str
+    posee: bool = True
+
+
+@app.post("/api/affiches/posee")
+def marquer_affiche_posee(corps: AffichePosee):
+    return carnet().marquer_affiche_posee(corps.pid, corps.posee)
+
+
 @app.get("/api/affiches/image/{pid}")
 def image_affiche(pid: str):
     image = carnet().image_affiche(pid)
