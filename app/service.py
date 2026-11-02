@@ -183,9 +183,15 @@ class Carnet:
                 identiques += 1
                 continue
             ancienne = cx.execute(
-                "SELECT id, personne_id FROM sources WHERE source = ? AND uid = ? "
+                "SELECT id, personne_id, donnees, enrichissement FROM sources WHERE source = ? AND uid = ? "
                 "AND personne_id IS NOT NULL ORDER BY id DESC", (source, lue.uid)).fetchone() \
                 if lue.uid else None
+            if enrichit and lue.uid and not ancienne:
+                # Relation LinkedIn déjà importée mais sans contact : l'ancienne ligne est remplacée
+                cx.execute("DELETE FROM distinctes WHERE a IN (SELECT id FROM sources WHERE source = ? AND uid = ? "
+                           "AND personne_id IS NULL) OR b IN (SELECT id FROM sources WHERE source = ? AND uid = ? "
+                           "AND personne_id IS NULL)", (source, lue.uid, source, lue.uid))
+                cx.execute("DELETE FROM sources WHERE source = ? AND uid = ? AND personne_id IS NULL", (source, lue.uid))
             rattache = None
             if not ancienne and lue.uid and source == "icloud":
                 pid_connu = connus.get(lue.uid) or (lue.uid[len("carnet-"):] if lue.uid.startswith("carnet-") else None)
@@ -196,11 +202,27 @@ class Carnet:
                 "INSERT INTO sources(import_id, source, uid, empreinte, donnees, photo, photo_type,"
                 " brut, enrichissement, personne_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (import_id, source, lue.uid, emp, json.dumps(lue.fiche, ensure_ascii=False),
-                 lue.photo, lue.photo_type, lue.brut, enrichit,
+                 lue.photo, lue.photo_type, lue.brut,
+                 ancienne["enrichissement"] if ancienne and enrichit else enrichit,
                  ancienne["personne_id"] if ancienne else rattache))
             if rattache:
                 cx.execute("UPDATE personnes SET statut = 'a_reviser', a_revoir = 'fiche mise à jour dans iCloud', "
                            "modifie_le = ? WHERE id = ?", (_iso(quand), rattache))
+                mises_a_jour += 1
+            elif ancienne and source == "linkedin":
+                # Réimport LinkedIn : la ligne remplace l'ancienne ; le contact ne repasse en révision
+                # que si la fiche porte encore l'ancienne valeur (nouveau poste, nouvelle société)
+                nouvelle = cur.lastrowid
+                cx.execute("INSERT OR IGNORE INTO distinctes(a, b) SELECT "
+                           "min(?, CASE WHEN a = ? THEN b ELSE a END), max(?, CASE WHEN a = ? THEN b ELSE a END) "
+                           "FROM distinctes WHERE a = ? OR b = ?",
+                           (nouvelle, ancienne["id"], nouvelle, ancienne["id"], ancienne["id"], ancienne["id"]))
+                cx.execute("DELETE FROM distinctes WHERE a = ? OR b = ?", (ancienne["id"], ancienne["id"]))
+                cx.execute("DELETE FROM sources WHERE id = ?", (ancienne["id"],))
+                motif = self._changement_linkedin(cx, ancienne["personne_id"], json.loads(ancienne["donnees"]), lue.fiche)
+                if motif:
+                    cx.execute("UPDATE personnes SET statut = CASE WHEN statut = 'ecarte' THEN 'ecarte' ELSE 'a_reviser' END, "
+                               "a_revoir = ?, modifie_le = ? WHERE id = ?", (motif, _iso(quand), ancienne["personne_id"]))
                 mises_a_jour += 1
             elif ancienne:
                 nouvelle = cur.lastrowid
@@ -327,6 +349,34 @@ class Carnet:
             self._completer_par_linkedin(cx, pid, json.loads(l["donnees"]))
             enrichies += 1
         return {"personnes_creees": 0, "personnes_completees": 0, "enrichies": enrichies}
+
+    @staticmethod
+    def _changement_linkedin(cx, pid: str, avant: dict, apres: dict) -> str | None:
+        """Nouvelle société ou nouveau poste sur LinkedIn. Si la fiche du contact porte encore
+        l'ancienne valeur (ou rien), la nouvelle va dans son brouillon et le motif est renvoyé
+        (« Poste : Gérante → Directrice ») ; si tu avais choisi autre chose, rien ne change."""
+        ligne = cx.execute("SELECT fiche, brouillon FROM personnes WHERE id = ?", (pid,)).fetchone()
+        texte = ligne and (ligne["brouillon"] or ligne["fiche"])
+        if not texte:
+            return None   # pas encore révisé : la proposition prend déjà la nouvelle ligne
+        fiche = completer(json.loads(texte))
+        changes = []
+        for champ, libelle in (("societe", "Société"), ("fonction", "Poste")):
+            a, b = (avant.get(champ) or "").strip(), (apres.get(champ) or "").strip()
+            if a == b or not b:
+                continue
+            if fiche[champ] in ("", a):
+                fiche[champ] = b
+                changes.append(f"{libelle} : {a or '—'} → {b}")
+        connus = {c["valeur"].lower() for c in fiche["courriels"]}
+        for c in apres.get("courriels", []):
+            if c["valeur"].lower() not in connus and c["valeur"].lower() not in {x["valeur"].lower() for x in avant.get("courriels", [])}:
+                fiche["courriels"].append(c)
+                changes.append(f"Courriel : {c['valeur']}")
+        if not changes:
+            return None
+        cx.execute("UPDATE personnes SET brouillon = ? WHERE id = ?", (json.dumps(fiche, ensure_ascii=False), pid))
+        return "LinkedIn · " + " ; ".join(changes)
 
     @staticmethod
     def _completer_par_linkedin(cx, pid: str, linkedin_fiche: dict) -> bool:
@@ -1890,7 +1940,11 @@ class Carnet:
             return res
         immich_noms, tree_noms = index(d["immich"]), index(d["treemich"])
         liees, propositions = [], []
-        for pid, fiche, _ in self._verifiees():
+        verifiees_liste = self._verifiees()
+        contacts_par_cle: Counter = Counter()
+        for _p, f, _s in verifiees_liste:
+            contacts_par_cle.update({cle_texte(f"{f['prenom']} {f['nom']}")} - {""})
+        for pid, fiche, _ in verifiees_liste:
             nom = nom_affiche(fiche)
             lien = liens.get(pid, {})
             ligne = {"pid": pid, "nom": nom, "groupes": fiche["groupes"], "anniversaire": fiche["anniversaire"]}
@@ -1922,12 +1976,20 @@ class Carnet:
                 return not (annif and p["naissance"] and len(annif) == 10 and p["naissance"][:10] != annif)
             exacte = (len(candidats) == 1 and cle_texte(candidats[0]["nom"]) in cles
                       and date_compatible(candidats[0]))
-            propositions.append({**ligne, "exacte": exacte,
+            # Sûre (liée seule la nuit) : même nom, une seule personne Immich de ce nom et un seul
+            # contact de ce nom, et la même date de naissance complète des deux côtés
+            cle_nom = cle_texte(f"{fiche['prenom']} {fiche['nom']}")
+            sure = bool(exacte and cle_nom and cle_texte(candidats[0]["nom"]) == cle_nom
+                        and len(immich_noms.get(cle_nom, [])) == 1 and contacts_par_cle[cle_nom] == 1
+                        and re.fullmatch(r"\d{4}-\d{2}-\d{2}", annif or "")
+                        and (candidats[0]["naissance"] or "")[:10] == annif)
+            propositions.append({**ligne, "exacte": exacte, "sure": sure,
+                                 "treemich_sur": tree_par_immich.get(candidats[0]["id"], {}).get("id") if sure else None,
                                  "immich": [{"id": p["id"], "nom": p["nom"], "naissance": p["naissance"]}
                                             for p in candidats[:5]],
                                  "treemich": tree and {"id": tree["id"], "nom": tree["nom"]}})
         propositions.sort(key=lambda x: (not x["exacte"], x["nom"].lower()))
-        verifiees = {pid: f for pid, f, _ in self._verifiees()}
+        verifiees = {pid: f for pid, f, _ in verifiees_liste}
         return {"immich": bool(self.cfg.immich_cle), "treemich": bool(self.cfg.treemich_email),
                 "erreurs": d["erreurs"], "liees": liees, "propositions": propositions,
                 "a_formater": self.immich_a_formater(d, liens, verifiees),
@@ -1935,13 +1997,48 @@ class Carnet:
                 "dernier_passage": self.base.etat("liens_journal", [None])[0]}
 
     def valider_liaisons(self, liaisons: list[dict]) -> dict:
-        liens = self.base.etat("liaisons", {})
-        for l in liaisons:
-            if l.get("immich") or l.get("treemich"):
-                liens[l["pid"]] = {"immich": l.get("immich"), "treemich": l.get("treemich"), "le": _iso(maintenant())}
-        self.base.ecrire_etat("liaisons", liens)
+        self._enregistrer_liaisons(liaisons)
         pids = [l["pid"] for l in liaisons]
         return self._lancer("liens", lambda: self._appliquer_liens(pids))
+
+    def _enregistrer_liaisons(self, liaisons: list[dict], auto: bool = False) -> list[dict]:
+        """Une personne Immich ou Treemich n'est liée qu'à un seul contact : une liaison qui en
+        reprendrait une déjà prise est refusée (deux homonymes ne partagent plus un visage)."""
+        faites: list[dict] = []
+
+        def maj(liens: dict) -> None:
+            pris = {(cote, l.get(cote)): p for p, l in liens.items() for cote in ("immich", "treemich") if l.get(cote)}
+            for l in liaisons:
+                if not (l.get("immich") or l.get("treemich")):
+                    continue
+                for cote in ("immich", "treemich"):
+                    autre = pris.get((cote, l.get(cote)))
+                    if l.get(cote) and autre and autre != l["pid"]:
+                        if auto:
+                            break
+                        raise ErreurCarnet(f"{'Cette personne Immich' if cote == 'immich' else 'Cette personne Treemich'} "
+                                           "est déjà liée à un autre contact : délie-la d'abord.")
+                else:
+                    liens[l["pid"]] = {"immich": l.get("immich"), "treemich": l.get("treemich"),
+                                       "le": _iso(maintenant()), **({"auto": True} if auto else {})}
+                    for cote in ("immich", "treemich"):
+                        if l.get(cote):
+                            pris[(cote, l[cote])] = l["pid"]
+                    faites.append(l)
+        self.base.modifier_etat("liaisons", {}, maj)
+        return faites
+
+    def _lier_exactes(self) -> list[dict]:
+        """Nuit : liaisons sûres faites seules (même nom unique des deux côtés, même date de
+        naissance complète). Notées au journal, annulables depuis « À traiter »."""
+        l = self.liaisons()
+        a_lier = [{"pid": p["pid"], "nom": p["nom"], "immich": p["immich"][0]["id"], "treemich": p["treemich_sur"]}
+                  for p in l["propositions"] if p.get("sure")]
+        faites = self._enregistrer_liaisons(a_lier, auto=True)
+        if faites:
+            journal = self.base.etat("liaisons_auto", [])
+            self.base.ecrire_etat("liaisons_auto", ([{"le": _iso(maintenant()), "liees": faites}] + journal)[:30])
+        return faites
 
     @staticmethod
     def _nom_pour_immich(fiche: dict) -> str:
@@ -2203,10 +2300,17 @@ class Carnet:
         self.base.ecrire_etat("liaisons_refusees", sorted(refus))
         return {"ok": True}
 
-    def delier(self, pid: str) -> dict:
-        liens = self.base.etat("liaisons", {})
-        liens.pop(pid, None)
-        self.base.ecrire_etat("liaisons", liens)
+    def delier(self, pid: str, refuser: bool = False) -> dict:
+        """Défait une liaison. « refuser » (annulation d'une liaison faite seule la nuit) : la même
+        personne ne sera plus proposée pour ce contact."""
+        ancien = {}
+        self.base.modifier_etat("liaisons", {}, lambda liens: ancien.update(liens.pop(pid, None) or {}))
+        if refuser:
+            def maj(refus: list) -> None:
+                for cote in ("immich", "treemich"):
+                    if ancien.get(cote) and f"{pid}|{ancien[cote]}" not in refus:
+                        refus.append(f"{pid}|{ancien[cote]}")
+            self.base.modifier_etat("liaisons_refusees", [], maj)
         return {"ok": True}
 
     def actualiser_liens(self) -> dict:
@@ -3216,6 +3320,12 @@ class Carnet:
                     self._veiller()
                 except Exception:  # noqa: BLE001
                     log.exception("Veille de nuit")
+            if self.cfg.immich_cle or self.cfg.treemich_email:
+                try:
+                    self._donnees_liens(rafraichir=True)
+                    self._lier_exactes()
+                except Exception:  # noqa: BLE001
+                    log.exception("Liaisons sûres de nuit")
             if self.base.etat("liaisons", {}) and (self.cfg.immich_cle or self.cfg.treemich_email):
                 try:
                     self._appliquer_liens(None)

@@ -66,8 +66,32 @@ def _migration_2(cx) -> None:
     cx.execute("CREATE INDEX IF NOT EXISTS idx_sources_uid ON sources(source, uid)")
 
 
+def _migration_3(cx) -> None:
+    """Relations LinkedIn : l'adresse du profil devient leur identifiant (UID), et les doublons
+    laissés par les réimports d'avant (même profil, même contact ou tous deux sans contact) sont
+    retirés en gardant la ligne la plus récente."""
+    from .sources.linkedin import uid_profil
+    lignes = cx.execute("SELECT id, donnees, personne_id FROM sources WHERE source = 'linkedin' ORDER BY id").fetchall()
+    garde: dict[tuple, int] = {}
+    for l in lignes:
+        d = json.loads(l["donnees"])
+        uid = next((uid_profil(x.get("valeur", "")) for x in d.get("sites", []) if uid_profil(x.get("valeur", ""))), None)
+        if not uid:
+            continue
+        cx.execute("UPDATE sources SET uid = ? WHERE id = ?", (uid, l["id"]))
+        cle = (uid, l["personne_id"])
+        if cle in garde:   # plus ancienne : retirée (la plus récente la remplace)
+            ancien = garde[cle]
+            cx.execute("INSERT OR IGNORE INTO distinctes(a, b) SELECT min(?, CASE WHEN a = ? THEN b ELSE a END), "
+                       "max(?, CASE WHEN a = ? THEN b ELSE a END) FROM distinctes WHERE a = ? OR b = ?",
+                       (l["id"], ancien, l["id"], ancien, ancien, ancien))
+            cx.execute("DELETE FROM distinctes WHERE a = ? OR b = ?", (ancien, ancien))
+            cx.execute("DELETE FROM sources WHERE id = ?", (ancien,))
+        garde[cle] = l["id"]
+
+
 # Migrations numérotées : n → fonction qui fait passer le schéma de n-1 à n
-MIGRATIONS = {2: _migration_2}
+MIGRATIONS = {2: _migration_2, 3: _migration_3}
 VERSION_SCHEMA = max(MIGRATIONS, default=1)
 
 

@@ -17,3 +17,9 @@
 - Avant d'écrire, carnet compare l'ETag de chaque carte à la dernière lecture : une carte changée sur l'iPhone entre-temps n'est pas écrasée, elle part en Révision avec sa nouvelle version.
 - Une carte créée par carnet (UID « carnet-… ») et modifiée sur l'iPhone revient à son contact par l'UID au lieu de devenir un nouveau contact.
 - Fusion : liaisons Immich/Treemich, photo HD, affiche et fiche iCloud du contact absorbé passent au contact gardé ; sa carte iCloud en double est proposée au retrait.
+
+### Lot 4 · Liaisons sûres et LinkedIn incrémental
+- Chaque nuit, après relecture d'Immich et Treemich, les correspondances sûres sont liées seules : même nom, une seule personne Immich et un seul contact de ce nom, même date de naissance complète des deux côtés ; la personne Treemich suit si elle est reliée à ce visage dans Treemich. Journal « liaisons_auto » ; « Annuler » délie et ne repropose plus.
+- Une personne Immich ou Treemich ne peut plus être liée à deux contacts (validation refusée).
+- LinkedIn : la relation est reconnue par l'adresse de son profil. Un réimport identique ne change rien ; un nouveau poste, une nouvelle société ou un nouveau courriel remplace l'ancienne ligne et, si la fiche portait encore l'ancienne valeur, va dans son brouillon avec le motif « LinkedIn · Poste : X → Y ». Si tu avais retenu autre chose, rien ne te dérange.
+- Migration 3 : les lignes LinkedIn déjà importées reçoivent leur identifiant de profil et les doublons laissés par les réimports passés sont retirés (copie de la base faite avant).

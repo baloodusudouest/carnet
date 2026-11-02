@@ -2068,3 +2068,86 @@ def test_iphone_ne_perd_rien(client, monkeypatch):
     assert c.post("/api/icloud/simulation").status_code == 200
     plan = _attendre(c)["plan"]
     assert [x["motif"] for x in plan["supprimer"] if x["pid"] == jp["id"]] == ["doublon créé par carnet, la fiche d'origine est gardée"]
+
+
+def test_linkedin_reimport_incremental(client, tmp_path):
+    """Lot 4 : la relation LinkedIn est reconnue par l'adresse de son profil. Réimport identique :
+    rien ne bouge ; nouveau poste : la fiche qui portait l'ancien le prend (brouillon + révision) ;
+    pas de doublon de ligne, ni pour une relation sans contact."""
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    _importer(c, "outlook.csv", "outlook")
+    texte = (DONNEES / "Connections.csv").read_text()
+    r = _importer(c, "Connections.csv", "linkedin")
+    sophie = _personne(c, "Sophie")
+    d = c.get(f"/api/personnes/{sophie['id']}").json()
+    f = d["fiche"]
+    assert f["fonction"] == "Ingénieure"                     # Outlook d'abord ; LinkedIn en complément
+    f["fonction"] = "Ingénieure structures"                  # tu as retenu le poste LinkedIn
+    c.put(f"/api/personnes/{sophie['id']}", json={"fiche": f, "valider": True})
+    cn = etat["carnet"]
+    nb = cn.base.un("SELECT count(*) AS n FROM sources WHERE source = 'linkedin'")["n"]
+
+    def reimporter(contenu, nom):
+        (cn.cfg.depot / nom).write_text(contenu, encoding="utf-8")
+        r = c.post("/api/importer", json={"nom": nom, "source": "linkedin"})
+        assert r.status_code == 200, r.text
+        return r.json()
+    # Même contenu (autre fichier) : tout est identique, Sophie reste vérifiée
+    r = reimporter(texte + "\n", "Connections-2.csv")
+    assert (r["ajoutes"], r["mises_a_jour"]) == (0, 0) and _personne(c, "Sophie")["statut"] == "verifie"
+    # Nouveau poste pour Sophie, nouvelle société pour la relation sans contact
+    texte3 = texte.replace("Ingénieure structures", "Responsable bureau d'études").replace("Ailleurs,Chef", "Autre part,Chef")
+    r = reimporter(texte3, "Connections-3.csv")
+    assert r["mises_a_jour"] == 1
+    assert cn.base.un("SELECT count(*) AS n FROM sources WHERE source = 'linkedin'")["n"] == nb   # remplacées, pas ajoutées
+    s = _personne(c, "Sophie")
+    assert s["statut"] == "a_reviser" and s["a_revoir"] == "LinkedIn · Poste : Ingénieure structures → Responsable bureau d'études"
+    d = c.get(f"/api/personnes/{sophie['id']}").json()
+    assert d["fiche"]["fonction"] == "Responsable bureau d'études" and d["brouillon"]
+    # Tu avais gardé un autre poste : un changement LinkedIn ne te dérange plus
+    f = d["fiche"]
+    f["fonction"] = "Cheffe de projet"
+    c.put(f"/api/personnes/{sophie['id']}", json={"fiche": f, "valider": True})
+    r = reimporter(texte3.replace("Responsable bureau d'études", "Directrice technique"), "Connections-4.csv")
+    assert _personne(c, "Sophie")["statut"] == "verifie"
+
+
+def test_liaisons_sures_automatiques(client, monkeypatch):
+    """Lot 4 : la nuit, seules les correspondances sûres sont liées (même nom, unique des deux
+    côtés, même date complète) ; annuler la liaison la refuse pour la suite ; une personne déjà
+    prise ne peut pas être liée à un second contact."""
+    from app.main import etat
+    from app.service import _iso, maintenant
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    cn = etat["carnet"]
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "immich_cle": "cle"}))
+    for debut in ("Claire", "Jean-Pierre", "Plomberie"):
+        p = _personne(c, debut)
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    claire, jp = _personne(c, "Claire"), _personne(c, "Jean-Pierre")
+    annif_claire = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]["anniversaire"]
+    assert len(annif_claire) == 10
+    cn.base.ecrire_etat("liens_cache", {"le": _iso(maintenant()), "erreurs": [], "relations": [],
+        "immich": [{"id": "im-claire", "nom": "Claire Martin", "naissance": annif_claire},
+                   {"id": "im-jp", "nom": "Jean-Pierre Dubois", "naissance": ""},          # pas de date : proposée
+                   {"id": "im-plombier", "nom": "Plomberie Garonne", "naissance": "1990-01-01"}],
+        "treemich": [{"id": "t-claire", "nom": "Claire Martin", "genre": "FEMALE", "immich": "im-claire"}]})
+    cn._cache_liens = None
+    faites = cn._lier_exactes()
+    assert [(x["pid"], x["immich"], x["treemich"]) for x in faites] == [(claire["id"], "im-claire", "t-claire")]
+    liens = cn.base.etat("liaisons")
+    assert liens[claire["id"]]["auto"] and jp["id"] not in liens
+    assert cn.base.etat("liaisons_auto")[0]["liees"][0]["nom"] == "Claire MARTIN"
+    # Une personne déjà liée n'est pas liée à un autre contact
+    r = c.post("/api/liaisons/valider", json={"liaisons": [{"pid": jp["id"], "immich": "im-claire"}]})
+    assert r.status_code == 400 and "déjà liée" in r.json()["detail"]
+    # Annuler : déliée et plus jamais reproposée d'office
+    c.post("/api/liaisons/delier", json={"pid": claire["id"], "refuser": True})
+    assert claire["id"] not in cn.base.etat("liaisons") and cn._lier_exactes() == []
+    assert f"{claire['id']}|im-claire" in cn.base.etat("liaisons_refusees")
