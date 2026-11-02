@@ -331,3 +331,29 @@ def vignette(contenu: bytes, cote: int) -> tuple[bytes, str]:
     sortie = io.BytesIO()
     img.save(sortie, "WEBP", quality=82, method=4)
     return sortie.getvalue(), "image/webp"
+
+
+def legender(contenu: bytes, legende: str) -> bytes:
+    """Écrit le nom de la personne dans la photo (titre et légende EXIF/XMP, que Photos sur
+    l'iPhone et le Mac affichent et retrouvent par la recherche). Recompression évitée :
+    les tables de quantification d'origine sont gardées."""
+    from xml.sax.saxutils import escape
+    img = Image.open(io.BytesIO(contenu))
+    exif = img.getexif()
+    # (pas d'ImageDescription EXIF : limitée à l'ASCII, elle afficherait « Agn?s »)
+    exif[0x9C9B] = (legende + "\0").encode("utf-16-le")     # XPTitle (Windows)
+    t = escape(legende)
+    xmp = ('<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+           '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+           '<rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/" '
+           'xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/">'
+           f'<dc:title><rdf:Alt><rdf:li xml:lang="x-default">{t}</rdf:li></rdf:Alt></dc:title>'
+           f'<dc:description><rdf:Alt><rdf:li xml:lang="x-default">{t}</rdf:li></rdf:Alt></dc:description>'
+           f'<photoshop:Headline>{t}</photoshop:Headline>'
+           '</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>').encode("utf-8")
+    sortie = io.BytesIO()
+    try:
+        img.save(sortie, "JPEG", quality="keep", exif=exif, xmp=xmp)
+    except (ValueError, OSError):   # pas un JPEG d'origine : nouvelle compression, de bonne qualité
+        img.convert("RGB").save(sortie, "JPEG", quality=92, exif=exif, xmp=xmp)
+    return sortie.getvalue()
