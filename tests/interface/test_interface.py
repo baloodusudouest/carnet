@@ -249,3 +249,26 @@ def test_iphone_onglet_logos(navigateur, serveur):
     assert not _deborde(page)
     assert erreurs == []
     page.context.close()
+
+
+def test_iphone_en_vue_pc_bouton_menu(navigateur, serveur):
+    """Vue PC choisie sur l'iPhone : la barre du haut tient dans l'écran et un bouton en bas à droite
+    redonne les mêmes accès (onglets, sous-pages, retour à la vue iPhone)."""
+    page, erreurs = _page(navigateur, serveur, "iphone")
+    page.goto(f"{serveur}/#/plus")
+    page.get_by_role("button", name="Afficher la vue PC").click()
+    expect(page.get_by_role("button", name="Vue iPhone")).to_be_visible()
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
+    page.mouse.wheel(0, 2000)
+    menu = page.get_by_role("button", name="Menu", exact=True)
+    expect(menu).to_be_visible()
+    menu.click()
+    page.locator("#menu-raccourci").get_by_role("link", name="Groupes").click()
+    expect(page.locator("h1").first).to_have_text("Groupes")
+    expect(page.locator("#menu-raccourci")).to_have_count(0)
+    menu.click()
+    page.locator("#menu-raccourci").get_by_role("button", name="Vue iPhone").click()
+    expect(page.get_by_role("button", name="Menu", exact=True)).to_have_count(0)
+    expect(page.get_by_role("link", name="Plus")).to_be_visible()
+    assert erreurs == []
+    page.context.close()

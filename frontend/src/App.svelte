@@ -110,6 +110,18 @@
     : !mobile && route.page === 'chercher' ? 'contacts' : route.page)
   const groupe = $derived(groupeDe(page))
   const sousOnglets = $derived(ONGLETS.find((o) => o.cle === groupe)?.sous ?? [])
+
+  // Vue PC sur iPhone ou iPad (écran tactile ou étroit) : bouton menu en bas à droite,
+  // pour garder la barre du haut à portée de pouce même après avoir défilé
+  const TACTILE = matchMedia('(hover: none)')
+  let tactile = $state(TACTILE.matches)
+  TACTILE.addEventListener('change', (e) => (tactile = e.matches))
+  const raccourci = $derived(!mobile && (ecran.etroit || tactile))
+  let menuOuvert = $state(false)
+  $effect(() => {
+    route.page
+    menuOuvert = false
+  })
 </script>
 
 {#snippet icone(cle)}
@@ -133,10 +145,11 @@
         </div>
       </header>
     {:else}
-    <header class="border-b border-couture bg-reliure/60">
-      <div class="mx-auto max-w-[1400px] px-6 flex items-center gap-8 h-14">
+    <!-- Vue PC : sous la barre d'état de l'iPhone (safe area) et repliée sur deux lignes si l'écran est étroit -->
+    <header class="border-b border-couture bg-reliure/60 pt-[env(safe-area-inset-top)]">
+      <div class="mx-auto max-w-[1400px] px-6 flex flex-wrap items-center gap-x-8 min-h-14">
         <a href="#/accueil" class="titre text-xl text-papier">carnet</a>
-        <nav class="flex gap-1 h-full" aria-label="Sections">
+        <nav class="flex gap-1 h-14 order-last w-full md:order-none md:w-auto" aria-label="Sections">
           {#each ONGLETS as o}
             <a
               href={allerOnglet(o)}
@@ -154,21 +167,21 @@
             </a>
           {/each}
         </nav>
-        <div class="ml-auto flex items-center gap-4 text-sm text-mine">
-          <span class="tabular-nums" title="Contacts vérifiés">
+        <div class="ml-auto flex items-center gap-4 h-14 text-sm text-mine">
+          <span class="tabular-nums hidden md:inline" title="Contacts vérifiés">
             {statut.verifies} / {statut.total} vérifiés
           </span>
-          <span class="w-28 h-1.5 rounded-full bg-couture overflow-hidden" aria-hidden="true">
+          <span class="w-28 h-1.5 rounded-full bg-couture overflow-hidden hidden md:block" aria-hidden="true">
             <span class="block h-full bg-valide" style="width: {progression}%"></span>
           </span>
-          {#if ecran.etroit}<button class="hover:text-papier" onclick={() => choisirVue(false)}>Vue iPhone</button>{/if}
+          {#if ecran.etroit}<button class="h-9 px-3 rounded-full border border-onglet text-onglet" onclick={() => choisirVue(false)}>Vue iPhone</button>{/if}
           <button class="hover:text-papier" onclick={deconnecter}>Se déconnecter</button>
         </div>
       </div>
     </header>
     {/if}
 
-    <main class="flex-1 mx-auto w-full max-w-[1400px] {mobile ? 'px-4 pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))]' : 'px-6 py-5'}">
+    <main class="flex-1 mx-auto w-full max-w-[1400px] {mobile ? 'px-4 pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))]' : raccourci ? 'px-6 pt-5 pb-24' : 'px-6 py-5'}">
       {#if !mobile && sousOnglets.length}
         <!-- Sous-onglets du groupe (Actions : Importer · Révision · Revue · Liaisons · Photos · iCloud) -->
         <nav class="flex flex-wrap gap-1 mb-5 border-b border-couture" aria-label="Pages de l'onglet">
@@ -225,6 +238,47 @@
           {/each}
         </div>
       </nav>
+    {:else if raccourci}
+      <!-- Vue PC sur écran tactile ou étroit : bouton en bas à droite, mêmes accès que la barre du haut -->
+      {#if menuOuvert}
+        <button class="fixed inset-0 z-40 bg-black/50" aria-label="Fermer le menu" onclick={() => (menuOuvert = false)}></button>
+        <nav id="menu-raccourci" class="fixed z-50 right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] w-72 max-h-[calc(100dvh-8rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-y-auto
+          rounded-2xl border border-couture bg-reliure shadow-2xl py-2 text-sm" aria-label="Menu">
+          {#each ONGLETS as o}
+            {#if o.sous.length}
+              <p class="px-4 pt-1.5 pb-0.5 text-xs uppercase tracking-wide text-mine">{o.nom}
+                {#if o.cle === 'actions' && totalActions}<span class="ml-1 rounded-full bg-onglet-sombre text-onglet px-1.5 tabular-nums normal-case">{totalActions}</span>{/if}</p>
+              {#each o.sous as x}
+                <a href={`#/${x.cle}`} onclick={() => (menuOuvert = false)}
+                  class="flex items-center px-4 min-h-10 {page === x.cle ? 'text-onglet' : 'text-papier'} active:bg-couture">
+                  <span class="flex-1">{x.nom}</span>
+                  {#if compteurs[x.cle]}<span class="rounded-full bg-onglet-sombre text-onglet text-xs px-1.5 tabular-nums">{compteurs[x.cle]}</span>{/if}
+                </a>
+              {/each}
+            {:else}
+              <a href="#/accueil" onclick={() => (menuOuvert = false)}
+                class="flex items-center px-4 min-h-11 {page === 'accueil' ? 'text-onglet' : 'text-papier'} active:bg-couture">Accueil</a>
+            {/if}
+          {/each}
+          <div class="border-t border-couture mt-2 pt-2">
+            <p class="px-4 pb-1 text-xs text-mine tabular-nums">{statut.verifies} / {statut.total} vérifiés</p>
+            {#if ecran.etroit}
+              <button class="w-full text-left px-4 min-h-11 text-papier active:bg-couture" onclick={() => { menuOuvert = false; choisirVue(false) }}>Vue iPhone</button>
+            {/if}
+            <button class="w-full text-left px-4 min-h-11 text-alerte active:bg-couture" onclick={() => { menuOuvert = false; deconnecter() }}>Se déconnecter</button>
+          </div>
+        </nav>
+      {/if}
+      <button class="fixed z-50 right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] w-14 h-14 rounded-full bg-onglet text-onglet-sombre shadow-2xl
+        flex items-center justify-center" aria-label="Menu" aria-expanded={menuOuvert} aria-controls="menu-raccourci"
+        onclick={() => (menuOuvert = !menuOuvert)}>
+        {#if menuOuvert}
+          <svg viewBox="0 0 24 24" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+        {:else}
+          <svg viewBox="0 0 24 24" class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+        {/if}
+        {#if totalActions && !menuOuvert}<span class="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-alerte text-papier text-[11px] leading-5 tabular-nums">{totalActions}</span>{/if}
+      </button>
     {/if}
   </div>
 {/if}
