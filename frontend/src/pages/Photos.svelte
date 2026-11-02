@@ -62,25 +62,52 @@
     }
   }
 
-  // Enregistrer l'affiche choisie dans Photos : feuille de partage (« Enregistrer l'image »)
-  async function enregistrer(l) {
+  // Enregistrer des affiches dans Photos par la feuille de partage de l'iPhone (« Enregistrer N images »).
+  // Safari n'ouvre la feuille de partage que juste après un toucher : les images sont d'abord
+  // préparées (téléchargées), puis un second toucher ouvre le partage. Par lots de 20.
+  const LOT = 20
+  let pret = $state(null)        // { titre, fichiers: File[] } prêt à partager
+  let lot = $state(0)
+  const toutes = $derived(affiches ? affiches.lignes.filter((x) => x.affiche) : [])
+
+  async function preparer(lignesAffiches, titre) {
     occupe = true
+    pret = null
     try {
-      const r = await fetch(`/api/affiches/image/${l.pid}`, { credentials: 'same-origin' })
-      if (!r.ok) throw new Error("Affiche introuvable dans Immich.")
-      const fichier = new File([await r.blob()], `affiche-${l.nom.replace(/[^\p{L}\p{N}]+/gu, '-')}.jpg`, { type: 'image/jpeg' })
-      if (navigator.canShare?.({ files: [fichier] })) {
-        await navigator.share({ files: [fichier] })
-      } else {
-        window.open(URL.createObjectURL(fichier), '_blank')
-        annoncer("Appuie longuement sur l'image puis « Ajouter à Photos ».")
+      const fichiers = []
+      for (const l of lignesAffiches) {
+        const r = await fetch(`/api/affiches/image/${l.pid}`, { credentials: 'same-origin' })
+        if (!r.ok) continue
+        fichiers.push(new File([await r.blob()], `affiche-${l.nom.replace(/[^\p{L}\p{N}]+/gu, '-')}.jpg`, { type: 'image/jpeg' }))
       }
+      if (!fichiers.length) throw new Error('Aucune affiche trouvée dans Immich.')
+      pret = { titre, fichiers }
     } catch (e) {
-      if (e.name !== 'AbortError') annoncer(e.message, true)
+      annoncer(e.message, true)
     } finally {
       occupe = false
     }
   }
+
+  async function partager() {
+    const { fichiers } = pret
+    try {
+      if (navigator.canShare?.({ files: fichiers })) {
+        await navigator.share({ files: fichiers })
+        pret = null
+        if (fichiers.length === LOT && (lot + 1) * LOT < toutes.length) lot += 1
+      } else {
+        for (const f of fichiers) window.open(URL.createObjectURL(f), '_blank')
+        annoncer("Partage indisponible ici : appuie longuement sur chaque image puis « Ajouter à Photos ».")
+        pret = null
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') annoncer(e.message, true)
+    }
+  }
+
+  const enregistrer = (l) => preparer([l], `l'affiche de ${l.nom}`)
+  const lotCourant = $derived(toutes.slice(lot * LOT, (lot + 1) * LOT))
 </script>
 
 <h1 class="titre text-2xl mb-3">Photos</h1>
@@ -100,6 +127,34 @@
       aria-pressed={filtre === v} onclick={() => (filtre = v)}>{t}</button>
   {/each}
 </div>
+
+{#if mode === 'affiche' && toutes.length}
+  <div class="rounded-2xl border border-onglet/50 bg-reliure p-3 mb-3 text-sm">
+    <p class="text-papier">{toutes.length} affiche{toutes.length > 1 ? 's' : ''} choisie{toutes.length > 1 ? 's' : ''}</p>
+    <p class="text-xs text-mine mb-2">Les mettre dans ta pellicule, puis Contacts › Photo et affiche du contact › Photos.</p>
+    <button class="w-full h-11 rounded-xl border border-onglet text-onglet disabled:opacity-50" disabled={occupe}
+      onclick={() => preparer(lotCourant, toutes.length > LOT ? `les affiches ${lot * LOT + 1} à ${lot * LOT + lotCourant.length}` : 'toutes les affiches')}>
+      {occupe ? 'Préparation…' : toutes.length > LOT ? `Préparer les affiches ${lot * LOT + 1} à ${lot * LOT + lotCourant.length}` : 'Préparer toutes les affiches'}</button>
+    {#if toutes.length > LOT}
+      <div class="flex justify-between mt-2 text-xs">
+        <button class="text-mine underline disabled:opacity-40" disabled={lot === 0 || occupe} onclick={() => { lot -= 1; pret = null }}>Lot précédent</button>
+        <span class="text-mine">lot {lot + 1} sur {Math.ceil(toutes.length / LOT)}</span>
+        <button class="text-mine underline disabled:opacity-40" disabled={(lot + 1) * LOT >= toutes.length || occupe} onclick={() => { lot += 1; pret = null }}>Lot suivant</button>
+      </div>
+    {/if}
+  </div>
+{/if}
+
+{#if pret}
+  <div class="fixed inset-x-4 z-40 bottom-[calc(5rem+env(safe-area-inset-bottom))] rounded-2xl border border-onglet bg-reliure shadow-2xl p-4 text-sm"
+    role="dialog" aria-label="Enregistrer dans Photos">
+    <p class="text-papier mb-3">{pret.fichiers.length} image{pret.fichiers.length > 1 ? 's' : ''} prête{pret.fichiers.length > 1 ? 's' : ''} : {pret.titre}.</p>
+    <div class="flex gap-2">
+      <button class="flex-1 h-11 rounded-xl bg-onglet text-onglet-sombre font-semibold" onclick={partager}>Enregistrer dans Photos</button>
+      <button class="h-11 px-4 rounded-xl border border-couture text-mine" onclick={() => (pret = null)}>Annuler</button>
+    </div>
+  </div>
+{/if}
 
 {#if (mode === 'hd' && !portraits) || (mode === 'affiche' && !affiches)}
   <p class="text-mine">Chargement…</p>
