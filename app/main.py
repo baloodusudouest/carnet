@@ -834,6 +834,27 @@ def telecharger_sauvegarde(nom: str):
     return FileResponse(chemin, media_type=media, filename=chemin.name)
 
 
+class ReglageSynchro(BaseModel):
+    actif: bool | None = None
+    reel: bool | None = None
+
+
+@app.get("/api/synchro")
+def synchro():
+    """Synchro iCloud de nuit : réglage (période à blanc), journal des nuits."""
+    return carnet().synchro()
+
+
+@app.post("/api/synchro/reglage")
+def regler_synchro(corps: ReglageSynchro):
+    return carnet().regler_synchro(corps.actif, corps.reel)
+
+
+@app.post("/api/synchro/maintenant")
+def synchroniser():
+    return carnet().synchroniser()
+
+
 @app.post("/api/icloud/veille")
 def icloud_veille():
     return carnet().veiller()

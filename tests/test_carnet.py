@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 import shutil
 from pathlib import Path
 
@@ -2151,3 +2152,70 @@ def test_liaisons_sures_automatiques(client, monkeypatch):
     c.post("/api/liaisons/delier", json={"pid": claire["id"], "refuser": True})
     assert claire["id"] not in cn.base.etat("liaisons") and cn._lier_exactes() == []
     assert f"{claire['id']}|im-claire" in cn.base.etat("liaisons_refusees")
+
+
+def test_synchro_icloud_autonome(client, monkeypatch):
+    """Lot 5 : la nuit, deux semaines à blanc (plan noté, rien écrit), puis écriture réelle sans
+    jamais supprimer ; plafond dépassé ou veille en erreur : rien écrit ; bouton = écriture réelle."""
+    from app.main import etat
+    from app.service import _iso, maintenant
+    from tests.faux_icloud import FauxICloud
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    serveur = FauxICloud((DONNEES / "icloud.vcf").read_text())
+    cn = etat["carnet"]
+    monkeypatch.setattr(cn, "transport_icloud", serveur.transport())
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "icloud_user": "moi@icloud.com",
+                                                        "icloud_password": "abcd-efgh-ijkl-mnop"}))
+    for debut in ("Claire", "Jean-Pierre", "Plomberie"):
+        p = _personne(c, debut)
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        f["groupes"] = ["Amis"]
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    avant = {u: t for u, t in ((k, v) for k, v in serveur.cartes.items())}
+    # 1. Nuit pendant la période à blanc : plan noté, iCloud intact
+    r = c.get("/api/synchro").json()
+    assert r["reglage"]["a_blanc"] and r["reglage"]["jours_restants"] == 14
+    cn.nuit()
+    _attendre(c)
+    e = c.get("/api/synchro").json()["journal"][0]
+    assert e["mode"] == "a_blanc" and e["prevus"]["modifies"] == 3 and e["crees"] == e["modifies"] == 0
+    assert serveur.cartes == avant
+    assert c.get("/status").json()["synchro"]["mode"] == "a_blanc"
+    # 2. Fin de la période : écriture réelle de nuit, sans suppression
+    cn.base.modifier_etat("synchro_reglage", {}, lambda r: r.update(depuis=_iso(maintenant() - timedelta(days=15))))
+    assert not c.get("/api/synchro").json()["reglage"]["a_blanc"]
+    cn.nuit()
+    _attendre(c)
+    e = c.get("/api/synchro").json()["journal"][0]
+    assert e["mode"] == "reel" and e["modifies"] == 3 and e["erreur"] is None, e
+    assert "FN:Claire MARTIN" in serveur.texte("AAAA-1111")
+    # 3. Contact mis de côté : sa suppression attend ton accord (rien supprimé la nuit)
+    pl = _personne(c, "Plomberie")
+    c.post(f"/api/personnes/{pl['id']}/ecarter")
+    cn.nuit()
+    _attendre(c)
+    e = c.get("/api/synchro").json()["journal"][0]
+    assert e["suppressions_en_attente"] >= 1 and serveur.texte("CCCC-3333") is not None   # ni contact ni groupe supprimés
+    # 4. Plafond : trop de modifications prévues → rien écrit
+    monkeypatch.setattr(cn, "SYNCHRO_MODIFICATIONS", (0, 0.0))
+    claire = _personne(c, "Claire")
+    f = c.get(f"/api/personnes/{claire['id']}").json()["fiche"]
+    f["notes"] = "nouvelle note"
+    c.put(f"/api/personnes/{claire['id']}", json={"fiche": f, "valider": True})
+    cn.nuit()
+    _attendre(c)
+    e = c.get("/api/synchro").json()["journal"][0]
+    assert e["mode"] == "bloque" and "plafond" in e["alerte"] and "nouvelle note" not in serveur.texte("AAAA-1111")
+    monkeypatch.setattr(cn, "SYNCHRO_MODIFICATIONS", (20, 0.10))
+    # 5. Interrupteur coupé : la nuit n'écrit rien ; le bouton écrit quand même
+    c.post("/api/synchro/reglage", json={"actif": False})
+    cn.nuit()
+    _attendre(c)
+    assert c.get("/api/synchro").json()["journal"][0]["mode"] == "arret"
+    c.post("/api/synchro/maintenant")
+    _attendre(c)
+    e = c.get("/api/synchro").json()["journal"][0]
+    assert e["manuel"] and e["prevus"]["noms"] == ["Claire MARTIN"], e
+    assert "nouvelle note" in serveur.texte("AAAA-1111").replace("\r\n ", "")

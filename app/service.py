@@ -1586,6 +1586,128 @@ class Carnet:
                                                + (f", {len(bilan['erreurs'])} erreur(s)" if bilan["erreurs"] else "")
                                                + "."))
 
+    # ================================================================ synchro iCloud autonome (nuit)
+
+    SYNCHRO_A_BLANC_JOURS = 14        # d'abord deux semaines « à blanc » : le plan est noté, rien n'est écrit
+    SYNCHRO_CREATIONS = (10, 0.05)    # plafond par nuit : max(10, 5 % des contacts vérifiés)
+    SYNCHRO_MODIFICATIONS = (20, 0.10)  # max(20, 10 %)
+
+    def reglage_synchro(self) -> dict:
+        r = self.base.etat("synchro_reglage")
+        if r is None:   # première fois : la période à blanc commence maintenant
+            r = {"actif": True, "depuis": _iso(maintenant())}
+            self.base.ecrire_etat("synchro_reglage", r)
+        fin = datetime.fromisoformat(r["depuis"]) + timedelta(days=self.SYNCHRO_A_BLANC_JOURS)
+        reste = (fin - maintenant()).total_seconds()
+        return {**r, "a_blanc": reste > 0 and not r.get("reel_des_maintenant"),
+                "a_blanc_jusqu_au": _iso(fin), "jours_restants": max(0, int(reste // 86400) + (1 if reste % 86400 else 0))}
+
+    def regler_synchro(self, actif: bool | None = None, reel: bool | None = None) -> dict:
+        r = dict(self.base.etat("synchro_reglage") or {"actif": True, "depuis": _iso(maintenant())})
+        if actif is not None:
+            r["actif"] = bool(actif)
+        if reel is not None:   # « Passer à l'écriture réelle » avant la fin des deux semaines
+            r["reel_des_maintenant"] = bool(reel)
+        self.base.ecrire_etat("synchro_reglage", r)
+        return self.synchro()
+
+    def synchro(self) -> dict:
+        journal = self.base.etat("synchro_journal", [])
+        return {"reglage": self.reglage_synchro(), "journal": journal[:30],
+                "configure": bool(self.cfg.icloud_user and self.cfg.icloud_password),
+                "tache": self.etat_tache()}
+
+    def synchroniser(self) -> dict:
+        """Bouton « Synchroniser maintenant » : même plan et mêmes garde-fous que la nuit, mais écrit
+        pour de bon même pendant la période à blanc (c'est toi qui le demandes)."""
+        if not (self.cfg.icloud_user and self.cfg.icloud_password):
+            raise ErreurCarnet("Renseigne d'abord CARNET_ICLOUD_USER et CARNET_ICLOUD_PASSWORD dans la stack.")
+        return self._lancer("ecriture", lambda: self._synchroniser(manuel=True))
+
+    def _synchroniser(self, manuel: bool = False) -> dict:
+        """Écrit dans iCloud les fiches validées qui ont changé. Garde-fous : jamais de suppression
+        (contacts ou groupes : elles attendent ton accord dans la page iCloud), plafonds de
+        créations et de modifications, arrêt si la veille de la nuit est en erreur, cartes
+        changées sur l'iPhone mises en révision au lieu d'être écrasées."""
+        reglage = self.reglage_synchro()
+        entree = {"le": _iso(maintenant()), "manuel": manuel, "mode": "reel", "crees": 0, "modifies": 0,
+                  "groupes": 0, "prevus": None, "suppressions_en_attente": 0, "en_revision": 0,
+                  "alerte": None, "erreur": None, "sauvegarde": None}
+
+        def noter():
+            journal = [entree] + self.base.etat("synchro_journal", [])
+            self.base.ecrire_etat("synchro_journal", journal[:60])
+            return entree
+        if not manuel and not reglage["actif"]:
+            entree["mode"] = "arret"
+            return noter()
+        if not manuel:
+            veille = (self.base.etat("veille_journal", []) or [None])[0]
+            if veille and veille.get("erreur") and maintenant() - datetime.fromisoformat(veille["le"]) < timedelta(hours=12):
+                entree.update(mode="bloque", alerte=f"Rien écrit : la veille de cette nuit est en erreur ({veille['erreur']}).")
+                return noter()
+        try:
+            dav = self._dav()
+            try:
+                self._tache["message"] = "Synchro : lecture d'iCloud…"
+                dav.decouvrir()
+                brutes = dav.lister()
+                cartes = [synchro.analyser(b.href, b.etag, b.texte) for b in brutes]
+                self._cache_sauvegardes = None
+                self._tache["message"] = "Synchro : comparaison avec carnet…"
+                plan = self._preparer(cartes, dav)
+            finally:
+                dav.fermer()
+            entree["en_revision"] = self._plan_vers_revision(plan)
+            ecrire = [a for a in plan["actions"] if a["action"] != "supprimer"]
+            suppressions = [a for a in plan["actions"] if a["action"] == "supprimer"]
+            entree["suppressions_en_attente"] = len(suppressions)
+            n_crees = sum(1 for a in ecrire if a["cible"] == "contact" and a["action"] == "creer")
+            n_modif = sum(1 for a in ecrire if a["cible"] == "contact" and a["action"] == "modifier")
+            n_groupes = sum(1 for a in ecrire if a["cible"] == "groupe")
+            entree["prevus"] = {"crees": n_crees, "modifies": n_modif, "groupes": n_groupes,
+                                "noms": [a["nom"] for a in ecrire if a["cible"] == "contact"][:40]}
+            verifies = len(self._verifiees())
+            max_c = max(self.SYNCHRO_CREATIONS[0], int(verifies * self.SYNCHRO_CREATIONS[1]))
+            max_m = max(self.SYNCHRO_MODIFICATIONS[0], int(verifies * self.SYNCHRO_MODIFICATIONS[1]))
+            if n_crees > max_c or n_modif > max_m:
+                entree.update(mode="bloque", alerte=(
+                    f"Rien écrit : {n_crees} création(s) et {n_modif} modification(s) prévues, au-delà du plafond "
+                    f"de la nuit ({max_c} et {max_m}). Vérifie le plan dans la page iCloud et écris-le à la main."))
+                self._tache.update(etat="termine", message=entree["alerte"])
+                return noter()
+            if not manuel and reglage["a_blanc"]:
+                entree["mode"] = "a_blanc"
+                self._tache.update(etat="termine", message=(
+                    f"Synchro à blanc : {n_crees} création(s), {n_modif} modification(s), {n_groupes} groupe(s) "
+                    f"auraient été écrits (écriture réelle à partir du {reglage['a_blanc_jusqu_au'][:10]})."))
+                return noter()
+            if not ecrire:
+                self._tache.update(etat="termine", message="Synchro : iCloud est déjà à jour.")
+                return noter()
+            self._ecrire({**plan, "actions": ecrire, "inconnus": []}, essai=False)
+            bilan = self.base.etat("derniere_ecriture_icloud") or {}
+            entree.update(crees=bilan.get("crees", 0), modifies=bilan.get("modifies", 0), groupes=bilan.get("groupes", 0),
+                          sauvegarde=bilan.get("sauvegarde"),
+                          erreur="; ".join(bilan.get("erreurs", [])[:3]) or None,
+                          alerte=(f"{len(bilan['conflits'])} carte(s) changée(s) pendant l'écriture, laissée(s) telle(s) quelle(s)"
+                                  if bilan.get("conflits") else None))
+        except (ErreurICloud, ErreurCarnet) as exc:
+            entree.update(mode="bloque", erreur=str(exc))
+            self._tache.update(etat="erreur", message=f"Synchro : {exc}")
+        return noter()
+
+    def _resume_synchro(self) -> dict | None:
+        """Dernière synchro, pour Home Assistant (compteurs seulement)."""
+        journal = self.base.etat("synchro_journal", [])
+        if not journal:
+            return None
+        e = journal[0]
+        return {"le": e["le"], "mode": e["mode"], "ok": not e["erreur"] and not e["alerte"],
+                "crees": e["crees"], "modifies": e["modifies"], "groupes": e["groupes"],
+                "suppressions_en_attente": e["suppressions_en_attente"], "en_revision": e["en_revision"],
+                "alerte": bool(e["alerte"]), "erreur": bool(e["erreur"])}
+
     # ================================================================ LinkedIn par l'API (portabilité des données)
 
     LINKEDIN_API = "https://api.linkedin.com/rest/memberSnapshotData"
@@ -3331,6 +3453,11 @@ class Carnet:
                     self._appliquer_liens(None)
                 except Exception:  # noqa: BLE001 — la sauvegarde passe quand même
                     log.exception("Liaisons de nuit")
+            if self.cfg.icloud_user and self.cfg.icloud_password:
+                try:
+                    self._synchroniser()
+                except Exception:  # noqa: BLE001
+                    log.exception("Synchro iCloud de nuit")
             if self._portraits_dus():   # une fois par mois, pour ménager le NAS
                 try:
                     self._chercher_portraits(None)
@@ -3565,11 +3692,20 @@ class Carnet:
                            (_iso(quand), imp["id"]))
                 cx.execute("UPDATE sources SET brut = NULL WHERE import_id = ?", (imp["id"],))
             log.info("Archive %s supprimée (durée de conservation atteinte)", imp["archive"])
-        limite = (quand - timedelta(days=self.cfg.archive_jours)).timestamp()
-        for f in self.cfg.archives.glob("*_icloud-sauvegarde.vcf"):
-            if f.stat().st_mtime < limite:
-                f.unlink(missing_ok=True)
-                log.info("Sauvegarde iCloud %s supprimée (durée de conservation atteinte)", f.name)
+        # Sauvegardes d'iCloud faites avant chaque écriture : toutes celles des 14 derniers jours,
+        # puis la première de chaque mois pendant 12 mois (l'écriture de nuit en ferait une par nuit)
+        recentes = (quand - timedelta(days=14)).strftime("%Y-%m-%d")
+        un_an = (quand - timedelta(days=365)).strftime("%Y-%m-%d")
+        mois_gardes: set[str] = set()
+        for f in sorted(self.cfg.archives.glob("*_icloud-sauvegarde.vcf")):
+            jour = f.name[:10]
+            if jour >= recentes:
+                continue
+            if jour >= un_an and jour[:7] not in mois_gardes:
+                mois_gardes.add(jour[:7])
+                continue
+            f.unlink(missing_ok=True)
+            log.info("Sauvegarde iCloud %s supprimée (durée de conservation atteinte)", f.name)
         return len(echues)
 
     # ================================================================ état (Home Assistant)
@@ -3642,6 +3778,7 @@ class Carnet:
             "dernier_export": self.base.etat("dernier_export"),
             "dernier_envoi_kit": self.base.etat("dernier_envoi_kit"),
             "veille": self._resume_veille(),
+            "synchro": self._resume_synchro(),
             "sauvegarde": self._resume_sauvegarde(),
             "derniere_ecriture_icloud": {k: v for k, v in (self.base.etat("derniere_ecriture_icloud") or {}).items()
                                          if k in ("le", "essai", "crees", "modifies", "supprimes", "groupes")} or None,
