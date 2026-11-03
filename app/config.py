@@ -1,7 +1,7 @@
 """Configuration lue dans l'environnement (variables de la stack Portainer).
 
-Aucun secret n'a de valeur par défaut : sans CARNET_PASSWORD ni CARNET_DB_KEY,
-l'application refuse de démarrer.
+Les durées et plafonds sont fixés dans le code (garde-fous sans réglage). Seuls les accès,
+les secrets et l'heure de la nuit viennent de la stack.
 """
 from __future__ import annotations
 
@@ -12,99 +12,91 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class Config:
-    data: Path              # dossier visible depuis le PC : depot/, archives/, export/
-    state: Path             # base chiffrée, hors de tout partage réseau
-    password: str           # mot de passe de l'interface
-    db_key: str             # clé SQLCipher de la base
-    region: str             # région par défaut des numéros sans indicatif
-    archive_jours: int      # durée de conservation des archives
-    alerte_jours: int       # préavis avant suppression d'une archive
-    session_jours: int      # durée de la session sur un navigateur
-    kit_config: Path | None # dossier config/ du kit d'urgence (volume)
-    kit_vcf: str            # nom du fichier attendu par le kit
-    kit_url: str            # URL interne du kit (réseau Docker de la stack)
-    kit_token: str          # jeton des appels POST du kit
-    static: Path            # interface compilée
-    emoji_groupes: str      # règles « émoji:groupe;… » (facultatif)
+    data: Path                    # dossier visible depuis le PC : depot/ (fichiers à importer)
+    state: Path                   # base et sauvegardes : hors de tout partage et de OneDrive
+    password: str                 # mot de passe de l'interface
+    static: Path                  # interface compilée
+    region: str = "FR"            # région des numéros sans indicatif
+    emoji_groupes: str = ""       # règles « émoji:groupe;… » (facultatif)
+    veille_heure: str = "03:00"   # heure de la nuit ; vide ou « off » : nuit désactivée
     icloud_url: str = "https://contacts.icloud.com"
-    icloud_user: str = ""       # identifiant Apple (V2 : écriture dans iCloud)
-    icloud_password: str = ""   # mot de passe d'application Apple, pas celui du compte
-    veille_heure: str = "03:00" # veille iCloud quotidienne (vide : désactivée)
-    synology_url: str = ""          # CardDAV de Synology Contacts (copie de nuit), vide : désactivée
-    synology_user: str = ""
+    icloud_user: str = ""
+    icloud_password: str = ""     # mot de passe d'application Apple, pas celui du compte
+    synology_url: str = ""        # CardDAV de Synology Contacts (copie de nuit) ; vide : désactivée
+    synology_user: str = "carnet"
     synology_password: str = ""
-    synology_verifier_tls: bool = True      # False : certificat du NAS non vérifié (adresse IP en réseau local)
-    synology_carnet: str = "My Contacts|Mes contacts"   # carnet d'adresses personnel (jamais celui de l'équipe)
-    sauvegarde_jours: int = 30       # exports .vcf datés gardés
+    synology_carnet: str = "My Contacts|Mes contacts"
+    synology_verifier_tls: bool = True
     immich_url: str = "http://immich-server:2283"
-    immich_cle: str = ""              # clé d'API Immich (person.read, person.update)
+    immich_cle: str = ""
     treemich_url: str = "http://treemich-api:4000"
     treemich_email: str = ""
     treemich_password: str = ""
-    ha_token: str = ""                # jeton des appels de Home Assistant (/ha/…)
-    linkedin_client_id: str = ""      # app LinkedIn Developers (portabilité des données)
+    ha_token: str = ""            # jeton des appels de Home Assistant (/ha/…)
+    linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
     linkedin_redirect: str = "https://localhost/carnet-linkedin"
+    kit_config: Path | None = None   # dossier config/ du kit d'urgence (volume)
+    kit_url: str = "http://kit-urgence:8095"
+    kit_token: str = ""
+    ancienne_base: Path | None = None   # base 1.3.1 (SQLCipher), lue une seule fois à la reprise
+    ancienne_cle: str = ""              # CARNET_DB_KEY, la clé déjà présente dans la stack
+
+    @property
+    def db_path(self) -> Path:
+        return self.state / "carnet2.db"
+
+    @property
+    def sauvegardes(self) -> Path:
+        return self.state / "sauvegardes"
 
     @property
     def depot(self) -> Path:
         return self.data / "depot"
 
     @property
-    def archives(self) -> Path:
-        return self.data / "archives"
-
-    @property
-    def export(self) -> Path:
-        return self.data / "export"
-
-    @property
-    def db_path(self) -> Path:
-        return self.state / "carnet.db"
+    def nuit_active(self) -> bool:
+        return bool(self.veille_heure) and self.veille_heure.lower() not in ("off", "non", "0")
 
 
-def _obligatoire(nom: str) -> str:
-    valeur = os.environ.get(nom, "").strip()
-    if not valeur or valeur == "change-moi":
-        raise RuntimeError(f"Variable d'environnement {nom} absente : à définir dans la stack.")
-    return valeur
+def _env(nom: str, defaut: str = "") -> str:
+    return os.environ.get(nom, defaut).strip()
 
 
 def charger() -> Config:
-    kit = os.environ.get("CARNET_KIT_CONFIG", "/kit-config").strip()
+    mdp = _env("CARNET_PASSWORD")
+    if not mdp or mdp == "change-moi":
+        raise RuntimeError("Variable d'environnement CARNET_PASSWORD absente : à définir dans la stack.")
+    state = Path(_env("CARNET_STATE", "/state"))
+    kit = _env("CARNET_KIT_CONFIG", "/kit-config")
     return Config(
-        data=Path(os.environ.get("CARNET_DATA", "/data")),
-        state=Path(os.environ.get("CARNET_STATE", "/state")),
-        password=_obligatoire("CARNET_PASSWORD"),
-        db_key=_obligatoire("CARNET_DB_KEY"),
-        region=os.environ.get("CARNET_REGION", "FR").upper(),
-        archive_jours=int(os.environ.get("CARNET_ARCHIVE_JOURS", "365")),
-        alerte_jours=int(os.environ.get("CARNET_ALERTE_JOURS", "30")),
-        session_jours=int(os.environ.get("CARNET_SESSION_JOURS", "30")),
-        kit_config=Path(kit) if kit else None,
-        kit_vcf=os.environ.get("CARNET_KIT_VCF", "contacts-urgence.vcf"),
-        kit_url=os.environ.get("KIT_URL", "http://kit-urgence:8095").rstrip("/"),
-        kit_token=os.environ.get("KIT_API_TOKEN", "").strip(),
-        static=Path(os.environ.get("CARNET_STATIC", str(Path(__file__).parent / "static"))),
+        data=Path(_env("CARNET_DATA", "/data")),
+        state=state,
+        password=mdp,
+        static=Path(_env("CARNET_STATIC", str(Path(__file__).parent / "static"))),
+        region=_env("CARNET_REGION", "FR").upper(),
         emoji_groupes=os.environ.get("CARNET_EMOJI_GROUPES", ""),
-        icloud_url=os.environ.get("CARNET_ICLOUD_URL", "https://contacts.icloud.com").strip(),
-        icloud_user=os.environ.get("CARNET_ICLOUD_USER", "").strip(),
-        icloud_password=os.environ.get("CARNET_ICLOUD_PASSWORD", "").strip(),
-        veille_heure=os.environ.get("CARNET_VEILLE_HEURE", "03:00").strip(),
-        synology_url=os.environ.get("CARNET_SYNOLOGY_URL", "").strip(),
-        synology_user=os.environ.get("CARNET_SYNOLOGY_USER", "carnet").strip(),
-        synology_password=os.environ.get("CARNET_SYNOLOGY_PASSWORD", "").strip(),
-        synology_verifier_tls=os.environ.get("CARNET_SYNOLOGY_VERIFIER_TLS", "oui").strip().lower()
-        not in ("non", "false", "0", "no"),
-        synology_carnet=os.environ.get("CARNET_SYNOLOGY_CARNET", "My Contacts|Mes contacts").strip(),
-        sauvegarde_jours=int(os.environ.get("CARNET_SAUVEGARDE_JOURS", "30")),
-        immich_url=os.environ.get("CARNET_IMMICH_URL", "http://immich-server:2283").strip(),
-        immich_cle=os.environ.get("CARNET_IMMICH_CLE", "").strip(),
-        treemich_url=os.environ.get("CARNET_TREEMICH_URL", "http://treemich-api:4000").strip(),
-        treemich_email=os.environ.get("CARNET_TREEMICH_EMAIL", "").strip(),
-        treemich_password=os.environ.get("CARNET_TREEMICH_PASSWORD", "").strip(),
-        ha_token=os.environ.get("CARNET_HA_TOKEN", "").strip(),
-        linkedin_client_id=os.environ.get("CARNET_LINKEDIN_CLIENT_ID", "").strip(),
-        linkedin_client_secret=os.environ.get("CARNET_LINKEDIN_CLIENT_SECRET", "").strip(),
-        linkedin_redirect=os.environ.get("CARNET_LINKEDIN_REDIRECT", "https://localhost/carnet-linkedin").strip(),
+        veille_heure=_env("CARNET_VEILLE_HEURE", "03:00"),
+        icloud_url=_env("CARNET_ICLOUD_URL", "https://contacts.icloud.com"),
+        icloud_user=_env("CARNET_ICLOUD_USER"),
+        icloud_password=_env("CARNET_ICLOUD_PASSWORD"),
+        synology_url=_env("CARNET_SYNOLOGY_URL"),
+        synology_user=_env("CARNET_SYNOLOGY_USER", "carnet"),
+        synology_password=_env("CARNET_SYNOLOGY_PASSWORD"),
+        synology_carnet=_env("CARNET_SYNOLOGY_CARNET", "My Contacts|Mes contacts"),
+        synology_verifier_tls=_env("CARNET_SYNOLOGY_VERIFIER_TLS", "oui").lower() not in ("non", "false", "0", "no"),
+        immich_url=_env("CARNET_IMMICH_URL", "http://immich-server:2283"),
+        immich_cle=_env("CARNET_IMMICH_CLE"),
+        treemich_url=_env("CARNET_TREEMICH_URL", "http://treemich-api:4000"),
+        treemich_email=_env("CARNET_TREEMICH_EMAIL"),
+        treemich_password=_env("CARNET_TREEMICH_PASSWORD"),
+        ha_token=_env("CARNET_HA_TOKEN"),
+        linkedin_client_id=_env("CARNET_LINKEDIN_CLIENT_ID"),
+        linkedin_client_secret=_env("CARNET_LINKEDIN_CLIENT_SECRET"),
+        linkedin_redirect=_env("CARNET_LINKEDIN_REDIRECT", "https://localhost/carnet-linkedin"),
+        kit_config=Path(kit) if kit else None,
+        kit_url=_env("KIT_URL", "http://kit-urgence:8095").rstrip("/"),
+        kit_token=_env("KIT_API_TOKEN"),
+        ancienne_base=state / "carnet.db",
+        ancienne_cle=_env("CARNET_DB_KEY"),
     )

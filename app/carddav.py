@@ -184,6 +184,19 @@ class CardDAV:
                                "Rien n'est modifié ; nouvel essai au prochain passage.")
         return cartes
 
+    def lire_une(self, href: str) -> Brute | None:
+        """Une seule carte (ETag et texte exacts, tels qu'iCloud les garde après une écriture)."""
+        carnet = self.decouvrir()
+        corps = (f'<?xml version="1.0" encoding="utf-8"?><c:addressbook-multiget xmlns:d="{D}" xmlns:c="{C}">'
+                 f"<d:prop><d:getetag/><c:address-data/></d:prop><d:href>{_xml(href)}</d:href></c:addressbook-multiget>")
+        r = self._requete("REPORT", carnet, content=corps.encode(),
+                          headers={"Depth": "1", "Content-Type": "application/xml; charset=utf-8"})
+        for h, prop in self._reponses(r.content):
+            texte = prop.findtext(f"{{{C}}}address-data")
+            if texte:
+                return Brute(h, (prop.findtext(f"{{{D}}}getetag") or "").strip(), texte)
+        return None
+
     def etag(self, href: str) -> str | None:
         """ETag actuel d'une carte (quand le PUT ne l'a pas renvoyé)."""
         try:

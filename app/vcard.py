@@ -1,15 +1,26 @@
-"""Lecture des fichiers .vcf exportés par iCloud.com et Google Contacts (vCard 3.0)."""
+"""Lecture des cartes vCard : celles d'iCloud (CardDAV) et des fichiers .vcf importés à la main."""
 from __future__ import annotations
 
 import base64
 import logging
 import re
 
+from dataclasses import dataclass, field
+
 import vobject
 
-from .. import normalisation as n
-from ..modele import fiche_vide, groupes_reconnus
-from . import FicheLue
+from . import normalisation as n
+from .modele import fiche_vide, groupes_reconnus
+
+
+@dataclass
+class FicheLue:
+    fiche: dict
+    uid: str | None = None
+    photo: bytes | None = None
+    photo_type: str | None = None
+    brut: str = ""
+    avertissements: list[str] = field(default_factory=list)
 
 log = logging.getLogger("carnet.vcard")
 
@@ -86,7 +97,7 @@ def _photo(ligne) -> tuple[bytes | None, str | None]:
     return None, None  # lien vers un serveur (Google) : inutilisable hors ligne
 
 
-def _lire_carte(brut: str, region: str) -> tuple[FicheLue | None, dict | None]:
+def lire_carte(brut: str, region: str = "FR") -> tuple[FicheLue | None, dict | None]:
     """Retourne (fiche, None) pour un contact, (None, groupe) pour une carte de groupe Apple."""
     # vobject coupe la valeur d'un TEL à la première virgule : la pause avant un numéro de poste
     # (« +33 5 53 00 00 00,123 ») est réécrite en « poste » pour être conservée
@@ -204,7 +215,7 @@ def lire(texte: str, region: str = "FR") -> tuple[list[FicheLue], list[str]]:
     fiches, groupes, avertissements = [], [], []
     for i, bloc in enumerate(BLOC.findall(texte.replace("\r\n", "\n")), start=1):
         try:
-            lue, groupe = _lire_carte(bloc, region)
+            lue, groupe = lire_carte(bloc, region)
         except Exception as exc:
             avertissements.append(f"Carte n° {i} illisible : {exc}")
             continue

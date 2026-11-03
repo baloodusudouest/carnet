@@ -17,7 +17,7 @@ RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 # ---------- Étape 3 : image d'exécution ----------
 FROM python:3.12-slim-bookworm
 LABEL org.opencontainers.image.title="carnet" \
-      org.opencontainers.image.description="Rassemble, vérifie et fusionne les contacts iCloud, Gmail et Outlook" \
+      org.opencontainers.image.description="Gardien des contacts iCloud : relit, propose, relie à Immich, Treemich et LinkedIn, puis écrit" \
       org.opencontainers.image.source="https://github.com/baloodusudouest/carnet"
 
 # gosu : abandon des droits root ; tzdata : dates françaises ; police DejaVu : nom de la société sur les affiches de logo
