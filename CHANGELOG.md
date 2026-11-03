@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.0.2 — 3 novembre 2026
+- Fiche : un stylo en haut à droite ouvre la modification des informations (à la place du bouton « Modifier » en bas du bloc).
+
 ## 2.0.1 — 3 novembre 2026
 - **iPhone** : plus rien ne passe sous l'heure et la batterie. En-tête des contacts fixé en haut (recherche, tri, groupes). Groupes dans un menu au lieu de la rangée qui débordait. Index fin des lettres sur le bord droit, à parcourir du pouce comme dans Contacts. Le titre de chaque lettre reste en haut jusqu'à la suivante.
 - **PC** : liste et fiche côte à côte dans Contacts (la liste garde sa place) ; dans « À traiter », la liste à gauche et le point choisi à droite, le suivant s'affiche après chaque décision.
