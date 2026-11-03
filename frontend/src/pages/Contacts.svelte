@@ -74,10 +74,8 @@
     const fichier = e.target.files?.[0]
     if (!fichier) return
     envoi = true
-    const fd = new FormData()
-    fd.append('fichier', fichier)
     try {
-      const r = await api.post('/api/import', fd)
+      const r = await api.envoyer(fichier)
       dire(r.source === 'linkedin'
         ? `LinkedIn : ${r.rattachees} relations reconnues, ${r.proposees} changement(s) à traiter.`
         : r.source === 'instagram'

@@ -65,18 +65,23 @@
   // Complétude et réseaux
   let reseau = $state('')        // réseau en cours d'ajout
   let profil = $state('')        // adresse, pseudo ou numéro
+  let aDelier = $state(null)      // réseau dont le retrait attend confirmation
   async function poster(chemin, corps, messageOk) {
     attente = true
     try {
-      const res = await api.post(`/api/contacts/${e}/${chemin}`, corps)
+      // La version affichée part avec la demande : si la fiche a changé depuis, rien n'est fait
+      const res = await api.post(`/api/contacts/${e}/${chemin}`, { ...corps, etag: donnees.etag })
       if (res?.jeton) await apresEcriture(res, messageOk)
       else { dire(messageOk); await rafraichirContacts() }
       reseau = profil = ''
+      aDelier = null
       await charger()
     } catch (err) { erreur(err) } finally { attente = false }
   }
   const ajouterProfil = () => poster('profil', { service: reseau, valeur: profil }, `Profil ${PLATEFORMES[reseau].nom} ajouté.`)
   const delierReseau = (s) => poster('delier-reseau', { service: s }, `${PLATEFORMES[s].nom} délié : plus proposé pour cette fiche.`)
+  // Adresse qui sera retirée de la carte (la confirmation la montre)
+  const adresseReseau = (s) => (f?.sites || []).filter((x) => x.type === s).map((x) => x.valeur).join(', ')
   const AIDE = { facebook: 'facebook.com/…', instagram: 'Pseudo ou instagram.com/…', telegram: 'Pseudo ou t.me/…' }
 
   const SERVICE = { immich: 'Immich', treemich: 'Treemich' }
@@ -190,8 +195,18 @@
         <Plateformes liste={liees} toutes taille="grand" />
         <ul class="reseaux">
           {#each RESEAUX.filter((r) => liees.includes(r)) as r}
-            <li class="liaison"><span>{PLATEFORMES[r].nom}</span>
-              <button class="bouton" disabled={attente} onclick={() => delierReseau(r)}>Délier</button></li>
+            <li class="liaison"><span>{PLATEFORMES[r].nom} <span class="discret">{adresseReseau(r)}</span></span>
+              {#if aDelier !== r}
+                <button class="bouton" disabled={attente} onclick={() => (aDelier = r)}>Délier</button>
+              {/if}</li>
+            {#if aDelier === r}
+              <li class="confirmer">
+                <p>{adresseReseau(r) ? `${adresseReseau(r)} sera retiré de la carte iCloud` : 'La liaison sera retirée'}, et cette personne ne sera plus proposée pour cette fiche.</p>
+                <span class="boutons-gauche">
+                  <button class="bouton bouton-danger" disabled={attente} onclick={() => delierReseau(r)}>Délier {PLATEFORMES[r].nom}</button>
+                  <button class="bouton" onclick={() => (aDelier = null)}>Garder</button></span>
+              </li>
+            {/if}
           {/each}
         </ul>
         {#if RESEAUX.some((r) => !liees.includes(r))}
@@ -293,6 +308,9 @@
   .boutons-gauche { display: flex; flex-wrap: wrap; gap: 0.5rem; }
   .petit { font-size: 0.82rem; }
   .reseaux { margin-top: 0.4rem; }
+  .reseaux .discret { font-size: 0.85rem; overflow-wrap: anywhere; }
+  .confirmer { display: grid; gap: 0.5rem; padding: 0.75rem; margin: 0.25rem 0 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--color-alerte) 50%, transparent); border-radius: 8px; }
   .ajout { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; align-items: center; }
   .ajout select, .ajout input { flex: 1 1 12rem; width: auto; min-height: 2.75rem; }
   .choix { margin-top: 0.4rem; margin-right: 0.4rem; }

@@ -32,12 +32,14 @@ class _Boucle:
 
 
 _boucle: _Boucle | None = None
+_verrou = threading.RLock()   # une seule opération Telegram à la fois (double clic, deux onglets)
 
 
 def _executer(coroutine, delai: float = 60):
     global _boucle
-    if _boucle is None:
-        _boucle = _Boucle()
+    with _verrou:
+        if _boucle is None:
+            _boucle = _Boucle()
     return _boucle.faire(coroutine, delai)
 
 
@@ -62,16 +64,33 @@ def _en_cours(c: Carnet) -> dict | None:
     return e
 
 
+def _expirer(c: Carnet, e: dict) -> None:
+    """Minuteur : la connexion commencée est fermée et oubliée au bout de 10 min, même sans
+    nouvel appel."""
+    with _verrou:
+        if c.__dict__.get("_telegram") is e:
+            abandonner(c)
+
+
 def demander_code(c: Carnet, telephone: str) -> dict:
     t = normalisation.telephone(telephone, "mobile", c.cfg.region)
     if not t or not t.get("valide"):
         raise ErreurCarnet("Numéro non reconnu : écris ton numéro Telegram, par exemple 06 12 34 56 78.")
+    if not _verrou.acquire(blocking=False):
+        raise ErreurCarnet("Une connexion à Telegram est déjà en cours.")
+    try:
+        return _demander_code(c, t["valeur"])
+    finally:
+        _verrou.release()
+
+
+def _demander_code(c: Carnet, numero: str) -> dict:
     abandonner(c)
     client = _client(c)
 
     async def envoyer():
         await client.connect()
-        return await client.send_code_request(t["valeur"])
+        return await client.send_code_request(numero)
     try:
         envoi = _executer(envoyer())
     except ErreurCarnet:
@@ -79,13 +98,26 @@ def demander_code(c: Carnet, telephone: str) -> dict:
     except Exception as exc:  # noqa: BLE001 — message de Telegram, sans données personnelles
         _executer(client.disconnect())
         raise ErreurCarnet(f"Telegram refuse l'envoi du code ({exc.__class__.__name__}).") from exc
-    c._telegram = {"client": client, "telephone": t["valeur"], "hash": envoi.phone_code_hash,
-                   "jusqua": time.monotonic() + DUREE_MAX}
+    e = {"client": client, "telephone": numero, "hash": envoi.phone_code_hash, "jusqua": time.monotonic() + DUREE_MAX}
+    c._telegram = e
+    minuteur = threading.Timer(DUREE_MAX, _expirer, args=(c, e))
+    minuteur.daemon = True
+    minuteur.start()
     return {"ok": True, "message": "Code envoyé dans ton application Telegram."}
 
 
 def importer(c: Carnet, code: str, mot_de_passe: str = "") -> dict:
-    """Connexion avec le code reçu, lecture des contacts, puis déconnexion (session effacée)."""
+    """Connexion avec le code reçu, lecture des contacts, puis déconnexion (session effacée).
+    Après une connexion réussie, la déconnexion a lieu quoi qu'il arrive."""
+    if not _verrou.acquire(blocking=False):
+        raise ErreurCarnet("Import Telegram déjà en cours.")
+    try:
+        return _importer(c, code, mot_de_passe)
+    finally:
+        _verrou.release()
+
+
+def _importer(c: Carnet, code: str, mot_de_passe: str) -> dict:
     e = _en_cours(c)
     if not e:
         raise ErreurCarnet("Demande d'abord un code (il est valable quelques minutes).")
@@ -110,18 +142,22 @@ def importer(c: Carnet, code: str, mot_de_passe: str = "") -> dict:
     if utilisateurs is None:
         return {"ok": False, "mot_de_passe": True,
                 "message": "Ton compte a la double authentification : saisis aussi ton mot de passe Telegram."}
-    personnes = []
-    for u in utilisateurs:
-        if getattr(u, "bot", False) or getattr(u, "deleted", False):
-            continue
-        tel = normalisation.telephone("+" + u.phone if getattr(u, "phone", None) else "", "mobile", c.cfg.region)
-        pseudo = getattr(u, "username", None) or next((x.username for x in (getattr(u, "usernames", None) or [])
-                                                        if getattr(x, "active", True)), "") or ""
-        nom = " ".join(x for x in (getattr(u, "first_name", "") or "", getattr(u, "last_name", "") or "") if x).strip()
-        personnes.append({"ext_id": str(u.id), "nom": nom or pseudo, "telephone": tel["valeur"] if tel and tel.get("valide") else "",
-                          "pseudo": pseudo, "prenom": getattr(u, "first_name", "") or "", "nom_famille": getattr(u, "last_name", "") or ""})
-    abandonner(c, deconnecter=True)
+    try:
+        personnes = []
+        for u in utilisateurs:
+            if getattr(u, "bot", False) or getattr(u, "deleted", False):
+                continue
+            tel = normalisation.telephone("+" + u.phone if getattr(u, "phone", None) else "", "mobile", c.cfg.region)
+            pseudo = getattr(u, "username", None) or next((x.username for x in (getattr(u, "usernames", None) or [])
+                                                            if getattr(x, "active", True)), "") or ""
+            nom = " ".join(x for x in (getattr(u, "first_name", "") or "", getattr(u, "last_name", "") or "") if x).strip()
+            personnes.append({"ext_id": str(u.id), "nom": nom or pseudo,
+                              "telephone": tel["valeur"] if tel and tel.get("valide") else "", "pseudo": pseudo,
+                              "prenom": getattr(u, "first_name", "") or "", "nom_famille": getattr(u, "last_name", "") or ""})
+    finally:
+        abandonner(c, deconnecter=True)     # session fermée côté Telegram et oubliée, même après une erreur
     reseaux.enregistrer(c, "telegram", personnes)
+    reseaux.purger(c)
     n = reseaux.proposer(c)
     c.base.noter("reseaux", f"Telegram : {len(personnes)} contacts lus, {n} rattachement(s) proposé(s) ; session fermée et effacée")
     return {"ok": True, "lues": len(personnes), "proposees": n}

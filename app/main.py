@@ -9,7 +9,7 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from . import (__version__, actions, completude, icloud, liaisons, linkedin, nuit, photos, reprise, reseaux, sorties,
@@ -45,6 +45,7 @@ def demarrage(c: Carnet) -> None:
         if c.cfg.immich_cle or c.cfg.treemich_email:
             c.tache = {"nom": "demarrage", "etat": "en_cours", "message": "Lecture d'Immich et de Treemich…"}
             liaisons.donnees(c)
+        reseaux.purger(c)
         c.tache = {"nom": "demarrage", "etat": "termine", "message": "Prêt."}
     except Exception as exc:  # noqa: BLE001
         log.exception("Démarrage")
@@ -166,6 +167,7 @@ def deconnexion():
 @app.get("/api/accueil")
 def accueil():
     c = carnet()
+    reseaux.purger_si_besoin(c)
     return {"version": __version__, "a_traiter": traiter.compte(c), "tache": c.tache,
             "contacts": len(c.fiches()), "reference": bool(c.base.lire("reference")),
             "icloud": bool(c.cfg.icloud_user), "nuit": c.base.lire("nuit"), "lecture": c.base.lire("derniere_lecture")}
@@ -257,8 +259,8 @@ def compteurs_completude():
 
 
 @app.post("/api/contacts/{uid}/valider")
-def valider_fiche(uid: str):
-    return completude.valider(carnet(), uid)
+def valider_fiche(uid: str, corps: dict = Body(default={})):
+    return completude.valider(carnet(), uid, corps.get("etag"))
 
 
 @app.post("/api/contacts/{uid}/devalider")
@@ -268,12 +270,13 @@ def devalider_fiche(uid: str):
 
 @app.post("/api/contacts/{uid}/profil")
 def ajouter_profil(uid: str, corps: dict = Body(...)):
-    return reseaux.ajouter_profil(carnet(), uid, str(corps.get("service", "")), str(corps.get("valeur", "")))
+    return reseaux.ajouter_profil(carnet(), uid, str(corps.get("service", "")), str(corps.get("valeur", "")),
+                                  corps.get("etag") or None)
 
 
 @app.post("/api/contacts/{uid}/delier-reseau")
 def delier_reseau(uid: str, corps: dict = Body(...)):
-    return reseaux.delier(carnet(), uid, str(corps.get("service", "")))
+    return reseaux.delier(carnet(), uid, str(corps.get("service", "")), corps.get("etag") or None)
 
 
 @app.post("/api/analyse")
@@ -313,7 +316,7 @@ def apercu(uid: str, corps: dict = Body(...)):
 def valider(uid: str, corps: dict = Body(...)):
     if not corps.get("etag"):
         raise ErreurCarnet("Version de la fiche absente : recharge la page.")
-    return actions.valider(carnet(), uid, corps.get("fiche") or {}, etag_vu=str(corps["etag"]))
+    return actions.valider(carnet(), uid, corps.get("fiche") or {}, etag_vu=str(corps["etag"]), regler_revue=True)
 
 
 @app.post("/api/annuler/{jeton}")
@@ -486,11 +489,24 @@ def kit():
     return sorties.envoyer_kit(carnet())
 
 
+IMPORT_MAX = 100 * 1024 * 1024
+
+
 @app.post("/api/import")
-async def importer(fichier: UploadFile = File(...)):
+async def importer(request: Request, nom: str = ""):
+    """Fichier envoyé tel quel dans le corps (pas de formulaire) : lu en mémoire seulement,
+    jamais écrit sur le disque, 100 Mo au plus."""
     c = carnet()
-    brut = await fichier.read()
-    nom = (fichier.filename or "").lower()
+    morceaux, taille = [], 0
+    async for m in request.stream():
+        taille += len(m)
+        if taille > IMPORT_MAX:
+            raise ErreurCarnet("Fichier trop gros (100 Mo au plus) : pour Instagram, ne demande que « Abonnés et abonnements ».")
+        morceaux.append(m)
+    brut = b"".join(morceaux)
+    del morceaux
+    fichier_nom = nom.rsplit("/", 1)[-1][:120] or "fichier"
+    nom = fichier_nom.lower()
     # Export Instagram : archive .zip ou JSON d'abonnements ; l'archive n'est jamais gardée
     if nom.endswith(".zip") or brut[:2] == b"PK" or (nom.endswith(".json") and b"string_list_data" in brut[:200000]):
         return reseaux.importer_instagram(c, brut, nom)
@@ -504,10 +520,10 @@ async def importer(fichier: UploadFile = File(...)):
     with c.base.transaction() as cx:
         for lue in lues:
             f = dict(lue.fiche, photo=None)
-            if traiter.ajouter(cx, "import", None, traiter.empreinte(f), {"fiche": f, "fichier": fichier.filename}):
+            if traiter.ajouter(cx, "import", None, traiter.empreinte(f), {"fiche": f, "fichier": fichier_nom}):
                 ajoutees += 1
     c.oublier()
-    c.base.noter("import", f"Import de {fichier.filename} : {len(lues)} fiche(s), {ajoutees} à traiter")
+    c.base.noter("import", f"Import de {fichier_nom} : {len(lues)} fiche(s), {ajoutees} à traiter")
     return {"source": "vcf", "lues": len(lues), "a_traiter": ajoutees, "avertissements": avertissements[:20]}
 
 

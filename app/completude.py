@@ -63,8 +63,13 @@ def statut(c: Carnet, uid: str, fiche: dict) -> str | None:
     return "valide" if e == empreinte(fiche) else "a_revoir"
 
 
-def valider(c: Carnet, uid: str) -> dict:
+def valider(c: Carnet, uid: str, etag_vu: str | None = None) -> dict:
+    """Valide la fiche telle qu'elle est affichée : refus si elle a changé depuis (etag_vu)."""
     f = c.fiche(uid)
+    if etag_vu:
+        l = c.base.un("SELECT etag FROM fiches WHERE uid = ?", (uid,))
+        if l and l["etag"] != etag_vu:
+            raise ErreurCarnet("La fiche a changé depuis son affichage : recharge-la avant de la valider.")
     c.base.executer("INSERT OR REPLACE INTO validations(uid, empreinte, le) VALUES (?,?,?)",
                     (uid, empreinte(f), iso(maintenant())))
     c.oublier()
@@ -144,6 +149,7 @@ def analyse_globale(c: Carnet, remettre_a_zero: bool = False) -> dict:
     c.oublier()
     liaisons.donnees(c, rafraichir=True)
     from . import reseaux, traiter
+    reseaux.purger(c)
     reseaux.proposer(c)
     bilan = {"compteurs": compteurs(c), "a_traiter": traiter.compte(c)["total"], "remis_a_zero": remettre_a_zero}
     c.base.noter("analyse", "Analyse globale : " + ", ".join(f"{CRITERES[k].lower()} {v}" for k, v in bilan["compteurs"].items()

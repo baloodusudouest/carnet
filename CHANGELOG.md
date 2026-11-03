@@ -17,6 +17,16 @@
 - **Application iPhone** : « Sur l'écran d'accueil » depuis Safari ouvre carnet en plein écran avec son icône (aucune donnée gardée hors ligne).
 - Nouvelles variables facultatives : `CARNET_TELEGRAM_API_ID`, `CARNET_TELEGRAM_API_HASH`.
 
+### Garde-fous ajoutés après une relecture indépendante
+- **Sites et profils comparés un par un** à l'écriture : un profil Twitter avec ses paramètres, un site à étiquette personnalisée, un profil Flickr ou une page Facebook d'entreprise restent exactement tels qu'iCloud les a. Seul le site ajouté ou retiré change (vaut aussi pour l'éditeur de la fiche).
+- **Délier** ne retire que l'adresse de profil écrite par carnet (ou l'unique profil de ce réseau), après une confirmation qui montre l'adresse concernée. Seuls les quatre réseaux sont acceptés.
+- Une action automatique, un réseau ou une action groupée n'efface plus jamais un point « Modifiée sur l'iPhone » ou « Conflit ». Seule une modification faite par toi dans l'éditeur, depuis la version affichée, le règle.
+- Validation, ajout de profil et Délier partent avec la version affichée : si la fiche a changé entre-temps, rien n'est fait.
+- **Import** : le fichier est lu en mémoire, jamais écrit sur le disque, 100 Mo au plus. Le dossier temporaire du conteneur est en mémoire (tmpfs). L'archive Instagram est lue avec des plafonds (20 Mo par fichier, 60 fichiers), et une archive abîmée donne un message clair.
+- **Telegram** : une seule connexion à la fois. La déconnexion a lieu même si la lecture échoue. La connexion commencée est fermée au bout de 10 min, même sans nouvel appel.
+- **Purge** : les propositions « Réseau à rattacher » sont effacées avec les personnes. La purge a lieu au démarrage, une fois par jour, à chaque import et à l'analyse globale, même la nuit désactivée. Un nouvel import remplace la liste du réseau.
+- Une réunion de fiches garde aussi les liaisons Telegram et Instagram. Une carte refusée par iCloud n'arrête plus une action groupée.
+
 ## 2.0.3 — 3 novembre 2026
 - **État** : une grille de six sections avec icône (iCloud et la nuit, Sauvegardes, Copies, LinkedIn, Services, Journal), chacune avec un résumé d'une ligne et une pastille rouge en cas de problème ; un toucher affiche la section, un seul à la fois.
 - **Dates sans année** : une année 1900 veut dire « année inconnue ». Saisie en 14/03/1900, la date part dans iCloud sans année (jour et mois, comme sur l'iPhone) ; la fiche l'affiche « 14 mars ». Une carte iCloud déjà enregistrée en 1900 est proposée en « Mise en forme » pour être réécrite sans année. Home Assistant ne calcule plus d'âge pour ces dates.
