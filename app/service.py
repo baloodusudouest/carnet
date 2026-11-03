@@ -175,7 +175,7 @@ class Carnet:
         import_id = cur.lastrowid
         # Cartes écrites par carnet (UID « carnet-… ») ou d'un contact absorbé par une fusion :
         # rattachées à leur contact par l'UID, pas par une détection de doublon
-        connus = self._uid_vers_pid() if source == "icloud" else {}
+        connus = {**self._uid_vers_pid(), **getattr(self, "_rattachements", {})} if source == "icloud" else {}
         for lue in fiches:
             emp = _empreinte(lue.fiche, lue.photo)
             if cx.execute("SELECT 1 FROM sources WHERE source = ? AND empreinte = ?",
@@ -186,12 +186,11 @@ class Carnet:
                 "SELECT id, personne_id, donnees, enrichissement FROM sources WHERE source = ? AND uid = ? "
                 "AND personne_id IS NOT NULL ORDER BY id DESC", (source, lue.uid)).fetchone() \
                 if lue.uid else None
-            if enrichit and lue.uid and not ancienne:
-                # Relation LinkedIn déjà importée mais sans contact : l'ancienne ligne est remplacée
-                cx.execute("DELETE FROM distinctes WHERE a IN (SELECT id FROM sources WHERE source = ? AND uid = ? "
-                           "AND personne_id IS NULL) OR b IN (SELECT id FROM sources WHERE source = ? AND uid = ? "
-                           "AND personne_id IS NULL)", (source, lue.uid, source, lue.uid))
-                cx.execute("DELETE FROM sources WHERE source = ? AND uid = ? AND personne_id IS NULL", (source, lue.uid))
+            # Relation LinkedIn déjà importée mais sans contact (jamais rattachée, ou détachée à la main) :
+            # remplacée par la nouvelle ligne, qui hérite de ses « pas la même personne »
+            orphelines = [l["id"] for l in cx.execute(
+                "SELECT id FROM sources WHERE source = ? AND uid = ? AND personne_id IS NULL",
+                (source, lue.uid)).fetchall()] if enrichit and lue.uid and not ancienne else []
             rattache = None
             if not ancienne and lue.uid and source == "icloud":
                 pid_connu = connus.get(lue.uid) or (lue.uid[len("carnet-"):] if lue.uid.startswith("carnet-") else None)
@@ -205,6 +204,9 @@ class Carnet:
                  lue.photo, lue.photo_type, lue.brut,
                  ancienne["enrichissement"] if ancienne and enrichit else enrichit,
                  ancienne["personne_id"] if ancienne else rattache))
+            for ancien_id in orphelines:
+                self._reporter_distinctes(cx, ancien_id, cur.lastrowid)
+                cx.execute("DELETE FROM sources WHERE id = ?", (ancien_id,))
             if rattache:
                 cx.execute("UPDATE personnes SET statut = 'a_reviser', a_revoir = 'fiche mise à jour dans iCloud', "
                            "modifie_le = ? WHERE id = ?", (_iso(quand), rattache))
@@ -212,12 +214,7 @@ class Carnet:
             elif ancienne and source == "linkedin":
                 # Réimport LinkedIn : la ligne remplace l'ancienne ; le contact ne repasse en révision
                 # que si la fiche porte encore l'ancienne valeur (nouveau poste, nouvelle société)
-                nouvelle = cur.lastrowid
-                cx.execute("INSERT OR IGNORE INTO distinctes(a, b) SELECT "
-                           "min(?, CASE WHEN a = ? THEN b ELSE a END), max(?, CASE WHEN a = ? THEN b ELSE a END) "
-                           "FROM distinctes WHERE a = ? OR b = ?",
-                           (nouvelle, ancienne["id"], nouvelle, ancienne["id"], ancienne["id"], ancienne["id"]))
-                cx.execute("DELETE FROM distinctes WHERE a = ? OR b = ?", (ancienne["id"], ancienne["id"]))
+                self._reporter_distinctes(cx, ancienne["id"], cur.lastrowid)
                 cx.execute("DELETE FROM sources WHERE id = ?", (ancienne["id"],))
                 motif = self._changement_linkedin(cx, ancienne["personne_id"], json.loads(ancienne["donnees"]), lue.fiche)
                 if motif:
@@ -240,6 +237,15 @@ class Carnet:
         cx.execute("UPDATE imports SET nb_ajoutes = ?, nb_identiques = ? WHERE id = ?",
                    (len(nouveaux) + mises_a_jour, identiques, import_id))
         return import_id, nouveaux, identiques, mises_a_jour
+
+    @staticmethod
+    def _reporter_distinctes(cx, ancien: int, nouveau: int) -> None:
+        """Les « pas la même personne » d'une fiche source passent à celle qui la remplace."""
+        cx.execute("INSERT OR IGNORE INTO distinctes(a, b) SELECT "
+                   "min(?, CASE WHEN a = ? THEN b ELSE a END), max(?, CASE WHEN a = ? THEN b ELSE a END) "
+                   "FROM distinctes WHERE (a = ? OR b = ?) AND (CASE WHEN a = ? THEN b ELSE a END) != ?",
+                   (nouveau, ancien, nouveau, ancien, ancien, ancien, ancien, nouveau))
+        cx.execute("DELETE FROM distinctes WHERE a = ? OR b = ?", (ancien, ancien))
 
     # ================================================================ rapprochement
 
@@ -750,18 +756,22 @@ class Carnet:
         for cle in ("liaisons", "photos_hd", "affiches", "photos_hd_candidats", "affiches_propositions"):
             deplacer(cle)
 
+        absorbes: list[str] = []
+
         def suivi_maj(suivi: dict) -> None:
             info = suivi.pop(autre, None)
-            if not info:
-                return
-            if pid in suivi:
-                anciens = suivi[pid].setdefault("anciens_uids", [])
-                for u in [info["uid"], *info.get("anciens_uids", [])]:
-                    if u not in anciens and u != suivi[pid]["uid"]:
-                        anciens.append(u)
-            else:
-                suivi[pid] = info
+            if info:
+                absorbes.append(info["uid"])
         self.base.modifier_etat("icloud_suivi", {}, suivi_maj)
+
+        def anciens_maj(anciens: dict) -> None:
+            liste = anciens.setdefault(pid, [])
+            for u in absorbes + anciens.pop(autre, []):
+                if u not in liste:
+                    liste.append(u)
+            if not liste:
+                anciens.pop(pid, None)
+        self.base.modifier_etat("icloud_anciens", {}, anciens_maj)
 
     # ================================================================ groupes
 
@@ -1289,6 +1299,7 @@ class Carnet:
         """Calcule ce qu'il faut écrire dans iCloud, sans rien écrire."""
         contacts = {c.uid: c for c in cartes if not c.groupe}
         groupes_icloud = [c for c in cartes if c.groupe]
+        self._controler_disparitions(self.base.etat("icloud_vus", {}), contacts)
         suivi = self.base.etat("icloud_suivi", {})
         uids_de: dict[str, list[str]] = defaultdict(list)
         connus = {v["uid"] for v in suivi.values()}
@@ -1310,11 +1321,12 @@ class Carnet:
         membres: dict[str, set[str]] = defaultdict(set)
         a_supprimer: dict[str, dict] = {}
         vus = self.base.etat("icloud_vus", {})
+        anciens_uids = self.base.etat("icloud_anciens", {})   # cartes d'avant une fusion ou un changement d'UID
         conflits: list[tuple[synchro.Carte, str, str]] = []   # changées sur l'iPhone depuis la dernière lecture
         supprimes_iphone: list[dict] = []                     # supprimées sur l'iPhone : jamais recréées en silence
         for pid, fiche, sources in self._verifiees():
             # Fiche d'origine d'abord : une fiche « carnet-… » en double est retirée au profit de l'originale
-            anciens = (suivi.get(pid) or {}).get("anciens_uids", [])
+            anciens = anciens_uids.get(pid, [])
             candidats = list(dict.fromkeys(uids_de[pid] + par_contenu[pid]
                                            + ([suivi[pid]["uid"]] if pid in suivi else []) + anciens + [f"carnet-{pid}"]))
             presents = [u for u in candidats if u in contacts]
@@ -1523,6 +1535,9 @@ class Carnet:
                  "supprimes": 0, "groupes": 0, "conflits": [], "erreurs": [], "importes": 0}
         suivi = self.base.etat("icloud_suivi", {})
         vus = self.base.etat("icloud_vus", {})
+        ecrits: dict[str, str | None] = {}       # UID → ETag (None : supprimé) pour icloud_vus
+        remplaces: dict[str, list[str]] = {}     # contact → UID écrit avant, remplacé par un autre
+        retires: set[str] = set()
         self._tache.update(total=len(actions), fait=0, message="Écriture dans iCloud…")
         dav = self._dav()
         try:
@@ -1531,7 +1546,8 @@ class Carnet:
                     if a["action"] == "supprimer":
                         dav.supprimer(a["href"], a["etag"])
                         if a["cible"] == "contact":
-                            vus.pop(a["uid"], None)
+                            ecrits[a["uid"]] = None
+                            retires.add(a["uid"])
                             bilan["supprimes"] += 1
                             if suivi.get(a.get("pid"), {}).get("uid") == a["uid"]:
                                 suivi.pop(a["pid"], None)
@@ -1541,12 +1557,14 @@ class Carnet:
                         etag = dav.ecrire(a["href"], a["texte"], a["etag"])
                         if a["cible"] == "contact":
                             bilan["crees" if a["action"] == "creer" else "modifies"] += 1
-                            anciens = (suivi.get(a["pid"]) or {}).get("anciens_uids", [])
+                            avant = (suivi.get(a["pid"]) or {}).get("uid")
+                            if avant and avant != a["uid"]:
+                                remplaces.setdefault(a["pid"], []).append(avant)
+                            if not etag:   # iCloud n'a pas renvoyé l'ETag : relu, sinon faux conflit au passage suivant
+                                etag = dav.etag(a["href"])
                             suivi[a["pid"]] = {"uid": a["uid"], "href": a["href"], "etag": etag,
-                                               "empreinte_carnet": a["empreinte_carnet"],
-                                               **({"anciens_uids": anciens} if anciens else {})}
-                            if etag:
-                                vus[a["uid"]] = etag
+                                               "empreinte_carnet": a["empreinte_carnet"]}
+                            ecrits[a["uid"]] = etag
                         else:
                             bilan["groupes"] += 1
                 except Conflit:
@@ -1564,8 +1582,35 @@ class Carnet:
                 self._tache["fait"] += 1
         finally:
             dav.fermer()
-            self.base.ecrire_etat("icloud_suivi", suivi)
-            self.base.ecrire_etat("icloud_vus", vus)
+            # Seuls les contacts écrits changent dans le suivi : un choix fait pendant l'écriture reste
+            ecrits_pid = {a["pid"] for a in actions if a["cible"] == "contact" and a["action"] != "supprimer"}
+
+            def suivi_maj(actuel: dict) -> None:
+                for p in ecrits_pid:
+                    if p in suivi:
+                        actuel[p] = suivi[p]
+                for p, info in list(actuel.items()):
+                    if info.get("uid") in retires:
+                        actuel.pop(p, None)
+            self.base.modifier_etat("icloud_suivi", {}, suivi_maj)
+
+            def vus_maj(actuel: dict) -> None:
+                for u, e in ecrits.items():
+                    if e is None:
+                        actuel.pop(u, None)
+                    elif e:
+                        actuel[u] = e
+            self.base.modifier_etat("icloud_vus", {}, vus_maj)
+
+            def anciens_maj(actuel: dict) -> None:
+                for p, uids in remplaces.items():
+                    liste = actuel.setdefault(p, [])
+                    liste += [u for u in uids if u not in liste]
+                for p in list(actuel):
+                    actuel[p] = [u for u in actuel[p] if u not in retires]
+                    if not actuel[p]:
+                        actuel.pop(p)
+            self.base.modifier_etat("icloud_anciens", {}, anciens_maj)
         if not essai and plan["inconnus"]:
             # Contacts créés dans iCloud sans carnet : importés pour être révisés
             self._tache["message"] = "Import des contacts ajoutés dans iCloud…"
@@ -1807,9 +1852,17 @@ class Carnet:
 
     # ================================================================ veille iCloud (V3)
 
-    def veiller(self) -> dict:
-        """Relit iCloud et compare aux fiches validées (bouton « Vérifier maintenant » et 3 h)."""
-        return self._lancer("veille", self._veiller)
+    def veiller(self, forcer: bool = False) -> dict:
+        """Relit iCloud et compare aux fiches validées (bouton « Vérifier maintenant » et 3 h).
+        « forcer » : beaucoup de fiches ont vraiment été supprimées sur l'iPhone, le coupe-circuit
+        est levé pour cette lecture (elles repassent toutes en révision)."""
+        def travail():
+            self._disparitions_admises = forcer
+            try:
+                self._veiller()
+            finally:
+                self._disparitions_admises = False
+        return self._lancer("veille", travail)
 
     def veille_mode(self, revision: bool) -> dict:
         self.base.ecrire_etat("veille_revision", bool(revision))
@@ -1867,6 +1920,7 @@ class Carnet:
             self._tache["message"] = "Veille : comparaison avec carnet…"
             suivi = self.base.etat("icloud_suivi", {})
             vus = self.base.etat("icloud_vus", {})        # UID → ETag vu à la dernière veille ou écriture
+            self._controler_disparitions(vus, contacts)
             uid_pid = self._uid_vers_pid(suivi)
             orphelines = [c for u, c in contacts.items() if u not in uid_pid and not u.startswith("carnet-")]
             for u, (pid, _exacte) in self._reconnaitre(orphelines).items():
@@ -1918,7 +1972,9 @@ class Carnet:
                 if info["uid"] not in contacts and info["uid"] not in vus and pid in verifiees \
                         and not presents_par_pid[pid] and not any(x["pid"] == pid for x in entree["supprimes"]):
                     entree["supprimes"].append({"pid": pid, "nom": nom_affiche(verifiees[pid]), "uid": info["uid"]})
-            self.base.ecrire_etat("icloud_suivi", suivi)
+            etags_forme = {p: i["etag"] for p, i in suivi.items() if i.get("etag")}
+            self.base.modifier_etat("icloud_suivi", {}, lambda actuel: [
+                actuel[p].update(etag=e) for p, e in etags_forme.items() if p in actuel and actuel[p].get("uid") == suivi[p]["uid"]])
             entree["importes"] = self._cartes_en_revision(a_reviser, quand)
             self._supprimees_en_revision(entree["supprimes"])
             self.base.ecrire_etat("icloud_vus", {u: c.etag for u, c in contacts.items()})
@@ -1938,6 +1994,16 @@ class Carnet:
                 f"{len(entree['supprimes'])} supprimé(s) sur l'iPhone, tout est remis en révision.")
             )
 
+    def _controler_disparitions(self, vus: dict, contacts: dict) -> None:
+        """Coupe-circuit : si plus de 5 % des fiches vues la dernière fois manquent d'un coup (mauvais
+        carnet d'adresses, réponse partielle d'iCloud), rien n'est remis en révision ni écrit."""
+        disparues = sum(1 for u in vus if u not in contacts)
+        if getattr(self, "_disparitions_admises", False):
+            return
+        if vus and disparues > max(5, self.SEUIL_COUPE_CIRCUIT * len(vus)):
+            raise ErreurCarnet(f"{disparues} fiches sur {len(vus)} absentes d'iCloud d'un coup : arrêt par prudence, "
+                               "rien n'est modifié. Vérifie l'iPhone ; si c'est voulu, « Relire quand même » dans État.")
+
     def _uid_vers_pid(self, suivi: dict | None = None) -> dict[str, str]:
         """UID iCloud → contact : fiches iCloud importées, puis fiches écrites par carnet, puis UID
         d'avant une fusion (le contact absorbé)."""
@@ -1948,7 +2014,10 @@ class Carnet:
             res[l["uid"]] = l["personne_id"]
         for pid, info in suivi.items():
             res[info["uid"]] = pid
-            for u in info.get("anciens_uids", []):
+            for u in info.get("anciens_uids", []):   # forme d'avant 1.3.0
+                res[u] = pid
+        for pid, uids in self.base.etat("icloud_anciens", {}).items():
+            for u in uids:
                 res[u] = pid
         return res
 
@@ -1962,13 +2031,18 @@ class Carnet:
         (self.cfg.depot / nom).write_text("".join(
             c.texte if c.texte.endswith("\n") else c.texte + "\r\n" for c, _, _ in cartes), encoding="utf-8")
         importes = 0
+        self._rattachements = {c.uid: pid for c, pid, _ in cartes if pid and c.uid}   # reconnues par leur contenu
         try:
             r = self.importer(nom, "icloud")
             importes = r["ajoutes"] + r["mises_a_jour"]
         except ErreurCarnet as exc:
-            if "déjà été importé" not in str(exc):
+            # Déjà importé, ou cartes illisibles : noté, la veille n'est pas bloquée pour autant
+            if "déjà été importé" not in str(exc) and "Aucun contact lu" not in str(exc):
                 raise
+            log.warning("Veille : import des changements ignoré (%s)", exc)
             (self.cfg.depot / nom).unlink(missing_ok=True)
+        finally:
+            self._rattachements = {}
         with self.base.transaction() as cx:
             for _c, pid, motif in cartes:
                 if pid:
@@ -2441,9 +2515,9 @@ class Carnet:
         self.base.ecrire_etat("liaisons_refusees", sorted(refus))
         return {"ok": True}
 
-    def delier(self, pid: str, refuser: bool = False) -> dict:
-        """Défait une liaison. « refuser » (annulation d'une liaison faite seule la nuit) : la même
-        personne ne sera plus proposée pour ce contact."""
+    def delier(self, pid: str, refuser: bool = True) -> dict:
+        """Défait une liaison ; la même personne n'est plus proposée (ni liée seule la nuit) pour ce
+        contact."""
         ancien = {}
         self.base.modifier_etat("liaisons", {}, lambda liens: ancien.update(liens.pop(pid, None) or {}))
         if refuser:
@@ -2519,6 +2593,9 @@ class Carnet:
                 if not ligne or ligne["statut"] != "verifie" or not ligne["fiche"]:
                     continue
                 fiche = regle_proches(completer(json.loads(ligne["fiche"])))
+                if lien.get("auto") and fiche.get("photo") and not any(
+                        s["id"] == fiche["photo"] and s["source"] == "immich" for s in self._sources_de(pid)):
+                    image = None   # liée seule la nuit : la photo choisie n'est pas remplacée sans toi
                 if True:
                     if image:
                         with self.base.transaction() as cx:

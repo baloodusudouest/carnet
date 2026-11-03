@@ -96,6 +96,23 @@ rest:
           - nouveaux
           - supprimes
 
+      - name: Carnet synchro iCloud
+        unique_id: carnet_synchro_icloud
+        icon: mdi:cloud-sync
+        # Mode de la dernière synchro de nuit : reel, a_blanc, bloque, arret
+        value_template: "{{ value_json.synchro.mode if value_json.synchro else 'unknown' }}"
+        json_attributes_path: "$.synchro"
+        json_attributes:
+          - le
+          - ok
+          - crees
+          - modifies
+          - groupes
+          - suppressions_en_attente
+          - en_revision
+          - alerte
+          - erreur
+
       - name: Carnet sauvegarde
         unique_id: carnet_sauvegarde
         icon: mdi:content-save-check
@@ -131,7 +148,32 @@ template:
         attributes:
           erreur: "{{ state_attr('sensor.carnet_veille_icloud', 'erreur') }}"
 
+      - name: Carnet synchro en échec
+        unique_id: carnet_synchro_en_echec
+        device_class: problem
+        # Problème si la synchro de nuit n'a rien écrit (plafond, veille en erreur) ou a échoué
+        state: >-
+          {{ state_attr('sensor.carnet_synchro_icloud', 'ok') == false }}
+        attributes:
+          mode: "{{ states('sensor.carnet_synchro_icloud') }}"
+          suppressions_en_attente: "{{ state_attr('sensor.carnet_synchro_icloud', 'suppressions_en_attente') }}"
+
 automation:
+  - id: carnet_synchro_en_echec
+    alias: "Carnet – synchro iCloud de nuit bloquée"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.carnet_synchro_en_echec
+        to: "on"
+    actions:
+      - action: persistent_notification.create
+        data:
+          notification_id: carnet_synchro
+          title: "Carnet : synchro iCloud bloquée"
+          message: >-
+            La synchro de nuit n'a rien écrit (mode {{ states('sensor.carnet_synchro_icloud') }}).
+            Ouvre carnet › État pour voir pourquoi.
+
   - id: carnet_sauvegarde_en_echec
     alias: "Carnet – sauvegarde de nuit en échec"
     triggers:

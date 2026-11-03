@@ -2061,7 +2061,7 @@ def test_iphone_ne_perd_rien(client, monkeypatch):
     cn.base.modifier_etat("liaisons", {}, lambda l: l.update({pid_carnet: {"immich": "im-x"}}))
     c.post(f"/api/personnes/{jp['id']}/fusionner", json={"autre": pid_carnet})
     suivi = cn.base.etat("icloud_suivi")
-    assert pid_carnet not in suivi and uid_carnet in suivi[jp["id"]]["anciens_uids"]
+    assert pid_carnet not in suivi and uid_carnet in cn.base.etat("icloud_anciens")[jp["id"]]
     assert cn.base.etat("liaisons")[jp["id"]] == {"immich": "im-x"}
     f = c.get(f"/api/personnes/{jp['id']}").json()["fiche"]
     c.put(f"/api/personnes/{jp['id']}", json={"fiche": f, "valider": True})
@@ -2219,3 +2219,60 @@ def test_synchro_icloud_autonome(client, monkeypatch):
     e = c.get("/api/synchro").json()["journal"][0]
     assert e["manuel"] and e["prevus"]["noms"] == ["Claire MARTIN"], e
     assert "nouvelle note" in serveur.texte("AAAA-1111").replace("\r\n ", "")
+
+
+def test_linkedin_detachee_reste_detachee_au_reimport(client):
+    """Revue : une relation LinkedIn « pas la même personne » ne revient pas au réimport."""
+    from app.main import etat
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    _importer(c, "outlook.csv", "outlook")
+    _importer(c, "Connections.csv", "linkedin")
+    cn = etat["carnet"]
+    sophie = _personne(c, "Sophie")
+    li = [s for s in c.get(f"/api/personnes/{sophie['id']}").json()["sources"] if s["source"] == "linkedin"]
+    c.post(f"/api/personnes/{sophie['id']}/detacher", json={"source_id": li[0]["id"]})
+    texte = (DONNEES / "Connections.csv").read_text().replace("Ingénieure structures", "Directrice")
+    (cn.cfg.depot / "C2.csv").write_text(texte, encoding="utf-8")
+    assert c.post("/api/importer", json={"nom": "C2.csv", "source": "linkedin"}).status_code == 200
+    lignes = cn.base.lire("SELECT personne_id FROM sources WHERE source = 'linkedin'")
+    assert not any(l["personne_id"] == sophie["id"] for l in lignes)
+
+
+def test_icloud_coupe_circuit_et_etag_relu(client, monkeypatch):
+    """Revue : une lecture d'iCloud où beaucoup de fiches manquent n'envoie rien en révision ;
+    un PUT sans ETag est complété par une relecture (pas de faux conflit ensuite)."""
+    from app.main import etat
+    from tests.faux_icloud import FauxICloud
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    serveur = FauxICloud((DONNEES / "icloud.vcf").read_text())
+    cn = etat["carnet"]
+    monkeypatch.setattr(cn, "transport_icloud", serveur.transport())
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "icloud_user": "moi@icloud.com",
+                                                        "icloud_password": "abcd-efgh-ijkl-mnop"}))
+    for debut in ("Claire", "Jean-Pierre", "Plomberie"):
+        p = _personne(c, debut)
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    # PUT sans ETag renvoyé : relu par PROPFIND
+    from app import carddav
+    ecrire = carddav.CardDAV.ecrire
+    monkeypatch.setattr(carddav.CardDAV, "ecrire", lambda self, *a: (ecrire(self, *a), None)[1])
+    c.post("/api/synchro/maintenant")
+    _attendre(c)
+    monkeypatch.setattr(carddav.CardDAV, "ecrire", ecrire)
+    assert all(i["etag"] for i in cn.base.etat("icloud_suivi").values())
+    c.post("/api/icloud/simulation")
+    assert _attendre(c)["plan"]["conflits"] == []
+    # Coupe-circuit : 2 fiches sur 3 disparaissent d'un coup (seuil abaissé pour le test)
+    monkeypatch.setattr(cn, "SEUIL_COUPE_CIRCUIT", 0.1)
+    vus = cn.base.etat("icloud_vus")
+    cn.base.ecrire_etat("icloud_vus", {**vus, **{f"X-{i}": '"e"' for i in range(10)}})
+    c.post("/api/icloud/veille")
+    v = _attendre(c)["veille"]["journal"][0]
+    assert "absentes" in v["erreur"] and _personne(c, "Claire")["statut"] == "verifie"
+    c.post("/api/icloud/veille?forcer=true")
+    assert _attendre(c)["veille"]["journal"][0]["erreur"] is None

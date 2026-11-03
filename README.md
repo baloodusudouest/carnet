@@ -18,13 +18,25 @@ Les contacts sont importés depuis des exports faits à la main. Depuis la V2, c
 | iCloud (V2) | onglet iCloud : simulation, essai sur sa propre fiche (groupe Moi), puis écriture ; voir ci-dessous |
 | Archives | exports d'origine gardés 365 jours puis supprimés ; un onglet et Home Assistant préviennent 30 jours avant |
 
-LinkedIn complète des contacts existants (société, poste, profil) mais n'en crée jamais.
+LinkedIn complète des contacts existants (société, poste, profil) mais n'en crée jamais. Chaque relation est reconnue par l'adresse de son profil : un réimport ne remonte que les changements (nouveau poste, nouvelle société, nouveau courriel), et seulement si la fiche portait encore l'ancienne valeur.
 
-## Écriture dans iCloud (V2)
+## Synchro iCloud de nuit (1.3)
+
+Chaque nuit (`CARNET_VEILLE_HEURE`) : copie chiffrée de la base, veille de l'iPhone, liaisons sûres, puis **écriture dans iCloud des fiches validées qui ont changé**, puis sauvegarde. Onglet **État**.
+
+- **Deux semaines à blanc** après la mise à jour : le plan est noté chaque nuit, rien n'est écrit (« Écrire pour de bon dès cette nuit » pour avancer).
+- **Jamais de suppression la nuit** : contacts mis de côté, doublons et groupes absents de carnet attendent ton accord dans État › iCloud en détail.
+- **Plafonds** : au-delà de max(10, 5 %) créations ou max(20, 10 %) modifications prévues, rien n'est écrit et une alerte est notée (Home Assistant : `binary_sensor.carnet_synchro_en_echec`).
+- **Rien d'écrit si la veille de la nuit est en erreur.** Une carte modifiée sur l'iPhone depuis la dernière lecture n'est jamais écrasée : elle part en Révision.
+- « Synchroniser maintenant » applique le même plan et les mêmes garde-fous, et écrit même pendant la période à blanc. L'interrupteur coupe l'écriture de nuit (la veille et la sauvegarde continuent).
+
+Retour en arrière : l'image est publiée avec les étiquettes `latest`, `1.3.0` et `sha-<commit>` ; dans Portainer, remplace `latest` par l'étiquette voulue puis Recreate. Avant chaque migration du schéma, une copie `carnet.db.avant-vN` est faite à côté de la base.
+
+## Écriture dans iCloud en détail (V2)
 
 1. **Simuler** : carnet lit tout iCloud et calcule les écritures, sans rien modifier. La simulation reste valable 30 minutes.
 2. **Essai** : n'écrit que la fiche du groupe Moi, pour contrôler le rendu sur l'iPhone.
-3. **Écrire** (après confirmation) : une **sauvegarde complète** d'iCloud est d'abord enregistrée dans `archives/AAAA-MM-JJ_HHMMSS_icloud-sauvegarde.vcf` (gardée 365 jours), puis :
+3. **Écrire** (après confirmation) : une **sauvegarde complète** d'iCloud est d'abord enregistrée dans `archives/AAAA-MM-JJ_HHMMSS_icloud-sauvegarde.vcf` (toutes celles des 14 derniers jours, puis une par mois pendant un an), puis :
    - chaque contact vérifié met à jour sa fiche iCloud (UID conservé) ou est créé s'il venait de Gmail ou Outlook ;
    - seules les propriétés gérées par carnet sont remplacées : les champs qu'il ne connaît pas (dates personnalisées, etc.) sont gardés, et la photo iCloud reste si carnet n'en a pas ;
    - les autres fiches iCloud d'une personne fusionnée et les contacts mis de côté sont supprimés ;
@@ -35,7 +47,7 @@ LinkedIn complète des contacts existants (société, poste, profil) mais n'en c
 
 ### Liaisons Immich et Treemich (V3)
 
-Onglet Liaisons : carnet propose, pour chaque contact vérifié, la personne Immich et la personne Treemich du même nom (la personne Treemich liée à ce visage Immich si elle existe). Les correspondances exactes se valident d'un clic. Ensuite, chaque nuit : le visage Immich devient la photo du contact, et les relations Treemich (conjoint, parents, enfants, frères et sœurs) complètent ses noms associés ; une relation qui contredit un nom associé saisi est proposée dans la Revue. Les orthographes différentes se tranchent ligne par ligne, et les noms Immich peuvent être mis au format « Prénom NOM ».
+Onglet Liaisons : carnet propose, pour chaque contact vérifié, la personne Immich et la personne Treemich du même nom (la personne Treemich liée à ce visage Immich si elle existe). Les correspondances **sûres** (même nom, une seule personne Immich et un seul contact de ce nom, même date de naissance complète) sont liées seules la nuit, et listées dans À traiter avec « Annuler » ; les autres se confirment d'un toucher dans À traiter. Une personne Immich ou Treemich n'est liée qu'à un seul contact. Ensuite, chaque nuit : le visage Immich devient la photo du contact, et les relations Treemich (conjoint, parents, enfants, frères et sœurs) complètent ses noms associés ; une relation qui contredit un nom associé saisi est proposée dans « À compléter ». Les orthographes différentes se tranchent ligne par ligne, et les noms Immich peuvent être mis au format « Prénom NOM ».
 
 Dates de naissance (même onglet) : simulation, essai sur une personne, puis écriture vers Immich ou Treemich. carnet fait foi ; une date différente n'est remplacée que sur demande ; l'arbre Treemich est exporté en GEDCOM dans `archives/` avant d'écrire, et le journal garde chaque ancienne valeur.
 
@@ -79,9 +91,9 @@ Sans la base, les `.vcf` datés restent importables dans un carnet neuf (ou dire
 
 ### Veille de l'iPhone (V3)
 
-Chaque nuit (`CARNET_VEILLE_HEURE`, 03:00 par défaut), carnet relit iCloud et compare chaque fiche à la version validée. Les différences de forme (réécritures d'iCloud, données Siri, photo, types recalculés) sont ignorées ; restent les contacts modifiés, créés ou supprimés sur l'iPhone. En **mode journal** (par défaut) ils sont seulement listés dans l'onglet iCloud ; en **mode révision** les fiches modifiées ou nouvelles sont importées et repassent « à réviser ». `/status` expose le résultat (compteurs seulement) et le paquet Home Assistant alerte si la veille échoue ou ne tourne plus.
+Chaque nuit (`CARNET_VEILLE_HEURE`, 03:00 par défaut), carnet relit iCloud et compare chaque fiche à la version validée. Les différences de forme (réécritures d'iCloud, données Siri, photo, types recalculés) sont ignorées. Tout contact modifié, créé ou supprimé sur l'iPhone **repasse en Révision** : la fiche iCloud est importée (rattachée à son contact par l'UID, y compris pour les cartes créées par carnet) ; une fiche supprimée n'est jamais recréée sans que tu la revalides. `/status` expose le résultat (compteurs seulement) et le paquet Home Assistant alerte si la veille échoue ou ne tourne plus.
 
-Chaque écriture se fait avec contrôle d'ETag : une fiche modifiée sur l'iPhone depuis la simulation n'est pas écrasée, elle est signalée dans le journal.
+Chaque écriture se fait avec contrôle d'ETag, et carnet compare chaque carte à la dernière lecture (veille ou écriture) : une fiche modifiée sur l'iPhone entre-temps n'est pas écrasée, elle repasse en Révision.
 Le compte utilise un **mot de passe d'application** Apple (account.apple.com > Connexion et sécurité > Mots de passe pour app), jamais le mot de passe du compte.
 
 ## Sécurité

@@ -618,7 +618,7 @@ def renommer_immich(corps: RenommageImmich):
 
 class Deliaison(BaseModel):
     pid: str
-    refuser: bool = False
+    refuser: bool = True
 
 
 @app.get("/api/liaisons/auto")
@@ -861,8 +861,8 @@ def synchroniser():
 
 
 @app.post("/api/icloud/veille")
-def icloud_veille():
-    return carnet().veiller()
+def icloud_veille(forcer: bool = False):
+    return carnet().veiller(forcer)
 
 
 class ModeVeille(BaseModel):
