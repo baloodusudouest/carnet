@@ -36,6 +36,16 @@
       annoncer(e.message, true)
     }
   }
+  async function relireQuandMeme() {
+    try {
+      occupe = true
+      await api.post('/api/icloud/veille?forcer=true')
+      await charger()
+    } catch (e) {
+      occupe = false
+      annoncer(e.message, true)
+    }
+  }
   async function regler(corps) {
     try {
       donnees = await api.post('/api/synchro/reglage', corps)
@@ -148,6 +158,9 @@
           {@render ligne(testVieux ? 'attention' : 'ok', 'Test de restauration',
             restauration ? `${restauration.ok ? 'Réussi' : 'Raté'} le ${dateCourte(restauration.le)}${testVieux && restauration.ok ? ' : à refaire (plus de 3 mois)' : ''}.` : 'Jamais fait : vérifie qu\'une sauvegarde s\'ouvre avec ta clé.',
             '#/export', 'Tester')}
+          {#if s.veille && !s.veille.ok && (s.veille.erreur || '').includes('absentes')}
+            <li class="py-3"><button class="bouton min-h-11" disabled={enCours} onclick={relireQuandMeme}>Les suppressions sont voulues : relire quand même</button></li>
+          {/if}
           {#if s.archives_bientot}
             {@render ligne('attention', 'Archives bientôt supprimées', `${pluriel(s.contacts_archives_bientot, 'contact concerné', 'contacts concernés')}.`, '#/archives', 'Voir')}
           {/if}

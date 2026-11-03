@@ -59,6 +59,8 @@ class FauxICloud:
         if r.method == "GET" and chemin in self.cartes:
             return httpx.Response(200, content=self.cartes[chemin][1].encode(), headers={"Content-Type": "text/vcard"})
         if r.method == "PROPFIND":
+            if chemin in self.cartes:   # ETag d'une seule carte
+                return _multistatus([_reponse(chemin, f"<d:getetag>{self.cartes[chemin][0]}</d:getetag>")])
             if chemin not in (PRINCIPAL, MAISON, CARNET):  # racine (ou /carddav/<compte>/ chez Synology)
                 return _multistatus([_reponse("/", f"<d:current-user-principal><d:href>{PRINCIPAL}</d:href></d:current-user-principal>")])
             if chemin == PRINCIPAL:

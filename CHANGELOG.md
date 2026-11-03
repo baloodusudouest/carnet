@@ -1,6 +1,6 @@
 # Journal des versions
 
-## 1.3.0 — en cours
+## 1.3.0 — 3 novembre 2026
 
 ### Lot 1 · Filet de sécurité
 - Une seule opération longue à la fois, tenue jusqu'à la fin du travail entier (la tâche de nuit ne laisse plus passer une écriture iCloud entre deux étapes). Si une opération tourne à l'heure de la nuit, la tâche réessaie toutes les 10 min pendant 3 h au lieu de sauter la nuit.
@@ -38,3 +38,13 @@
 - Photos : groupes des affiches et recherches lancées depuis l'onglet (plus besoin du PC) ; états vides qui disent quoi faire.
 - Ergonomie : champs en 16 px sur écran tactile (plus de zoom Safari), cibles de 44 px, bord des champs contrasté (3,4:1), boutons désactivés reconnaissables, « À compléter » sans sections vides, messages qui s'effacent au changement de page et proposent « Rouvrir » après une validation.
 - La fiche contact sur iPhone ouvre la Révision (« Modifier la fiche »).
+
+### Corrections après relecture indépendante
+- Une relation LinkedIn détachée (« pas la même personne ») reste détachée au réimport.
+- Coupe-circuit : si plus de 5 % des fiches vues la dernière fois manquent d'un coup dans iCloud, ou si la lecture est incomplète, rien n'est remis en révision ni écrit ; « Relire quand même » dans État quand les suppressions sont voulues.
+- ETag relu quand iCloud ne le renvoie pas après une écriture (plus de faux conflits ni de boucle révision ↔ écriture).
+- Les UID des cartes d'avant une fusion sont gardés à part (`icloud_anciens`) : la carte en double reste proposée au retrait même après une écriture.
+- Écriture et veille ne réécrivent plus tout le suivi iCloud : un choix fait pendant qu'elles tournent reste.
+- « Délier » refuse désormais la personne pour ce contact (pas de liaison automatique la nuit suivante) ; une liaison faite seule ne remplace jamais une photo existante.
+- Veille : des cartes illisibles ne bloquent plus les nuits suivantes ; une carte reconnue par son contenu revient à son contact.
+- Paquet Home Assistant : capteur `sensor.carnet_synchro_icloud`, alerte `binary_sensor.carnet_synchro_en_echec`.

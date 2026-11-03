@@ -176,7 +176,21 @@ class CardDAV:
                 if texte:
                     etag = (prop.findtext(f"{{{D}}}getetag") or etags.get(href, "")).strip()
                     cartes.append(Brute(href, etag, texte))
+        # Lecture incomplète (cartes annoncées mais non fournies) : mieux vaut s'arrêter que de
+        # croire ces fiches supprimées de l'iPhone
+        manquantes = len(etags) - len(cartes)
+        if manquantes > max(2, len(etags) // 100):
+            raise ErreurICloud(f"Lecture d'iCloud incomplète : {manquantes} fiche(s) annoncée(s) mais non fournie(s). "
+                               "Rien n'est modifié ; nouvel essai au prochain passage.")
         return cartes
+
+    def etag(self, href: str) -> str | None:
+        """ETag actuel d'une carte (quand le PUT ne l'a pas renvoyé)."""
+        try:
+            reps = self._propfind(self._url(href, self.decouvrir()), "<d:getetag/>", 0)
+        except ErreurICloud:
+            return None
+        return next(((p.findtext(f"{{{D}}}getetag") or "").strip() or None for _, p in reps), None)
 
     def telecharger(self, url: str) -> bytes | None:
         """Image d'une carte que iCloud ne fournit que sous forme de lien (avec authentification)."""
