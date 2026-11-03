@@ -2,6 +2,7 @@
 
 ## 1.3.1 — 3 novembre 2026
 - Photos : bouton ↻ en haut de la page, « Chercher les manquants » ou « Tout régénérer », qui enchaîne photos HD, affiches et logos pour tous les contacts, avec une barre de progression par étape (aussi visible si la recherche a été lancée ailleurs). Tes choix ne sont jamais changés.
+- État › « Changements pour iCloud » : tout ce qui partirait dans iCloud, sur une seule liste à jour (relue en ouvrant la page ou avec ↻) — modifications champ par champ (avant → après), créations, suppressions, groupes. Un toucher ouvre la liste ; pour chaque fiche, **Valider** (écrite dans iCloud tout de suite) ou **Revoir** (repasse en Révision, rien n'est écrit), puis « Appliquer » ; « Tout valider » en un geste. Les suppressions s'y confirment aussi.
 - Affiches pour tous les contacts liés à Immich : plus de choix par groupe (la nuit aussi). Les logos gardent leurs groupes.
 
 ## 1.3.0 — 3 novembre 2026
