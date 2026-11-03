@@ -55,7 +55,7 @@ def reprendre(c: Carnet) -> dict:
         cx, dossier = _ouvrir(c.cfg.ancienne_base, c.cfg.ancienne_cle)
     except Exception as exc:  # noqa: BLE001
         bilan["erreur"] = f"Ancienne base illisible ({exc.__class__.__name__}) : vérifie CARNET_DB_KEY."
-        c.base.ecrire("reprise", bilan)
+        c.base.ecrire("reprise_essai", bilan)
         c.base.noter("reprise", bilan["erreur"])
         return bilan
     try:
@@ -124,7 +124,8 @@ def reprendre(c: Carnet) -> dict:
         cx.close()
         shutil.rmtree(dossier, ignore_errors=True)
     c.oublier()
-    c.base.ecrire("reprise", bilan)
+    # Enregistrée seulement si elle a réussi : sinon, nouvel essai au prochain démarrage
+    c.base.ecrire("reprise" if not bilan["erreur"] else "reprise_essai", bilan)
     c.base.noter("reprise", f"Reprise de la 1.3 : {bilan['liaisons']} liaison(s), {bilan['refus']} refus, "
                  f"{bilan['portraits']} portrait(s), {bilan['affiches']} affiche(s), {bilan['linkedin']} relation(s) LinkedIn"
                  + (f" — {bilan['erreur']}" if bilan["erreur"] else ""), bilan)

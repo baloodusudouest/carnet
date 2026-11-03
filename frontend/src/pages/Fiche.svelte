@@ -28,7 +28,7 @@
   async function ecrire() {
     attente = true
     try {
-      const res = await api.put(`/api/contacts/${e}`, { fiche: apercu.fiche })
+      const res = await api.put(`/api/contacts/${e}`, { fiche: apercu.fiche, etag: donnees.etag })
       brouillon = apercu = null
       await apresEcriture(res, 'Fiche écrite dans iCloud.')
       await charger()

@@ -17,4 +17,4 @@ chmod 700 "$STATE"   # base et sauvegardes : lisibles par ton compte seulement
 
 export HOME="$STATE"
 cd /app
-exec gosu "$PUID:$PGID" uvicorn app.main:app --app-dir /app --host 0.0.0.0 --port 8096 --proxy-headers
+exec gosu "$PUID:$PGID" uvicorn app.main:app --app-dir /app --host 0.0.0.0 --port 8096 --proxy-headers --no-access-log

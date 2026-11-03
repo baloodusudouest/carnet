@@ -288,7 +288,11 @@ def test_nuit_date_manquante_et_plafond(c, services, monkeypatch):
     ic.modifier_sur_iphone("DDDD-4444", texte)
     with c.ecriture():
         icloud.relire(c)
+    # Tant que la modification de l'iPhone n'est pas relue, la nuit ne touche pas la fiche
     liaisons.lier(c, "DDDD-4444", "immich", "im-paul")
+    nuit.passer(c, "test")
+    assert "BDAY" not in ic.texte("DDDD-4444")
+    actions.repondre(c, points(c, "iphone_modifiee")[0]["id"], "garder")
     monkeypatch.setattr(nuit, "PLAFOND", 0)
     bilan = nuit.passer(c, "test")
     assert bilan["ecrites"] == 0 and bilan["reportees"] >= 1
@@ -521,7 +525,9 @@ def test_api_connexion_obligatoire(c):
         fiche = client.get("/api/contacts/DDDD-4444").json()["fiche"]
         fiche["fonction"] = "Vigneron"
         assert client.post("/api/contacts/DDDD-4444/apercu", json={"fiche": fiche}).json()["champs"][0]["champ"] == "fonction"
-        r = client.put("/api/contacts/DDDD-4444", json={"fiche": fiche}).json()
+        assert client.put("/api/contacts/DDDD-4444", json={"fiche": fiche}).status_code == 400   # version exigée
+        etag = client.get("/api/contacts/DDDD-4444").json()["etag"]
+        r = client.put("/api/contacts/DDDD-4444", json={"fiche": fiche, "etag": etag}).json()
         assert client.post(f"/api/annuler/{r['jeton']}").json()["ok"]
         assert client.get("/api/a-traiter").status_code == 200
         assert client.get("/api/etat").json()["services"]["icloud"]
@@ -602,3 +608,169 @@ def test_reprise_cle_fausse(tmp_path, services):
     with cn.ecriture():
         icloud.relire(cn)
     assert "CARNET_DB_KEY" in reprise.reprendre(cn)["erreur"]
+
+
+# ================================================================ relecture indépendante : cas ajoutés
+
+RICHE = ("BEGIN:VCARD\r\nVERSION:3.0\r\nN:DURAND;Marc;;Dr.;Jr\r\nFN:Marc DURAND\r\nORG:Hôpital;Cardiologie\r\n"
+         "item1.TEL:+33 5 53 00 00 09\r\nitem1.X-ABLabel:Gîte\r\nTEL;type=FAX:+33 5 53 00 00 08\r\n"
+         "ADR;type=WORK:BP 12;Bâtiment B;1 rue Haute;Agen;;47000;France\r\nIMPP;X-SERVICE-TYPE=Skype:skype:marc.d\r\n"
+         "NOTE:Ligne 1\r\nUID:RICH-0001\r\nEND:VCARD\r\n")
+
+
+def test_ecriture_garde_les_lignes_d_origine(c, services):
+    ic = services["icloud"]
+    ic.modifier_sur_iphone("RICH-0001", RICHE)
+    with c.ecriture():
+        icloud.relire(c)
+    traiter.retirer(c, "iphone_nouvelle", "RICH-0001")
+    f = c.fiche("RICH-0001")
+    f["fonction"] = "Chef de service"
+    actions.valider(c, "RICH-0001", f, etag_vu=actions._etag(c, "RICH-0001"))
+    texte = ic.texte("RICH-0001")
+    for ligne in ("N:DURAND;Marc;;Dr.;Jr", "ORG:Hôpital;Cardiologie", "X-ABLabel:Gîte", "TEL;type=FAX:",
+                  "ADR;type=WORK:BP 12;Bâtiment B;1 rue Haute", "IMPP;X-SERVICE-TYPE=Skype:skype:marc.d", "NOTE:Ligne 1"):
+        assert ligne in texte, ligne
+    assert "TITLE:Chef de service" in texte
+
+
+def test_page_restee_ouverte_n_ecrase_pas_l_iphone(c, services):
+    ic = services["icloud"]
+    vu = actions._etag(c, "DDDD-4444")
+    ic.modifier_sur_iphone("DDDD-4444", ic.texte("DDDD-4444").replace("X-PERSO:garder\r\n", "EMAIL:paul@ici.fr\r\nX-PERSO:garder\r\n"))
+    with c.ecriture():
+        icloud.relire(c)                       # la nuit a relu : la base a la nouvelle version
+    f = c.fiche("DDDD-4444")
+    f["courriels"] = []                       # la page ouverte avant n'a pas le courriel
+    f["fonction"] = "Vigneron"
+    with pytest.raises(ErreurCarnet, match="depuis que tu l'as ouverte"):
+        actions.valider(c, "DDDD-4444", f, etag_vu=vu)
+    assert "paul@ici.fr" in ic.texte("DDDD-4444")
+    assert points(c, "iphone_modifiee") and points(c, "conflit")
+
+
+def test_carte_manquante_relue_une_par_une(c, services):
+    ic = services["icloud"]
+    vrai = ic.__call__
+
+    def multiget_partiel(r):
+        rep = vrai(r)
+        if r.method == "REPORT" and r.content.decode().count("<d:href>") > 1:
+            corps = re.sub(r"<d:response><d:href>[^<]*BBBB-2222[^<]*</d:href>.*?</d:response>", "", rep.content.decode(), flags=re.S)
+            return httpx.Response(207, content=corps.encode())
+        return rep
+    c.transports["icloud"] = httpx.MockTransport(multiget_partiel)
+    with c.ecriture():
+        bilan = icloud.relire(c)
+    assert bilan["supprimes"] == 0 and "BBBB-2222" in c.fiches()
+
+
+def test_photo_par_lien_sans_identifiants_hors_icloud(c):
+    vus = []
+
+    def serveur(r):
+        vus.append((r.url.host, r.headers.get("authorization")))
+        return httpx.Response(200, content=b"\xff\xd8\xffimage")
+    from app.carddav import CardDAV
+    dav = CardDAV("https://contacts.icloud.com", "moi", "secret", transport=httpx.MockTransport(serveur))
+    dav.telecharger("https://autre-site.example/photo.jpg")
+    dav.telecharger("https://p42-contacts.icloud.com/photo.jpg")
+    assert vus[0] == ("autre-site.example", None) and vus[1][1]
+
+
+def test_erreur_de_groupe_apres_ecriture_garde_la_base_a_jour(c, services):
+    ic = services["icloud"]
+    vrai = ic.__call__
+
+    def groupes_en_panne(r):
+        if r.method == "PUT" and "GGGG-0001" in r.url.path:
+            return httpx.Response(500)
+        return vrai(r)
+    c.transports["icloud"] = httpx.MockTransport(groupes_en_panne)
+    f = c.fiche("DDDD-4444")
+    f["fonction"] = "Vigneron"
+    f["groupes"] = ["Urgence"]
+    with pytest.raises(Exception):
+        actions.valider(c, "DDDD-4444", f, etag_vu=actions._etag(c, "DDDD-4444"))
+    c.transports["icloud"] = ic.transport()
+    with c.ecriture():
+        assert icloud.relire(c)["modifies"] == 0      # l'écriture n'est pas prise pour l'iPhone
+    assert c.fiches()["DDDD-4444"]["fonction"] == "Vigneron"
+
+
+def test_fusion_en_conflit_ne_vide_pas_les_groupes(c, services):
+    ic = services["icloud"]
+    ic.modifier_sur_iphone("EEEE-5555", carte_simple("EEEE-5555", "Paul Martin"))
+    with c.ecriture():
+        icloud.relire(c)
+    ic.modifier_sur_iphone("AAAA-1111", ic.texte("AAAA-1111") + "")
+    ic.cartes[f"{CARNET}AAAA-1111.vcf"][0] = '"change"'      # modifiée sur l'iPhone, pas encore relue
+    with pytest.raises(ErreurCarnet):
+        actions.fusionner(c, "EEEE-5555", "AAAA-1111", c.fiche("EEEE-5555"))
+    assert "urn:uuid:AAAA-1111" in ic.texte("GGGG-0001")
+
+
+def test_recreer_et_restaurer_remettent_les_groupes(c, services):
+    ic = services["icloud"]
+    nom = icloud.sauvegarder(c, "test")
+    del ic.cartes[f"{CARNET}AAAA-1111.vcf"]
+    ic.modifier_sur_iphone("GGGG-0001", ic.texte("GGGG-0001").replace("X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:AAAA-1111\r\n", ""))
+    with c.ecriture():
+        icloud.relire(c)
+    [p] = points(c, "iphone_supprimee")
+    actions.repondre(c, p["id"], "recreer")
+    assert "urn:uuid:AAAA-1111" in ic.texte("GGGG-0001")
+    f = c.fiche("AAAA-1111")
+    f["groupes"] = []
+    actions.valider(c, "AAAA-1111", f, etag_vu=actions._etag(c, "AAAA-1111"))
+    assert "AAAA-1111" not in ic.texte("GGGG-0001")
+    with c.ecriture():
+        icloud.restaurer(c, nom, ["AAAA-1111"])
+    assert "urn:uuid:AAAA-1111" in ic.texte("GGGG-0001")
+    assert c.fiches()["AAAA-1111"]["groupes"] == ["Urgence"]
+
+
+def test_nuit_linkedin_revérifie_la_fiche(c, services):
+    ic = services["icloud"]
+    linkedin.importer(c, CSV)
+    actions.repondre(c, points(c, "linkedin")[0]["id"], "appliquer")
+    linkedin.importer(c, CSV.replace("Caviste", "Gérant"))       # en attente pour la nuit
+    f = c.fiche("DDDD-4444")
+    f["fonction"] = "Maître de chai"                               # changé entre-temps
+    actions.valider(c, "DDDD-4444", f, etag_vu=actions._etag(c, "DDDD-4444"))
+    nuit.passer(c, "test")
+    assert "TITLE:Maître de chai" in ic.texte("DDDD-4444")
+
+
+def test_deux_groupes_du_meme_nom(c, services):
+    ic = services["icloud"]
+    ic.modifier_sur_iphone("GGGG-0002", "BEGIN:VCARD\r\nVERSION:3.0\r\nN:Urgence\r\nFN:Urgence\r\n"
+                           "X-ADDRESSBOOKSERVER-KIND:group\r\nX-ADDRESSBOOKSERVER-MEMBER:urn:uuid:AAAA-1111\r\n"
+                           "UID:GGGG-0002\r\nEND:VCARD\r\n")
+    with c.ecriture():
+        icloud.relire(c)
+    f = c.fiche("AAAA-1111")
+    f["groupes"] = []
+    actions.valider(c, "AAAA-1111", f, etag_vu=actions._etag(c, "AAAA-1111"))
+    assert "AAAA-1111" not in ic.texte("GGGG-0001") and "AAAA-1111" not in ic.texte("GGGG-0002")
+    with c.ecriture():
+        assert icloud.relire(c)["modifies"] == 0
+
+
+def test_reprise_retentee_apres_une_cle_fausse(tmp_path, services):
+    import sqlcipher3
+    state = tmp_path / "state"
+    state.mkdir()
+    a = sqlcipher3.connect(str(state / "carnet.db"))
+    a.execute("PRAGMA key = 'bonne'")
+    a.executescript("CREATE TABLE etat (cle TEXT, valeur TEXT); CREATE TABLE sources (id INTEGER, source TEXT, uid TEXT, "
+                    "donnees TEXT, personne_id TEXT); CREATE TABLE distinctes (a INTEGER, b INTEGER);")
+    a.commit()
+    a.close()
+    cn = Carnet(_config(tmp_path, ancienne_base=state / "carnet.db", ancienne_cle="fausse"),
+                {k: v.transport() for k, v in services.items()})
+    with cn.ecriture():
+        icloud.relire(cn)
+    assert reprise.reprendre(cn)["erreur"] and reprise.a_faire(cn)
+    object.__setattr__(cn, "cfg", _config(tmp_path, ancienne_base=state / "carnet.db", ancienne_cle="bonne"))
+    assert reprise.reprendre(cn)["erreur"] is None and not reprise.a_faire(cn)

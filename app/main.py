@@ -229,7 +229,8 @@ def contact(uid: str):
     affiche = c.base.un("SELECT immich, posee, le, source FROM affiches WHERE uid = ?", (uid,))
     lk = c.base.un("SELECT url, donnees FROM linkedin WHERE uid = ?", (uid,))
     points = [p for p in traiter.liste(c) if p.get("uid") == uid]
-    return {"uid": uid, "fiche": f, "nom": nom_affiche(f),
+    etag = (c.base.un("SELECT etag FROM fiches WHERE uid = ?", (uid,)) or {"etag": ""})["etag"]
+    return {"uid": uid, "etag": etag, "fiche": f, "nom": nom_affiche(f),
             "liaisons": {s: {"id": lien[s], "nom": noms.get((s, lien[s])), "statut": lien.get(s + "_statut")}
                          for s in ("immich", "treemich") if lien.get(s)},
             "portraits": {"candidats": json.loads(portrait["candidats"]), "asset": portrait["asset"]} if portrait else None,
@@ -245,7 +246,9 @@ def apercu(uid: str, corps: dict = Body(...)):
 
 @app.put("/api/contacts/{uid}")
 def valider(uid: str, corps: dict = Body(...)):
-    return actions.valider(carnet(), uid, corps.get("fiche") or {})
+    if not corps.get("etag"):
+        raise ErreurCarnet("Version de la fiche absente : recharge la page.")
+    return actions.valider(carnet(), uid, corps.get("fiche") or {}, etag_vu=str(corps["etag"]))
 
 
 @app.post("/api/annuler/{jeton}")
@@ -408,7 +411,9 @@ def restaurer(nom: str, corps: dict = Body(...)):
 
 @app.post("/api/synology")
 def synology(corps: dict = Body(default={})):
-    return sorties.copier_synology(carnet(), forcer=bool(corps.get("forcer")))
+    c = carnet()
+    with c.ecriture(attendre=10):   # jamais en même temps que la copie de nuit
+        return sorties.copier_synology(c, forcer=bool(corps.get("forcer")))
 
 
 @app.post("/api/kit")

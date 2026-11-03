@@ -24,18 +24,27 @@ def apercu(c: Carnet, uid: str, fiche: dict) -> dict:
 
 
 def valider(c: Carnet, uid: str, fiche: dict, photo: tuple[bytes, str] | None = None,
-            origine: str = "manuel", motif: str = "modification") -> dict:
+            origine: str = "manuel", motif: str = "modification", etag_vu: str | None = None,
+            forcer: set[str] | None = None) -> dict:
+    """etag_vu : version de la carte que l'interface a affichée (refus si elle a changé depuis)."""
     try:
         propre = F.preparer(fiche, c.cfg.region)
     except ValeurInvalide as exc:
         raise ErreurCarnet(str(exc))
     with c.ecriture(attendre=5):
-        res = icloud.ecrire(c, uid, propre, photo, origine=origine, motif=motif)
-    # La fiche validée règle les points enregistrés qui la concernent
-    with c.base.transaction() as cx:
-        cx.execute("DELETE FROM a_traiter WHERE uid = ? AND motif IN ('iphone_modifiee', 'iphone_nouvelle', 'conflit')", (uid,))
-    c.oublier()
+        res = icloud.ecrire(c, uid, propre, photo, origine=origine, motif=motif, etag_vu=etag_vu, forcer=forcer)
+        # Validée depuis la version affichée : les points iPhone et conflit de cette fiche sont réglés.
+        # Sous le verrou, pour ne jamais effacer un point arrivé par une lecture pendant ce temps.
+        if etag_vu is not None:
+            with c.base.transaction() as cx:
+                cx.execute("DELETE FROM a_traiter WHERE uid = ? AND motif IN ('iphone_modifiee', 'iphone_nouvelle', 'conflit')", (uid,))
+            c.oublier()
     return res
+
+
+def _etag(c: Carnet, uid: str) -> str:
+    l = c.base.un("SELECT etag FROM fiches WHERE uid = ?", (uid,))
+    return l["etag"] if l else ""
 
 
 def annuler(c: Carnet, jeton: str) -> dict:
@@ -73,7 +82,7 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
             return {"ok": True}
         if action == "recreer":
             with c.ecriture(attendre=5):
-                res = icloud.recreer(c, d["texte"], d["href"])
+                res = icloud.recreer(c, d["texte"], d["href"], (d.get("fiche") or {}).get("groupes", []))
             traiter.retirer(c, motif, cle)
             return res
     if motif == "conflit":
@@ -83,19 +92,22 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
         if action == "reprendre":  # ma version, écrite par-dessus celle de l'iPhone (que je viens de voir)
             with c.ecriture(attendre=5):
                 icloud.relire(c, "avant reprise d'un conflit")
-                res = icloud.ecrire(c, uid, d["voulue"], origine="À traiter", motif="version reprise après conflit")
-            traiter.retirer(c, motif, cle)
-            with c.base.transaction() as cx:
-                cx.execute("DELETE FROM a_traiter WHERE uid = ? AND motif = 'iphone_modifiee'", (uid,))
+                res = icloud.ecrire(c, uid, F.preparer(d["voulue"], c.cfg.region), origine="À traiter",
+                                    motif="version reprise après conflit")
+                with c.base.transaction() as cx:
+                    cx.execute("DELETE FROM a_traiter WHERE uid = ? AND motif IN ('iphone_modifiee', 'conflit')", (uid,))
+                c.oublier()
             return res
     if motif == "forme" and action == "appliquer":
-        res = valider(c, uid, c.fiche(uid), origine="À traiter", motif="mise en forme")
+        champs = {"nom": {"prenom", "nom"}, "telephone": {"telephones"}}
+        forcer = set().union(*(champs.get(e["champ"], set()) for e in d["ecarts"]))
+        res = valider(c, uid, c.fiche(uid), origine="À traiter", motif="mise en forme", etag_vu=_etag(c, uid), forcer=forcer)
         traiter.ignorer(c, motif, cle)
         return res
     if motif == "emoji" and action == "appliquer":
         f = c.fiche(uid)
         f["groupes"] = sorted(set(f.get("groupes", [])) | {d["groupe"]})
-        res = valider(c, uid, f, origine="À traiter", motif=f"groupe « {d['groupe']} »")
+        res = valider(c, uid, f, origine="À traiter", motif=f"groupe « {d['groupe']} »", etag_vu=_etag(c, uid))
         return res
     if motif == "liaison":
         if action == "lier":
@@ -110,7 +122,7 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
         res = {"ok": True}
         if f.get("anniversaire", "") != date:
             f["anniversaire"] = date
-            res = valider(c, uid, f, origine="À traiter", motif="date de naissance")
+            res = valider(c, uid, f, origine="À traiter", motif="date de naissance", etag_vu=_etag(c, uid))
         res["services"] = liaisons.ecrire_partout(c, uid, date)
         traiter.ignorer(c, motif, cle)
         return res
@@ -121,7 +133,7 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
     if motif == "relations" and action == "ajouter":
         f = c.fiche(uid)
         f["noms_associes"] = list(f.get("noms_associes", [])) + [dict(x) for x in d["ajouts"]]
-        res = valider(c, uid, f, origine="À traiter", motif="liens familiaux")
+        res = valider(c, uid, f, origine="À traiter", motif="liens familiaux", etag_vu=_etag(c, uid))
         traiter.ignorer(c, motif, cle)
         return res
     if motif == "linkedin" and action == "appliquer":
@@ -132,7 +144,7 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
                     f["courriels"] = list(f.get("courriels", [])) + [{"valeur": v, "type": "travail"}]
             else:
                 f[champ] = v
-        res = valider(c, uid, f, origine="LinkedIn", motif="poste ou société")
+        res = valider(c, uid, f, origine="LinkedIn", motif="poste ou société", etag_vu=_etag(c, uid))
         traiter.retirer(c, motif, cle)
         return res
     if motif == "import":
