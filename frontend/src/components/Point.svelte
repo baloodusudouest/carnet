@@ -9,7 +9,8 @@
   let date = $state(Object.values(point.donnees.valeurs || {}).find((v) => v) || '')
   const d = point.donnees
 
-  const SERVICE = { immich: 'Immich', treemich: 'Treemich' }
+  const SERVICE = { immich: 'Immich', treemich: 'Treemich', telegram: 'Telegram', instagram: 'Instagram',
+                    whatsapp: 'WhatsApp', facebook: 'Facebook' }
   const CHAMPS = { societe: 'Société', fonction: 'Fonction', courriel: 'Courriel' }
 
   function resume(f) {
@@ -92,6 +93,9 @@
       </fieldset>
     {:else if point.motif === 'nom'}
       <p>Dans {SERVICE[d.service]} : <span class="avant">{d.actuel}</span> <span class="apres">{d.voulu}</span></p>
+    {:else if point.motif === 'reseau'}
+      <p>Dans {SERVICE[d.service]} : <strong>{d.nom || d.pseudo}</strong>{#if d.pseudo && d.nom}{' '}<span class="discret">@{d.pseudo}</span>{/if}</p>
+      <p class="discret">Raison : {d.raison}.{#if d.telephone} Numéro absent de la fiche : {d.telephone}.{/if}</p>
     {:else if point.motif === 'relations'}
       <ul class="ecarts">{#each d.ajouts as a}<li><span class="apres">{a.valeur}</span> <span class="discret">({a.type})</span></li>{/each}</ul>
     {/if}
@@ -125,6 +129,12 @@
     {:else if point.motif === 'nom'}
       <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('renommer', null, `Nom écrit dans ${SERVICE[d.service]}.`)}>Renommer dans {SERVICE[d.service]}</button>
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Ignorer</button>
+    {:else if point.motif === 'reseau'}
+      <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('lier', null, `Lié à ${SERVICE[d.service]}.`)}>Lier</button>
+      {#if d.telephone}
+        <button class="bouton" disabled={attente} onclick={() => faire('lier_numero', null, 'Lié, numéro ajouté à la fiche.')}>Lier et ajouter le numéro</button>
+      {/if}
+      <button class="bouton" disabled={attente} onclick={() => faire('pas_lui', null, 'Plus proposé.')}>Pas lui</button>
     {:else if point.motif === 'relations'}
       <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('ajouter', null, 'Liens familiaux ajoutés.')}>Ajouter à la fiche</button>
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Ignorer</button>

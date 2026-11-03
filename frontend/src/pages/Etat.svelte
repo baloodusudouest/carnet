@@ -23,6 +23,11 @@
       resume: (e) => `Synology : ${e.synology ? court(e.synology.le) : 'jamais'}`, alerte: (e) => !!e.synology?.erreur },
     { cle: 'linkedin', nom: 'LinkedIn', icone: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 11v5M8 8v.01M12 16v-5M12 13a2 2 0 0 1 4 0v3"/>',
       resume: (e) => `${e.linkedin.sans_contact.length} sans fiche`, alerte: () => false },
+    { cle: 'reseaux', nom: 'Réseaux', icone: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.9l7.6-3.8M8.2 13.1l7.6 3.8"/>',
+      resume: (e) => `${Object.values(e.reseaux).reduce((n, r) => n + r.liees, 0)} fiche(s) liée(s)`, alerte: () => false },
+    { cle: 'completude', nom: 'Complétude', icone: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 8 8h-8z"/>',
+      resume: (e) => `${e.statut.completude?.validees ?? 0} validée(s), ${e.statut.completude?.a_revoir ?? 0} à revoir`,
+      alerte: (e) => !!e.statut.completude?.a_revoir },
     { cle: 'services', nom: 'Services', icone: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
       resume: (e) => `${Object.entries(e.services).filter(([k, v]) => k !== 'nuit' && v).length} sur 6 configurés`,
       alerte: (e) => !!e.reprise?.erreur },
@@ -36,7 +41,7 @@
   async function lancer(nom, chemin, corps, message) {
     attente = nom
     try {
-      const r = await api.post(chemin, corps)
+      const r = chemin ? await api.post(chemin, corps) : await api.envoyer(corps)
       if (message) dire(typeof message === 'function' ? message(r) : message)
       await rafraichirAccueil()
       setTimeout(charger, 1500)
@@ -69,6 +74,40 @@
     try { await api.post('/api/linkedin/rattacher', { url, uid }); dire(uid ? 'Relation rattachée.' : 'Relation détachée.'); charger() }
     catch (err) { erreur(err) }
   }
+  // Telegram : numéro → code reçu dans Telegram → mot de passe si la double vérification est active.
+  // La session n'existe qu'en mémoire le temps de l'import, puis carnet se déconnecte.
+  let tg = $state({ telephone: '', code: '', mdp: '', etape: 'telephone' })
+  async function telegramCode() {
+    const r = await lancer('telegram', '/api/telegram/code', { telephone: tg.telephone }, 'Code envoyé dans Telegram.')
+    if (r) tg.etape = 'code'
+  }
+  async function telegramImport() {
+    const r = await lancer('telegram', '/api/telegram/import', { code: tg.code, mot_de_passe: tg.mdp })
+    if (!r) return
+    if (r.mot_de_passe) { tg.etape = 'mdp'; dire('Telegram demande ton mot de passe de double vérification.'); return }
+    dire(`Telegram : ${r.lues} contact(s) lu(s), ${r.proposees} rattachement(s) proposé(s) dans « À traiter ».`)
+    tg = { telephone: '', code: '', mdp: '', etape: 'telephone' }
+  }
+  async function telegramAbandon() {
+    await lancer('telegram', '/api/telegram/abandon', {}, 'Connexion à Telegram abandonnée.')
+    tg = { telephone: '', code: '', mdp: '', etape: 'telephone' }
+  }
+  async function importerInstagram(ev) {
+    const fichier = ev.target.files?.[0]
+    if (!fichier) return
+    await lancer('instagram', null, fichier, (r) => `Instagram : ${r.lues} compte(s) lu(s), ${r.proposees} rattachement(s) proposé(s). L'archive n'est pas gardée.`)
+    ev.target.value = ''
+  }
+  // Analyse globale ; la remise à zéro des validations se confirme deux fois (bouton, puis mot à taper)
+  let zero = $state({ ouvert: false, mot: '' })
+  async function analyser(remettre) {
+    await lancer('analyse', '/api/analyse', remettre ? { remettre_a_zero: true, confirmation: zero.mot } : {},
+      remettre ? 'Validations remises à zéro, analyse globale lancée.' : 'Analyse globale lancée.')
+    zero = { ouvert: false, mot: '' }
+    setTimeout(async () => { await rafraichirContacts(); charger() }, 4000)
+  }
+  const NOMS_RESEAUX = { telegram: 'Telegram', instagram: 'Instagram', facebook: 'Facebook', whatsapp: 'WhatsApp' }
+
   async function deconnecter() { await api.post('/api/deconnexion'); global.connecte = false }
 
   onMount(charger)
@@ -196,6 +235,70 @@
     </div>
     {/if}
 
+    {#if section === 'reseaux'}
+    <div class="feuille bloc">
+      <h2 class="titre">Réseaux</h2>
+      <dl>
+        {#each Object.entries(e.reseaux) as [s, r]}
+          <dt>{NOMS_RESEAUX[s]}</dt>
+          <dd>{r.liees} fiche(s) liée(s){#if r.lues}, {r.lues} personne(s) lue(s){/if}{#if r.importe_le}{" "}<span class="discret">(import du {date(r.importe_le)})</span>{/if}</dd>
+        {/each}
+      </dl>
+      <p class="discret">Chaque rapprochement arrive dans « À traiter » (Réseaux) : rien n'est lié sans toi. Les personnes lues mais jamais liées sont effacées au bout de 90 jours.</p>
+
+      <h3>Telegram</h3>
+      {#if !e.telegram.configure}
+        <p class="discret">Ajoute CARNET_TELEGRAM_API_ID et CARNET_TELEGRAM_API_HASH dans la stack (my.telegram.org, « API development tools »).</p>
+      {:else if tg.etape === 'telephone'}
+        <span class="rangee"><input type="tel" bind:value={tg.telephone} placeholder="+33 6 12 34 56 78" aria-label="Ton numéro Telegram" autocomplete="tel" />
+          <button class="bouton" disabled={!tg.telephone || !!attente} onclick={telegramCode}>Recevoir le code</button></span>
+      {:else}
+        <span class="rangee"><input inputmode="numeric" bind:value={tg.code} placeholder="Code reçu dans Telegram" aria-label="Code Telegram" autocomplete="one-time-code" />
+          {#if tg.etape === 'mdp'}<input type="password" bind:value={tg.mdp} placeholder="Mot de passe Telegram" aria-label="Mot de passe Telegram" autocomplete="off" />{/if}
+          <button class="bouton bouton-principal" disabled={!tg.code || (tg.etape === 'mdp' && !tg.mdp) || !!attente} onclick={telegramImport}>Importer</button>
+          <button class="bouton" disabled={!!attente} onclick={telegramAbandon}>Abandonner</button></span>
+      {/if}
+      {#if e.telegram.configure}<p class="discret">Import ponctuel : carnet lit tes contacts Telegram puis se déconnecte. La session n'est ni gardée ni sauvegardée.</p>{/if}
+
+      <h3>Instagram</h3>
+      <p class="discret">Dans Instagram : Paramètres, Espace Comptes, Télécharger tes informations, format JSON, « Abonnés et abonnements ». Dépose l'archive .zip ici : seuls les pseudos sont lus, l'archive n'est pas gardée.</p>
+      <label class="bouton fichier">{attente === 'instagram' ? 'Lecture…' : 'Déposer l\'export Instagram'}
+        <input type="file" accept=".zip,.json,application/zip,application/json" onchange={importerInstagram} hidden /></label>
+
+      <h3>Facebook et WhatsApp</h3>
+      <p class="discret">Pas d'import possible : sur la fiche, colle l'adresse du profil Facebook ou choisis le numéro WhatsApp (section Plateformes).</p>
+    </div>
+    {/if}
+
+    {#if section === 'completude'}
+    <div class="feuille bloc">
+      <h2 class="titre">Complétude</h2>
+      <dl>
+        <dt>Sans année</dt><dd>{e.statut.completude.annee}</dd>
+        <dt>Sans adresse</dt><dd>{e.statut.completude.adresse}</dd>
+        <dt>Sans téléphone</dt><dd>{e.statut.completude.telephone}</dd>
+        <dt>Sans moyen de contact</dt><dd>{e.statut.completude.contact}</dd>
+        <dt>Validées</dt><dd>{e.statut.completude.validees}</dd>
+        <dt>À revoir</dt><dd>{e.statut.completude.a_revoir}</dd>
+      </dl>
+      <p class="discret">L'analyse globale relit Immich et Treemich, recalcule doublons, complétude et rapprochements réseaux. Elle n'écrit rien dans iCloud.</p>
+      <div class="boutons">
+        <button class="bouton bouton-principal" disabled={!!attente} onclick={() => analyser(false)}>Relancer l'analyse globale</button>
+        {#if !zero.ouvert}
+          <button class="bouton bouton-danger" disabled={!!attente} onclick={() => (zero.ouvert = true)}>Remettre les validations à zéro…</button>
+        {/if}
+      </div>
+      {#if zero.ouvert}
+        <div class="zero">
+          <p>Les {e.statut.completude.validees + e.statut.completude.a_revoir} validation(s) seront effacées : chaque fiche devra être revalidée. Tape <strong>REMETTRE</strong> pour confirmer.</p>
+          <span class="rangee"><input bind:value={zero.mot} aria-label="Confirmation" autocapitalize="characters" autocomplete="off" />
+            <button class="bouton bouton-danger" disabled={zero.mot !== 'REMETTRE' || !!attente} onclick={() => analyser(true)}>Remettre à zéro et analyser</button>
+            <button class="bouton" onclick={() => (zero = { ouvert: false, mot: '' })}>Annuler</button></span>
+        </div>
+      {/if}
+    </div>
+    {/if}
+
     {#if section === 'services'}
     <div class="feuille bloc">
       <h2 class="titre">Services</h2>
@@ -258,5 +361,7 @@
   .voyant { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--color-tranche); }
   .voyant.ok { background: var(--color-valide); }
   .journal { display: grid; gap: 0.35rem; max-height: 22rem; overflow-y: auto; font-size: 0.9rem; }
+  .fichier { justify-self: start; cursor: pointer; }
+  .zero { display: grid; gap: 0.5rem; padding: 0.75rem; border: 1px solid color-mix(in srgb, var(--color-alerte) 50%, transparent); border-radius: 8px; }
   .pied { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 </style>

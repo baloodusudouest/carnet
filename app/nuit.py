@@ -34,6 +34,8 @@ def passer(c: Carnet, origine: str = "nuit") -> dict:
     with c.ecriture():
         c.tache = {"nom": "nuit", "etat": "en_cours", "message": "Lecture d'iCloud…"}
         try:
+            from . import reseaux
+            reseaux.purger(c)     # en premier : faite même si la lecture d'iCloud échoue
             try:
                 lecture = icloud.relire(c, origine)
             except Exception as exc:  # noqa: BLE001 — lecture en échec : rien d'autre n'est fait

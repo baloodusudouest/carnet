@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  import { etat, erreur, rafraichirAccueil } from '../lib/etat.svelte.js'
+  import { etat, erreur, dire, rafraichirAccueil } from '../lib/etat.svelte.js'
   import Point from '../components/Point.svelte'
 
   let points = $state(null)
@@ -13,8 +13,30 @@
     { nom: 'Doublons', motifs: ['doublon'] },
     { nom: 'Liaisons', motifs: ['liaison', 'date', 'nom', 'relations'] },
     { nom: 'Mise en forme', motifs: ['forme', 'emoji'] },
+    { nom: 'Réseaux', motifs: ['reseau'] },
     { nom: 'Imports', motifs: ['import', 'linkedin'] },
   ]
+  // Actions groupées : seulement sur une famille filtrée, avec une seule réponse possible pour tous
+  const LOTS = {
+    'Réseaux': [{ action: 'lier', libelle: 'Tout lier' }, { action: 'ignorer', libelle: 'Tout ignorer' }],
+    'Mise en forme': [{ action: 'appliquer', libelle: 'Tout appliquer' }, { action: 'ignorer', libelle: 'Tout ignorer' }],
+    'Liaisons': [{ action: 'ignorer', libelle: 'Tout ignorer' }],
+    'Imports': [{ action: 'ignorer', libelle: 'Tout ignorer' }],
+  }
+  let lotEnCours = $state(false)
+  let aConfirmer = $state(null)   // action groupée en attente de confirmation
+  async function lot(action) {
+    const ids = visibles.map((p) => p.id)
+    aConfirmer = null
+    if (!ids.length) return
+    lotEnCours = true
+    try {
+      const r = await api.post('/api/a-traiter-lot', { ids, action })
+      dire(`${r.faits} point(s) traité(s)` + (r.reportes ? `, ${r.reportes} remis au prochain lot (plafond d'écritures)` : '')
+           + (r.erreurs.length ? `, ${r.erreurs.length} erreur(s) : ${r.erreurs[0]}` : '') + '.')
+      await charger(); rafraichirAccueil()
+    } catch (e) { erreur(e) } finally { lotEnCours = false }
+  }
   const presentes = $derived(familles.filter((f) => points?.some((p) => f.motifs.includes(p.motif))))
   const visibles = $derived(points ? (filtre ? points.filter((p) => filtre.motifs.includes(p.motif)) : points) : [])
 
@@ -49,10 +71,23 @@
       <div class="filtres" role="group" aria-label="Filtrer">
         <button class="pastille" aria-pressed={!filtre} onclick={() => (filtre = null)}>Tout ({points.length})</button>
         {#each presentes as f}
-          <button class="pastille" aria-pressed={filtre === f} onclick={() => (filtre = f)}>
+          <button class="pastille" aria-pressed={filtre === f} onclick={() => { filtre = f; aConfirmer = null }}>
             {f.nom} ({points.filter((p) => f.motifs.includes(p.motif)).length})
           </button>
         {/each}
+      </div>
+    {/if}
+    {#if filtre && LOTS[filtre.nom] && visibles.length > 1}
+      <div class="lot">
+        {#if aConfirmer}
+          <span class="discret">{aConfirmer.libelle} : {visibles.length} point(s).</span>
+          <button class="bouton bouton-principal" disabled={lotEnCours} onclick={() => lot(aConfirmer.action)}>Confirmer</button>
+          <button class="bouton" onclick={() => (aConfirmer = null)}>Annuler</button>
+        {:else}
+          {#each LOTS[filtre.nom] as l}
+            <button class="bouton" disabled={lotEnCours} onclick={() => (aConfirmer = l)}>{l.libelle} ({visibles.length})</button>
+          {/each}
+        {/if}
       </div>
     {/if}
     {#if etat.large}
@@ -92,6 +127,7 @@
   .filtres { display: flex; gap: 0.4rem; overflow-x: auto; padding-bottom: 0.4rem; margin-bottom: 0.75rem; scrollbar-width: none; }
   .filtres .pastille { flex: none; }
   .liste { display: grid; gap: 0.75rem; }
+  .lot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
   .vide { padding: 3rem 0; }
   .vide .titre { font-size: 1.4rem; margin-bottom: 0.3rem; }
 </style>

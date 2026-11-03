@@ -154,6 +154,23 @@ def assembler(nouvelle: str, distante: str | None) -> str:
 
 
 # Champs de la fiche → propriétés vCard qui les portent
+SITES = {"URL", "X-SOCIALPROFILE"}
+
+
+def _cle_ligne_site(ligne: str) -> str | None:
+    """Clé d'un site écrit sur une ligne URL ou X-SOCIALPROFILE (adresse sans http ni www),
+    ou None si carnet ne la lit pas comme un site."""
+    from .normalisation import cle_site, site
+    entete, _, valeur = ligne.partition(":")
+    v = _devaleur(valeur).strip()
+    if not v.lower().startswith("http"):
+        m = re.search(r";x-user=([^;:]+)", entete, re.I)
+        if m and not v:
+            v = m.group(1).strip('"')
+    s = site(v)
+    return cle_site(s) if s else None
+
+
 PROPRIETES = {
     "prenom": {"N", "FN"}, "nom": {"N", "FN"}, "surnom": {"NICKNAME"}, "societe": {"ORG", "X-ABSHOWAS", "FN"},
     "fonction": {"TITLE"}, "anniversaire": {"BDAY"}, "telephones": {"TEL"}, "courriels": {"EMAIL"},
@@ -162,7 +179,7 @@ PROPRIETES = {
 }
 
 
-def assembler_partiel(nouvelle: str, distante: str, champs: set[str]) -> str:
+def assembler_partiel(nouvelle: str, distante: str, champs: set[str], retypes: set[str] | None = None) -> str:
     """Carte écrite quand seuls certains champs changent : les lignes d'origine d'iCloud restent
     telles quelles pour tout le reste (titre et suffixe du nom, service, boîte postale, étiquettes
     personnalisées, IMPP…). Seules les propriétés des champs modifiés viennent de carnet."""
@@ -181,18 +198,55 @@ def assembler_partiel(nouvelle: str, distante: str, champs: set[str]) -> str:
 
     dist = deplier(distante)
     gdist = groupes_de(dist)
+    neuves = deplier(nouvelle)
+    gneuf = groupes_de(neuves)
+
+    def principal_de(l: str, groupes: dict[str, str]) -> str:
+        g, nom, _ = _decouper(l)
+        return groupes.get(g, nom) if g else nom
+
+    # Sites : comparés un par un. Une ligne URL / X-SOCIALPROFILE d'iCloud dont le site est encore
+    # sur la fiche reste telle quelle (paramètres x-user, étiquette personnalisée…) ; seule celle
+    # d'un site retiré part, seul un site nouveau est ajouté. Une ligne que carnet ne sait pas
+    # lire est toujours gardée.
+    sites = "sites" in champs
+    cles_neuves = {k for l in neuves if principal_de(l, gneuf) in SITES and (k := _cle_ligne_site(l))} if sites else set()
+    retirees: set[str] = set()      # groupes « itemN » ou lignes seules retirées
+    cles_gardees: set[str] = set()
+    if sites:
+        for l in dist:
+            g, nom, v = _decouper(l)
+            if principal_de(l, gdist) not in SITES or (g and nom == "X-ABLABEL") or _apple(nom, v):
+                continue
+            k = _cle_ligne_site(l)
+            if k is None or (k in cles_neuves and k not in (retypes or set())):
+                if k:
+                    cles_gardees.add(k)
+            else:
+                retirees.add(g or l)
     gardees = []
     for l in dist:
         g, nom, v = _decouper(l)
-        principal = gdist.get(g, nom) if g else nom
+        principal = principal_de(l, gdist)
         if nom == "END" or nom in JETEES:
             continue
-        if principal in props and not _apple(principal, v):
+        if sites and principal in SITES:
+            if (g or l) in retirees:
+                continue
+        elif principal in props and not _apple(principal, v):
             continue
         gardees.append(l)
-    neuves = deplier(nouvelle)
-    gneuf = groupes_de(neuves)
-    ajout = [l for l in neuves if (gneuf.get(_decouper(l)[0], _decouper(l)[1]) if _decouper(l)[0] else _decouper(l)[1]) in props]
+
+    def ajoutee(l: str) -> bool:
+        principal = principal_de(l, gneuf)
+        if principal not in props:
+            return False
+        if sites and principal in SITES:
+            g = _decouper(l)[0]
+            tete = next((x for x in neuves if g and _decouper(x)[0] == g and _decouper(x)[1] != "X-ABLABEL"), l)
+            return _cle_ligne_site(tete) not in cles_gardees
+        return True
+    ajout = [l for l in neuves if ajoutee(l)]
     items = [int(m) for l in gardees if (m := (re.match(r"item(\d+)\.", l) or [None, None])[1])]
     ajout = _renumeroter(ajout, max(items, default=0) + 1)
     lignes = gardees + ajout + ["END:VCARD"]

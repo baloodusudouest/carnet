@@ -149,3 +149,71 @@ def test_etat_et_deconnexion(page):
     assert page.locator("h2", has_text="Sauvegardes d'iCloud").count() == 0      # une section à la fois
     page.click("text=Se déconnecter")
     page.wait_for_selector("#mdp")
+
+
+# ------------------------------------------------------------------ 2.1 : complétude et réseaux
+
+def test_filtres_de_completude_et_jauges(page):
+    page.click("nav.onglets >> text=Contacts")
+    page.wait_for_selector(".ligne")
+    total = page.locator(".ligne").count()
+    assert page.locator(".ligne .jauge").count() == total
+    page.locator(".manques .pastille", has_text="Sans adresse").click()
+    filtrees = page.locator(".ligne").count()
+    assert 0 < filtrees <= total
+    page.locator(".manques .pastille", has_text="Sans adresse").click()
+    assert page.locator(".ligne").count() == total
+
+
+def test_valider_puis_retirer_la_validation(page):
+    page.goto(page.url.split("#")[0] + "#/contacts/F-05")
+    bloc = page.locator(".completude")
+    bloc.get_by_role("button", name=re.compile("Valider la fiche|Revalider")).click()
+    page.wait_for_selector(".completude >> text=Fiche validée")
+    bloc.get_by_role("button", name="Retirer la validation").click()
+    page.wait_for_selector(".completude >> text=Valider la fiche")
+
+
+def test_ajouter_puis_delier_un_profil_facebook(page):
+    page.goto(page.url.split("#")[0] + "#/contacts/F-06")
+    page.wait_for_selector("h2:has-text('Plateformes')")
+    page.select_option("select[aria-label='Réseau à ajouter']", "facebook")
+    page.fill("input[aria-label='Profil Facebook']", "https://www.facebook.com/francois.muller.demo")
+    page.get_by_role("button", name="Ajouter", exact=True).click()
+    page.wait_for_selector(".reseaux >> text=Facebook")
+    page.locator(".reseaux li.liaison", has_text="Facebook").get_by_role("button", name="Délier").click()
+    assert "francois.muller.demo" in page.locator(".confirmer").inner_text()     # l'adresse retirée est montrée
+    page.get_by_role("button", name="Délier Facebook").click()
+    page.wait_for_selector(".reseaux li:has-text('Facebook')", state="detached")
+
+
+def test_a_traiter_famille_reseaux(page):
+    page.click("nav.onglets >> text=À traiter")
+    filtre = page.locator(".filtres .pastille", has_text="Réseaux")
+    if not filtre.count():
+        pytest.skip("points réseau déjà traités par l'autre format")
+    filtre.click()
+    carte = page.locator("article", has_text="Réseau à rattacher").first
+    assert carte.get_by_role("button", name="Pas lui").count() == 1
+    carte.get_by_role("button", name="Lier", exact=True).click()
+    page.wait_for_selector(".message >> text=Lié")
+
+
+def test_etat_reseaux_et_remise_a_zero_confirmee(page):
+    page.click("nav.onglets >> text=État")
+    page.locator(".tuile", has_text="Réseaux").click()
+    page.wait_for_selector("h3:has-text('Telegram')")
+    assert page.locator("text=CARNET_TELEGRAM_API_ID").count() == 1          # non configuré dans la démo
+    page.locator(".tuile", has_text="Complétude").click()
+    page.get_by_role("button", name="Remettre les validations à zéro…").click()
+    bouton = page.get_by_role("button", name="Remettre à zéro et analyser")
+    assert bouton.is_disabled()
+    page.fill("input[aria-label='Confirmation']", "remettre")
+    assert bouton.is_disabled()
+    page.get_by_role("button", name="Annuler", exact=True).click()
+
+
+def test_manifeste_pwa(adresse):
+    r = httpx.get(adresse + "/manifest.json")
+    assert r.status_code == 200 and r.json()["display"] == "standalone"
+    assert httpx.get(adresse + "/icone-512.png").status_code == 200

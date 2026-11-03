@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 
 from . import fiches as F, icloud, liaisons, traiter
+from .carddav import ErreurICloud
 from .carnet import Carnet, ErreurCarnet
 from .modele import nom_affiche
 from .normalisation import ValeurInvalide
@@ -23,21 +24,32 @@ def apercu(c: Carnet, uid: str, fiche: dict) -> dict:
     return {"fiche": propre, "champs": F.differences(c.fiche(uid), propre)}
 
 
+REVUE = ("iphone_modifiee", "iphone_nouvelle", "conflit")
+
+
+def en_revue(c: Carnet, uid: str) -> bool:
+    """La fiche attend ta relecture : modifiée ou créée sur l'iPhone, ou en conflit."""
+    return bool(c.base.un(f"SELECT 1 FROM a_traiter WHERE uid = ? AND motif IN {REVUE}", (uid,)))
+
+
 def valider(c: Carnet, uid: str, fiche: dict, photo: tuple[bytes, str] | None = None,
             origine: str = "manuel", motif: str = "modification", etag_vu: str | None = None,
-            forcer: set[str] | None = None) -> dict:
-    """etag_vu : version de la carte que l'interface a affichée (refus si elle a changé depuis)."""
+            forcer: set[str] | None = None, regler_revue: bool = False) -> dict:
+    """etag_vu : version de la carte que l'interface a affichée (refus si elle a changé depuis).
+    regler_revue : seulement pour une modification faite par toi dans l'éditeur de la fiche, à
+    partir de la version affichée ; elle règle les points iPhone et conflit de la fiche. Les autres
+    écritures (À traiter, réseaux, photo…) laissent ces points en place : « Revenir » reste
+    possible et la nuit continue d'ignorer la fiche."""
     try:
         propre = F.preparer(fiche, c.cfg.region)
     except ValeurInvalide as exc:
         raise ErreurCarnet(str(exc))
     with c.ecriture(attendre=5):
         res = icloud.ecrire(c, uid, propre, photo, origine=origine, motif=motif, etag_vu=etag_vu, forcer=forcer)
-        # Validée depuis la version affichée : les points iPhone et conflit de cette fiche sont réglés.
-        # Sous le verrou, pour ne jamais effacer un point arrivé par une lecture pendant ce temps.
-        if etag_vu is not None:
+        # Sous le verrou, pour ne jamais effacer un point arrivé par une lecture pendant ce temps
+        if regler_revue and etag_vu is not None:
             with c.base.transaction() as cx:
-                cx.execute("DELETE FROM a_traiter WHERE uid = ? AND motif IN ('iphone_modifiee', 'iphone_nouvelle', 'conflit')", (uid,))
+                cx.execute(f"DELETE FROM a_traiter WHERE uid = ? AND motif IN {REVUE}", (uid,))
             c.oublier()
     return res
 
@@ -162,10 +174,41 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
             res = valider(c, str(valeur), f, origine="import", motif="fiche importée réunie")
             traiter.retirer(c, motif, cle)
             return res
+    if motif == "reseau":
+        from . import reseaux
+        if action in ("lier", "lier_numero"):
+            return reseaux.lier(c, uid, d["service"], d["ext_id"], d.get("pseudo", ""), d.get("telephone", ""),
+                                ajouter_numero=action == "lier_numero")
+        if action == "pas_lui":
+            reseaux.refuser(c, uid, d["service"], d["ext_id"])
+            return {"ok": True}
     if motif == "doublon" and action == "distincts":
         traiter.ignorer(c, motif, cle)
         return {"ok": True}
     raise ErreurCarnet("Action inconnue pour ce point.")
+
+
+def repondre_lot(c: Carnet, idents: list[str], action: str) -> dict:
+    """Même réponse à plusieurs points. Les écritures dans iCloud sont plafonnées comme le
+    coupe-circuit (5 % des fiches, 3 au moins) : au-delà, le reste attend un autre lot."""
+    if action not in ("ignorer", "lier", "pas_lui", "garder", "appliquer"):
+        raise ErreurCarnet("Action groupée inconnue.")
+    plafond = max(3, len(c.fiches()) // 20)
+    bilan = {"faits": 0, "erreurs": [], "reportes": 0}
+    ecritures = 0
+    for ident in idents:
+        ecrit = action in ("lier", "appliquer")
+        if ecrit and ecritures >= plafond:
+            bilan["reportes"] += 1
+            continue
+        try:
+            res = repondre(c, ident, action)
+            bilan["faits"] += 1
+            if ecrit and (res or {}).get("jeton"):
+                ecritures += 1
+        except (ErreurCarnet, ErreurICloud) as exc:   # une carte refusée n'arrête pas le lot
+            bilan["erreurs"].append(str(exc))
+    return bilan
 
 
 def fusionner(c: Carnet, garder: str, absorber: str, fiche: dict) -> dict:
@@ -182,13 +225,14 @@ def fusionner(c: Carnet, garder: str, absorber: str, fiche: dict) -> dict:
         res = icloud.ecrire(c, garder, propre, origine="fusion", motif="fiche réunie")
         icloud.supprimer(c, absorber, origine="fusion")
     with c.base.transaction() as cx:
-        for service in ("immich", "treemich"):
+        for (service,) in cx.execute("SELECT service FROM liaisons WHERE uid = ?", (absorber,)).fetchall():
             a = cx.execute("SELECT * FROM liaisons WHERE uid = ? AND service = ?", (absorber, service)).fetchone()
             g = cx.execute("SELECT 1 FROM liaisons WHERE uid = ? AND service = ?", (garder, service)).fetchone()
             if a and not g:
                 cx.execute("UPDATE liaisons SET uid = ? WHERE uid = ? AND service = ?", (garder, absorber, service))
         cx.execute("DELETE FROM liaisons WHERE uid = ?", (absorber,))
         cx.execute("UPDATE OR IGNORE refus SET uid = ? WHERE uid = ?", (garder, absorber))
+        cx.execute("DELETE FROM validations WHERE uid = ?", (absorber,))
         for table in ("portraits", "affiches"):
             if not cx.execute(f"SELECT 1 FROM {table} WHERE uid = ?", (garder,)).fetchone():
                 cx.execute(f"UPDATE {table} SET uid = ? WHERE uid = ?", (garder, absorber))

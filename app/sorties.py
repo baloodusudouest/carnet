@@ -251,5 +251,6 @@ def statut(c: Carnet) -> dict:
                        "erreur": syno.get("erreur"), "contacts": total,
                        "synology": {k: syno.get(k) for k in ("crees", "modifies", "supprimes")} if syno else None},
         "dernier_envoi_kit": c.base.lire("dernier_envoi_kit"),
+        "completude": __import__("app.completude", fromlist=["compteurs"]).compteurs(c),
         "tache": {k: c.tache.get(k) for k in ("nom", "etat", "message")},
     }
