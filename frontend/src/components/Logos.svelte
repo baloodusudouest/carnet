@@ -85,12 +85,7 @@
           aria-pressed={donnees.groupes.includes(g)} onclick={() => basculerGroupe(g)}>{g}</button>
       {/each}
     </div>
-    <button class="w-full h-11 rounded-xl border border-onglet text-onglet disabled:opacity-50" disabled={enCours || !donnees.lignes.length}
-      onclick={() => chercher(false)}>{enCours ? (tache?.message ?? 'Recherche…') : nonLus ? `Chercher les logos (${nonLus} contact${nonLus > 1 ? 's' : ''})` : 'Tous les sites sont lus'}</button>
-    {#if donnees.journal.length}
-      <p class="text-xs text-mine mt-2">Dernière recherche le {dateCourte(donnees.journal[0].le)} ·
-        <button class="underline" disabled={enCours} onclick={() => chercher(true)}>Relire tous les sites</button></p>
-    {/if}
+    <p class="text-xs text-mine">{nonLus ? `${nonLus} site${nonLus > 1 ? 's' : ''} pas encore lu${nonLus > 1 ? 's' : ''} : ` : ''}la recherche se lance avec le bouton ↻ en haut de la page{donnees.journal.length ? ` (dernière le ${dateCourte(donnees.journal[0].le)})` : ''}.</p>
   </div>
 
   <input class="w-full h-11 !rounded-xl !px-4 text-base mb-2" type="search" placeholder="Filtrer : nom, société, site" bind:value={recherche}

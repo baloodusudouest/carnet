@@ -1613,9 +1613,8 @@ def test_affiches_iphone(client, monkeypatch):
     c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
     c.post("/api/liaisons/valider", json={"liaisons": [{"pid": p["id"], "immich": "im-claire"}]})
     _attendre(c)
-    assert c.post("/api/affiches/preparation").status_code == 400          # aucun groupe coché
-    a = c.post("/api/affiches/groupes", json={"groupes": ["Famille", "Inconnu"]}).json()
-    assert a["groupes"] == ["Famille"] and [l["pid"] for l in a["lignes"]] == [p["id"]]
+    a = c.get("/api/affiches").json()                                      # tous les contacts liés
+    assert [l["pid"] for l in a["lignes"]] == [p["id"]]
     c.post("/api/affiches/preparation")
     t = _attendre(c)
     assert t["tache"]["etat"] == "termine", t["tache"]
@@ -1646,10 +1645,20 @@ def test_affiches_iphone(client, monkeypatch):
     c.post("/api/affiches/choix", json={"pid": p["id"], "asset": None})
     assert supprimes == ["up1"] and cn.base.etat("affiches") == {}
     c.post("/api/affiches/choix", json={"pid": p["id"], "asset": "b2"})
-    c.post("/api/affiches/groupes", json={"groupes": ["Amis"]})
+    c.post("/api/liaisons/delier", json={"pid": p["id"]})                # délié d'Immich : affiche retirée
     c.post("/api/affiches/preparation")
     _attendre(c)
     assert supprimes == ["up1", "up2"] and cn.base.etat("affiches") == {}
+    # Bouton unique : photos HD, affiches et logos, avec étapes ; « manquants » ne refait rien
+    c.post("/api/liaisons/valider", json={"liaisons": [{"pid": p["id"], "immich": "im-claire"}]})
+    _attendre(c)
+    assert c.post("/api/photos/recherche", json={"mode": "tout"}).status_code == 200
+    t = _attendre(c)
+    assert t["tache"]["etat"] == "termine" and "Logos" in t["tache"]["message"], t["tache"]
+    assert c.get("/api/affiches").json()["lignes"][0]["propositions"]
+    c.post("/api/photos/recherche", json={"mode": "manquants"})
+    assert _attendre(c)["tache"]["etat"] == "termine"
+    assert c.post("/api/photos/recherche", json={"mode": "autre"}).status_code == 400
 
 
 def test_liaisons_lisent_la_derniere_lecture(client, monkeypatch):

@@ -703,6 +703,16 @@ def affiches_groupes(corps: GroupesAffiches):
     return carnet().affiches_groupes(corps.groupes)
 
 
+class RecherchePhotos(BaseModel):
+    mode: str = "manquants"
+
+
+@app.post("/api/photos/recherche")
+def rechercher_photos(corps: RecherchePhotos):
+    """Photos HD, affiches et logos en une fois (« manquants » ou « tout »)."""
+    return carnet().rechercher_photos(corps.mode)
+
+
 @app.post("/api/affiches/preparation")
 def preparer_affiches():
     return carnet().preparer_affiches()

@@ -1249,6 +1249,7 @@ class Carnet:
 
     LIBELLES_OPERATIONS = {"veille": "tâche de nuit", "simulation": "simulation iCloud", "ecriture": "écriture iCloud",
                            "liens": "liaisons", "portraits": "photos HD", "affiches": "affiches", "logos": "logos",
+                           "photos": "recherche des photos",
                            "sauvegarde": "sauvegarde"}
 
     def etat_tache(self) -> dict:
@@ -2729,7 +2730,7 @@ class Carnet:
             return False   # le premier passage se lance d'un clic
         return maintenant() - datetime.fromisoformat(journal[0]["le"]) >= timedelta(days=self.PORTRAITS_JOURS)
 
-    def _chercher_portraits(self, pids: list[str] | None) -> None:
+    def _chercher_portraits(self, pids: list[str] | None, complet: bool = False, manquants: bool = False) -> None:
         """Pour chaque contact lié : meilleurs visages Immich (entiers, grands, nets) ; le meilleur
         devient la photo du contact (sauf choix manuel) et la photo de la personne dans Immich."""
         quand = maintenant()
@@ -2737,10 +2738,11 @@ class Carnet:
         hd = self.base.etat("photos_hd", {})
         tous_candidats = self.base.etat("photos_hd_candidats", {})
         journal = self.base.etat("photos_hd_journal", [])
-        depuis = journal[0]["le"] if journal else None
+        depuis = None if complet else (journal[0]["le"] if journal else None)
         cibles = [(pid, fiche, liens[pid]["immich"]) for pid, fiche, _ in self._verifiees()
                   if (pids is None or pid in pids) and (liens.get(pid) or {}).get("immich")
-                  and self._portrait_eligible(pid, fiche)]
+                  and self._portrait_eligible(pid, fiche)
+                  and not (manquants and (tous_candidats.get(pid) or (hd.get(pid) or {}).get("immich") == liens[pid]["immich"]))]
         bilan = {"le": _iso(quand), "contacts": len(cibles), "changees": 0, "sans_photo_hd": 0, "erreurs": []}
         poses: dict[str, dict] = {}   # seuls ces portraits sont réécrits à la fin (pas les choix faits entre-temps)
         self._tache.update(total=len(cibles), fait=0, message="Portraits : lecture des photos Immich…")
@@ -2919,14 +2921,14 @@ class Carnet:
     AFFICHES_EXAMINEES = 12    # meilleurs visages examinés pour en tirer les propositions
 
     def _cibles_affiches(self) -> list[tuple[str, dict, str]]:
-        groupes = set(self.base.etat("affiches_groupes", []))
+        """Tous les contacts liés à un visage Immich (plus de choix par groupe). Tout contact déjà
+        validé une fois (même remis en révision depuis) garde son affiche et sa coche « posée » :
+        seul un contact mis de côté ou délié la perd."""
         liens = self.base.etat("liaisons", {})
-        # Tout contact déjà validé une fois (même remis en révision depuis) garde son affiche et
-        # sa coche « posée » : seuls un contact mis de côté ou sorti des groupes la perdent
         res = []
         for p in self.base.lire("SELECT id, fiche FROM personnes WHERE statut != 'ecarte' AND fiche IS NOT NULL"):
             fiche = regle_proches(completer(json.loads(p["fiche"])))
-            if set(fiche["groupes"]) & groupes and (liens.get(p["id"]) or {}).get("immich"):
+            if (liens.get(p["id"]) or {}).get("immich"):
                 res.append((p["id"], fiche, liens[p["id"]]["immich"]))
         return sorted(res, key=lambda x: nom_affiche(x[1]).lower())
 
@@ -2958,11 +2960,9 @@ class Carnet:
         return self.affiches()
 
     def preparer_affiches(self) -> dict:
-        if not self.base.etat("affiches_groupes", []):
-            raise ErreurCarnet("Coche d'abord au moins un groupe.")
         return self._lancer("affiches", self._preparer_affiches)
 
-    def _preparer_affiches(self) -> None:
+    def _preparer_affiches(self, complet: bool = False, manquants: bool = False) -> None:
         """Propositions seulement : pour chaque contact des groupes cochés, les photos Immich qui se
         prêtent le mieux au plein écran (visage de face, net, de la place autour). Rien n'est envoyé
         dans Immich avant ton choix. Une affiche d'un contact sorti des groupes est retirée."""
@@ -2971,7 +2971,7 @@ class Carnet:
         reserve = self.base.etat("affiches_candidats", {})
         propositions = self.base.etat("affiches_propositions", {})
         journal = self.base.etat("affiches_journal", [])
-        depuis = journal[0]["le"] if journal else None
+        depuis = None if complet else (journal[0]["le"] if journal else None)
         bilan = {"le": _iso(maintenant()), "contacts": len(cibles), "proposees": 0, "nouvelles": 0, "retirees": 0,
                  "sans_photo": 0, "erreurs": []}
         self._tache.update(total=len(cibles), fait=0, message="Affiches : recherche des photos…")
@@ -2991,6 +2991,8 @@ class Carnet:
                 self._tache["fait"] += 1
                 nom = nom_affiche(fiche)
                 self._tache["message"] = f"Affiches : {nom}…"
+                if manquants and (propositions.get(pid) or (faites.get(pid) or {}).get("manuel")):
+                    continue   # déjà des propositions ou une affiche choisie
                 try:
                     anciens = reserve.get(pid) or []
                     a_jour = anciens and all(c.get("mesures") == portraits.VERSION_MESURES for c in anciens)
@@ -3186,10 +3188,11 @@ class Carnet:
     def chercher_logos(self) -> dict:
         return self._lancer("logos", self._chercher_logos)
 
-    def _chercher_logos(self) -> None:
-        """Pour chaque domaine pas encore cherché : les logos du site, rangés dans /state/logos."""
+    def _chercher_logos(self, relire: bool = False) -> None:
+        """Pour chaque domaine pas encore cherché (ou tous, « relire ») : les logos du site, rangés
+        dans /state/logos."""
         trouves = self.base.etat("logos_trouves", {})
-        domaines = sorted({dom for _, _, dom in self._cibles_logos()} - set(trouves))
+        domaines = sorted({dom for _, _, dom in self._cibles_logos()} - (set() if relire else set(trouves)))
         bilan = {"le": _iso(maintenant()), "domaines": len(domaines), "avec_logo": 0}
         self._tache.update(total=len(domaines), fait=0, message="Logos : lecture des sites…")
         for dom in domaines:
@@ -3212,7 +3215,33 @@ class Carnet:
         self.base.ecrire_etat("logos_journal", ([bilan] + self.base.etat("logos_journal", []))[:10])
         self._tache.update(etat="termine", message=(
             f"Logos : {bilan['domaines']} site(s) lu(s), {bilan['avec_logo']} avec un logo." if domaines
-            else "Logos : tous les sites ont déjà été lus (« Relire les sites » pour recommencer)."))
+            else "Logos : tous les sites ont déjà été lus (« Tout régénérer » pour les relire)."))
+
+    def rechercher_photos(self, mode: str = "manquants") -> dict:
+        """Un seul bouton pour tout : photos HD, affiches puis logos, avec la progression de chaque
+        étape. « manquants » : seulement les contacts sans proposition (et les sites jamais lus) ;
+        « tout » : toutes les photos réexaminées, tous les sites relus. Tes choix ne sont jamais changés."""
+        if mode not in ("manquants", "tout"):
+            raise ErreurCarnet("Mode inconnu.")
+        tout = mode == "tout"
+        etapes = []
+        if self.cfg.immich_cle:
+            etapes += [("Photos HD", lambda: self._chercher_portraits(None, complet=tout, manquants=not tout)),
+                       ("Affiches", lambda: self._preparer_affiches(complet=tout, manquants=not tout))]
+        etapes.append(("Logos", lambda: self._chercher_logos(relire=tout)))
+
+        def travail():
+            messages = []
+            for n, (nom, faire) in enumerate(etapes, 1):
+                self._tache.update(etat="ecriture", etape={"n": n, "total": len(etapes), "nom": nom},
+                                   fait=0, total=0, message=f"{nom}…")
+                try:
+                    faire()
+                    messages.append(self._tache.get("message", nom))
+                except (ErreurLien, ErreurCarnet) as exc:
+                    messages.append(f"{nom} : {exc}")
+            self._tache.update(etat="termine", etape=None, message=" ".join(messages))
+        return self._lancer("photos", travail)
 
     def relire_logos(self) -> dict:
         self.base.ecrire_etat("logos_trouves", {})
@@ -3559,7 +3588,7 @@ class Carnet:
                     self._chercher_portraits(None)
                 except Exception:  # noqa: BLE001
                     log.exception("Portraits de nuit")
-                if self.base.etat("affiches_groupes", []):
+                if True:   # affiches pour tous les contacts liés à Immich
                     try:
                         self._preparer_affiches()
                     except Exception:  # noqa: BLE001
