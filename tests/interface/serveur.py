@@ -8,7 +8,7 @@ from pathlib import Path
 
 import uvicorn
 
-from app import icloud, liaisons, main
+from app import icloud, liaisons, main, reseaux
 from app.carnet import Carnet
 from tests.faux_icloud import FauxICloud
 from tests.faux_services import FauxImmich, FauxTreemich
@@ -38,6 +38,11 @@ def preparer(dossier: Path) -> tuple[Carnet, FauxICloud]:
     with c.ecriture():
         icloud.relire(c, "démo")
     liaisons.donnees(c)
+    # Réseaux : un contact Telegram au même numéro qu'Agnès, deux comptes Instagram au pseudo prénom+nom
+    reseaux.enregistrer(c, "telegram", [{"ext_id": "tg-1", "nom": "Agnès R.", "telephone": "+33610203040", "pseudo": "agnes"}])
+    reseaux.enregistrer(c, "instagram", [{"ext_id": "brunolefevre", "nom": "", "pseudo": "brunolefevre"},
+                                         {"ext_id": "camille.garnier", "nom": "", "pseudo": "camille.garnier"}])
+    reseaux.proposer(c)
     return c, ic
 
 

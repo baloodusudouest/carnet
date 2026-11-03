@@ -5,11 +5,14 @@
   import { api } from '../lib/api.js'
   import { etat, erreur, rafraichirContacts, dire, choisirTri } from '../lib/etat.svelte.js'
   import Avatar from '../components/Avatar.svelte'
+  import Jauge from '../components/Jauge.svelte'
+  import Plateformes from '../components/Plateformes.svelte'
   import Fiche from './Fiche.svelte'
 
   let { selection = null } = $props()
   let recherche = $state('')
   let groupe = $state(null)
+  let manque = $state(null)   // filtre de complétude
   let groupes = $state([])
   let menuGroupes = $state(false)
   let envoi = $state(false)
@@ -26,10 +29,19 @@
     const l = cle(c).charAt(0).toUpperCase()
     return /[A-Z]/.test(l) ? l : '#'
   }
+  // Filtres de complétude : une fiche validée ne compte plus dans les « Sans … »
+  const MANQUES = [
+    { cle: 'annee', libelle: 'Sans année' }, { cle: 'adresse', libelle: 'Sans adresse' },
+    { cle: 'telephone', libelle: 'Sans téléphone' }, { cle: 'contact', libelle: 'Sans moyen de contact' },
+    { cle: 'a_revoir', libelle: 'À revoir' }, { cle: 'valide', libelle: 'Validées' },
+  ]
+  const correspond = (c, m) => m === 'a_revoir' ? c.statut === 'a_revoir' : m === 'valide' ? c.statut === 'valide'
+    : (c.manques || []).includes(m) && c.statut !== 'valide'
+  const nombres = $derived(Object.fromEntries(MANQUES.map((m) => [m.cle, (etat.contacts || []).filter((c) => correspond(c, m.cle)).length])))
   const filtres = $derived.by(() => {
     const q = sansAccent(recherche.trim())
     const chiffres = recherche.replace(/\D/g, '')
-    return (etat.contacts || []).filter((c) => (!groupe || c.groupes.includes(groupe)) && (!q ||
+    return (etat.contacts || []).filter((c) => (!groupe || c.groupes.includes(groupe)) && (!manque || correspond(c, manque)) && (!q ||
       sansAccent(`${c.nom} ${c.societe} ${c.fonction} ${c.courriel}`).includes(q) ||
       (chiffres.length >= 3 && c.valeur_tel.replace(/\D/g, '').includes(chiffres.replace(/^0/, '')))))
   })
@@ -68,7 +80,9 @@
       const r = await api.post('/api/import', fd)
       dire(r.source === 'linkedin'
         ? `LinkedIn : ${r.rattachees} relations reconnues, ${r.proposees} changement(s) à traiter.`
-        : `${r.lues} fiche(s) lue(s), ${r.a_traiter} à vérifier dans « À traiter ».`)
+        : r.source === 'instagram'
+          ? `Instagram : ${r.lues} compte(s) lu(s), ${r.proposees} rattachement(s) proposé(s). L'archive n'est pas gardée.`
+          : `${r.lues} fiche(s) lue(s), ${r.a_traiter} à vérifier dans « À traiter ».`)
     } catch (err) { erreur(err) } finally { envoi = false; e.target.value = '' }
   }
 
@@ -89,7 +103,7 @@
         <h1 class="titre">Contacts <span class="discret nombre">{filtres.length !== (etat.contacts?.length ?? 0) ? `${filtres.length} / ` : ''}{etat.contacts?.length ?? ''}</span></h1>
         <label class="bouton importer">
           {envoi ? 'Import…' : 'Importer'}
-          <input type="file" accept=".vcf,.vcard,.csv,text/vcard,text/csv" onchange={importer} hidden />
+          <input type="file" accept=".vcf,.vcard,.csv,.zip,.json,text/vcard,text/csv,application/zip,application/json" onchange={importer} hidden />
         </label>
       </div>
       <input class="recherche" type="search" placeholder="Nom, société, numéro…" bind:value={recherche} aria-label="Chercher un contact" />
@@ -116,6 +130,14 @@
           </div>
         {/if}
       </div>
+      {#if etat.contacts?.length}
+        <div class="manques" role="group" aria-label="Filtrer par complétude">
+          {#each MANQUES.filter((m) => nombres[m.cle] || manque === m.cle) as m}
+            <button class="pastille" aria-pressed={manque === m.cle} onclick={() => (manque = manque === m.cle ? null : m.cle)}>
+              {m.libelle} <span class="discret">{nombres[m.cle]}</span></button>
+          {/each}
+        </div>
+      {/if}
     </div>
 
     {#if !etat.contacts}
@@ -133,11 +155,12 @@
               {#each membres as c (c.uid)}
                 <li>
                   <a class="ligne" href={'#/contacts/' + encodeURIComponent(c.uid)} aria-current={selection === c.uid ? 'true' : undefined}>
-                    <Avatar uid={c.uid} nom={c.nom} photo={c.a_photo} />
+                    <Jauge score={c.score} statut={c.statut}><Avatar uid={c.uid} nom={c.nom} photo={c.a_photo} /></Jauge>
                     <span class="texte">
                       <span class="nom">{c.nom}{#if c.a_traiter}<span class="marque" aria-label="À traiter"></span>{/if}</span>
                       <span class="discret detail">{[c.societe, c.telephone].filter(Boolean).join(', ')}</span>
                     </span>
+                    <Plateformes liste={c.plateformes} />
                   </a>
                 </li>
               {/each}
@@ -204,10 +227,13 @@
     color: var(--color-onglet); font-size: 1.15rem; padding: 0.4rem 0 0.2rem; border-bottom: 1px solid var(--color-couture);
     scroll-margin-top: calc(env(safe-area-inset-top) + var(--haut-entete));
   }
-  .ligne { display: flex; align-items: center; gap: 0.75rem; min-height: 3.5rem; padding: 0.3rem 0.25rem; border-radius: 8px; }
+  .ligne { display: flex; align-items: center; gap: 0.6rem; min-height: 3.5rem; padding: 0.3rem 0.25rem; border-radius: 8px; }
   .ligne:hover, .ligne[aria-current] { background: var(--color-reliure); }
   .ligne[aria-current] { box-shadow: inset 3px 0 0 var(--color-onglet); }
-  .texte { display: grid; min-width: 0; }
+  .texte { display: grid; min-width: 0; flex: 1; }
+  .manques { display: flex; gap: 0.35rem; overflow-x: auto; scrollbar-width: none; margin-right: -0.25rem; }
+  .manques .pastille { flex: none; min-height: 2.25rem; font-size: 0.82rem; }
+  .ligne :global(.plateformes) { flex: none; max-width: 5.5rem; justify-content: flex-end; }
   .nom { font-family: var(--font-livre); font-size: 1.05rem; display: flex; align-items: center; gap: 0.45rem; }
   .detail { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .marque { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--color-onglet); flex: none; }

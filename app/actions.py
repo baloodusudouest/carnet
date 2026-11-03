@@ -162,10 +162,41 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
             res = valider(c, str(valeur), f, origine="import", motif="fiche importée réunie")
             traiter.retirer(c, motif, cle)
             return res
+    if motif == "reseau":
+        from . import reseaux
+        if action in ("lier", "lier_numero"):
+            return reseaux.lier(c, uid, d["service"], d["ext_id"], d.get("pseudo", ""), d.get("telephone", ""),
+                                ajouter_numero=action == "lier_numero")
+        if action == "pas_lui":
+            reseaux.refuser(c, uid, d["service"], d["ext_id"])
+            return {"ok": True}
     if motif == "doublon" and action == "distincts":
         traiter.ignorer(c, motif, cle)
         return {"ok": True}
     raise ErreurCarnet("Action inconnue pour ce point.")
+
+
+def repondre_lot(c: Carnet, idents: list[str], action: str) -> dict:
+    """Même réponse à plusieurs points. Les écritures dans iCloud sont plafonnées comme le
+    coupe-circuit (5 % des fiches, 3 au moins) : au-delà, le reste attend un autre lot."""
+    if action not in ("ignorer", "lier", "pas_lui", "garder", "appliquer"):
+        raise ErreurCarnet("Action groupée inconnue.")
+    plafond = max(3, len(c.fiches()) // 20)
+    bilan = {"faits": 0, "erreurs": [], "reportes": 0}
+    ecritures = 0
+    for ident in idents:
+        ecrit = action in ("lier", "appliquer")
+        if ecrit and ecritures >= plafond:
+            bilan["reportes"] += 1
+            continue
+        try:
+            res = repondre(c, ident, action)
+            bilan["faits"] += 1
+            if ecrit and (res or {}).get("jeton"):
+                ecritures += 1
+        except ErreurCarnet as exc:
+            bilan["erreurs"].append(str(exc))
+    return bilan
 
 
 def fusionner(c: Carnet, garder: str, absorber: str, fiche: dict) -> dict:
@@ -189,6 +220,7 @@ def fusionner(c: Carnet, garder: str, absorber: str, fiche: dict) -> dict:
                 cx.execute("UPDATE liaisons SET uid = ? WHERE uid = ? AND service = ?", (garder, absorber, service))
         cx.execute("DELETE FROM liaisons WHERE uid = ?", (absorber,))
         cx.execute("UPDATE OR IGNORE refus SET uid = ? WHERE uid = ?", (garder, absorber))
+        cx.execute("DELETE FROM validations WHERE uid = ?", (absorber,))
         for table in ("portraits", "affiches"):
             if not cx.execute(f"SELECT 1 FROM {table} WHERE uid = ?", (garder,)).fetchone():
                 cx.execute(f"UPDATE {table} SET uid = ? WHERE uid = ?", (garder, absorber))

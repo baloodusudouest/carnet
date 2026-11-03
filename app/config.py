@@ -36,6 +36,8 @@ class Config:
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
     linkedin_redirect: str = "https://localhost/carnet-linkedin"
+    telegram_api_id: str = ""     # my.telegram.org : import manuel des contacts Telegram
+    telegram_api_hash: str = ""
     kit_config: Path | None = None   # dossier config/ du kit d'urgence (volume)
     kit_url: str = "http://kit-urgence:8095"
     kit_token: str = ""
@@ -94,6 +96,8 @@ def charger() -> Config:
         linkedin_client_id=_env("CARNET_LINKEDIN_CLIENT_ID"),
         linkedin_client_secret=_env("CARNET_LINKEDIN_CLIENT_SECRET"),
         linkedin_redirect=_env("CARNET_LINKEDIN_REDIRECT", "https://localhost/carnet-linkedin"),
+        telegram_api_id=_env("CARNET_TELEGRAM_API_ID"),
+        telegram_api_hash=_env("CARNET_TELEGRAM_API_HASH"),
         kit_config=Path(kit) if kit else None,
         kit_url=_env("KIT_URL", "http://kit-urgence:8095").rstrip("/"),
         kit_token=_env("KIT_API_TOKEN"),

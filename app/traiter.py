@@ -22,10 +22,10 @@ TITRES = {
     "iphone_supprimee": "Supprimée sur l'iPhone", "conflit": "Conflit d'écriture", "import": "Fiche importée",
     "linkedin": "Changement LinkedIn", "doublon": "Doublon possible", "forme": "Mise en forme",
     "emoji": "Groupe par émoji", "liaison": "Liaison à confirmer", "date": "Date de naissance à trancher",
-    "nom": "Nom à reporter", "relations": "Liens familiaux",
+    "nom": "Nom à reporter", "relations": "Liens familiaux", "reseau": "Réseau à rattacher",
 }
 ORDRE = list(TITRES)
-ENREGISTRES = {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit", "import", "linkedin"}
+ENREGISTRES = {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit", "import", "linkedin", "reseau"}
 
 
 def empreinte(objet) -> str:

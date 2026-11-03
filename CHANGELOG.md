@@ -1,5 +1,22 @@
 # Journal des versions
 
+## 2.1.0 — 3 novembre 2026 — carnet devient un hub
+- **Complétude** : quatre critères par fiche (sans année de naissance, sans adresse, sans téléphone, sans moyen de contact). Dans Contacts, des filtres « Sans … », « À revoir » et « Validées » avec leur nombre ; un anneau autour de chaque avatar montre la complétude (vert si validée, rouge si à revoir).
+- **Valider une fiche** : la fiche entière est déclarée complète telle quelle et sort des filtres. Si elle change ensuite ailleurs (iPhone, autre appareil) sur l'année, l'adresse, un téléphone ou un courriel, elle passe « À revoir ». Une écriture faite par carnet garde la validation.
+- **Plateformes** : pastilles par réseau (Immich, Treemich, LinkedIn, Facebook, Instagram, WhatsApp, Telegram) sur chaque ligne et dans la fiche.
+- **Réseaux** :
+  - Telegram : import ponctuel depuis État > Réseaux (numéro, code reçu, mot de passe de double vérification si besoin). La session n'existe qu'en mémoire et carnet se déconnecte aussitôt.
+  - Instagram : dépôt de l'export .zip ou .json. Seuls les pseudos sont lus et l'archive n'est pas gardée.
+  - Facebook : adresse du profil collée sur la fiche.
+  - WhatsApp : numéro choisi parmi ceux de la fiche.
+  - Chaque rapprochement (même numéro, pseudo prénom+nom, même nom unique) arrive dans « À traiter » > Réseaux, 150 au plus par import : Lier, Lier et ajouter le numéro, Pas lui (plus jamais proposé).
+  - « Délier » retire le profil de la carte iCloud et ne le propose plus.
+  - Les personnes lues mais jamais liées sont effacées au bout de 90 jours.
+- **Actions groupées** dans « À traiter » (Tout lier, Tout appliquer, Tout ignorer) sur une famille filtrée, avec confirmation. Les écritures sont plafonnées à 5 % des fiches (3 au moins) par lot.
+- **Analyse globale** (État > Complétude) : relit Immich et Treemich, recalcule doublons, complétude et rapprochements, sans rien écrire dans iCloud. La remise à zéro des validations se confirme deux fois (bouton, puis REMETTRE à taper).
+- **Application iPhone** : « Sur l'écran d'accueil » depuis Safari ouvre carnet en plein écran avec son icône (aucune donnée gardée hors ligne).
+- Nouvelles variables facultatives : `CARNET_TELEGRAM_API_ID`, `CARNET_TELEGRAM_API_HASH`.
+
 ## 2.0.3 — 3 novembre 2026
 - **État** : une grille de six sections avec icône (iCloud et la nuit, Sauvegardes, Copies, LinkedIn, Services, Journal), chacune avec un résumé d'une ligne et une pastille rouge en cas de problème ; un toucher affiche la section, un seul à la fois.
 - **Dates sans année** : une année 1900 veut dire « année inconnue ». Saisie en 14/03/1900, la date part dans iCloud sans année (jour et mois, comme sur l'iPhone) ; la fiche l'affiche « 14 mars ». Une carte iCloud déjà enregistrée en 1900 est proposée en « Mise en forme » pour être réécrite sans année. Home Assistant ne calcule plus d'âge pour ces dates.

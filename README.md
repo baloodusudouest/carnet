@@ -8,9 +8,28 @@ Accès en réseau local et par Tailscale uniquement, jamais exposé sur Internet
 
 | Onglet | Rôle |
 |---|---|
-| **À traiter** | Tout ce qui attend une décision : fiche modifiée, créée ou supprimée sur l'iPhone, conflit d'écriture, doublon, mise en forme (« Prénom NOM », numéros), émoji sans son groupe, liaison à confirmer, date de naissance à trancher, nom à reporter dans Immich ou Treemich, liens familiaux, changement LinkedIn, fiche importée. Un point écarté n'est plus reproposé. |
-| **Contacts** | Liste avec recherche (nom, société, numéro), tri par prénom ou par nom (gardé sur l'appareil), menu des groupes et index des lettres (fin sur iPhone, à parcourir du pouce ; tranche de carnet sur PC, où la fiche s'ouvre à côté de la liste). La fiche : appeler, écrire, modifier (aperçu des changements avant d'écrire, « Annuler » 10 s), liaisons, photo et affiche depuis Immich, logo de la société, réunion avec une autre fiche. Import d'un .vcf ou du Connections.csv de LinkedIn. |
-| **État** | Lecture d'iCloud et nuit, sauvegardes et restauration, Synology Contacts, kit d'urgence, LinkedIn (API), services configurés, journal. |
+| **À traiter** | Tout ce qui attend une décision : fiche modifiée, créée ou supprimée sur l'iPhone, conflit d'écriture, doublon, mise en forme (« Prénom NOM », numéros), émoji sans son groupe, liaison à confirmer, date de naissance à trancher, nom à reporter dans Immich ou Treemich, liens familiaux, changement LinkedIn, réseau à rattacher, fiche importée. Un point écarté n'est plus reproposé. Sur une famille filtrée, actions groupées (Tout lier, Tout appliquer, Tout ignorer) plafonnées à 5 % des fiches écrites par lot. |
+| **Contacts** | Liste avec recherche (nom, société, numéro), tri par prénom ou par nom (gardé sur l'appareil), menu des groupes et index des lettres (fin sur iPhone, à parcourir du pouce ; tranche de carnet sur PC, où la fiche s'ouvre à côté de la liste). La fiche : appeler, écrire, modifier (aperçu des changements avant d'écrire, « Annuler » 10 s), liaisons, photo et affiche depuis Immich, logo de la société, réunion avec une autre fiche. Import d'un .vcf, du Connections.csv de LinkedIn ou de l'export Instagram. Filtres de complétude, anneau de complétude autour de chaque avatar, pastilles des plateformes ; dans la fiche : Valider la fiche, profils réseaux à ajouter ou délier. |
+| **État** | Lecture d'iCloud et nuit, sauvegardes et restauration, Synology Contacts, kit d'urgence, LinkedIn (API), réseaux (Telegram, Instagram), complétude et analyse globale, services configurés, journal. |
+
+## Complétude et validation
+
+Quatre critères : **sans année de naissance**, **sans adresse**, **sans téléphone**, **sans moyen de contact** (ni téléphone ni courriel). « Valider la fiche » la déclare complète telle quelle : elle sort des filtres « Sans … ». Si l'année, une adresse, un téléphone ou un courriel change ensuite hors de carnet, la fiche passe **À revoir**. L'analyse globale (État › Complétude) recalcule tout sans rien écrire dans iCloud ; la remise à zéro des validations demande de taper REMETTRE.
+
+## Réseaux
+
+| Réseau | Comment | Ce qui est gardé |
+|---|---|---|
+| Telegram | État › Réseaux : numéro, code reçu dans Telegram, mot de passe de double vérification si besoin (`CARNET_TELEGRAM_API_ID` / `_HASH`) | Nom, numéro et pseudo des contacts. La session Telegram n'existe qu'en mémoire : carnet se déconnecte après l'import, rien n'est écrit sur disque ni sauvegardé. |
+| Instagram | Export « Abonnés et abonnements » (JSON) déposé dans État › Réseaux ou Contacts › Importer | Les pseudos seulement ; l'archive n'est pas gardée. |
+| Facebook | Adresse du profil collée sur la fiche | Le lien, dans la carte iCloud. |
+| WhatsApp | Numéro choisi sur la fiche (ou profil WhatsApp déjà présent sur la carte) | Le lien wa.me, dans la carte iCloud. |
+
+Chaque rapprochement (même numéro, pseudo formé du prénom et du nom, même nom unique) arrive dans « À traiter › Réseaux », 150 au plus par import. Lier écrit le profil dans la carte iCloud ; « Pas lui » et « Délier » empêchent de le reproposer. Les personnes lues mais jamais liées sont effacées au bout de 90 jours.
+
+## Sur l'iPhone
+
+Safari › Partager › « Sur l'écran d'accueil » : carnet s'ouvre en plein écran avec son icône. Aucune donnée n'est gardée hors ligne.
 
 ## Dates sans année
 
