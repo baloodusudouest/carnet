@@ -774,3 +774,27 @@ def test_reprise_retentee_apres_une_cle_fausse(tmp_path, services):
     assert reprise.reprendre(cn)["erreur"] and reprise.a_faire(cn)
     object.__setattr__(cn, "cfg", _config(tmp_path, ancienne_base=state / "carnet.db", ancienne_cle="bonne"))
     assert reprise.reprendre(cn)["erreur"] is None and not reprise.a_faire(cn)
+
+
+# ================================================================ dates sans année (1900)
+
+def test_date_en_1900_ecrite_sans_annee(c, services):
+    ic = services["icloud"]
+    f = c.fiche("DDDD-4444")
+    f["anniversaire"] = "14/03/1900"
+    actions.valider(c, "DDDD-4444", f, etag_vu=actions._etag(c, "DDDD-4444"))
+    assert "BDAY;X-APPLE-OMIT-YEAR=1604;VALUE=date:1604-03-14" in ic.texte("DDDD-4444")
+    assert c.fiches()["DDDD-4444"]["anniversaire"] == "--03-14"
+
+
+def test_carte_icloud_en_1900_proposee_sans_annee(c, services):
+    ic = services["icloud"]
+    ic.modifier_sur_iphone("DDDD-4444", ic.texte("DDDD-4444").replace("BDAY;value=date:1983-01-09", "BDAY;value=date:1900-05-20"))
+    with c.ecriture():
+        icloud.relire(c)
+    actions.repondre(c, points(c, "iphone_modifiee")[0]["id"], "garder")
+    assert c.fiches()["DDDD-4444"]["anniversaire"] == "--05-20"
+    [p] = [p for p in points(c, "forme") if p["uid"] == "DDDD-4444"]
+    assert p["donnees"]["ecarts"][0]["apres"] == "20 mai (sans année)"
+    actions.repondre(c, p["id"], "appliquer")
+    assert "1604-05-20" in ic.texte("DDDD-4444") and "1900" not in ic.texte("DDDD-4444")

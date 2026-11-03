@@ -33,8 +33,23 @@ def _texte_item(champ: str, x: dict) -> str:
     return f"{x.get('valeur')} ({x.get('type') or 'autre'})" if x.get("type") else str(x.get("valeur"))
 
 
+MOIS_LISIBLES = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre",
+                 "octobre", "novembre", "décembre"]
+
+
+def date_lisible(valeur: str) -> str:
+    """« 1985-03-14 » → « 14/03/1985 » ; « --03-14 » (année inconnue) → « 14 mars »."""
+    if valeur.startswith("--") and len(valeur) == 7:
+        return f"{int(valeur[5:7])} {MOIS_LISIBLES[int(valeur[2:4]) - 1]}"
+    if len(valeur) == 10:
+        return f"{valeur[8:10]}/{valeur[5:7]}/{valeur[:4]}"
+    return valeur
+
+
 def valeurs(fiche: dict, champ: str) -> list[str]:
     v = fiche.get(champ)
+    if champ == "anniversaire":
+        return [date_lisible(v)] if v else []
     if champ in CHAMPS_MULTIPLES:
         return [_texte_item(champ, x) for x in v or []]
     if champ == "groupes":
@@ -73,6 +88,13 @@ def ecarts_de_forme(texte: str, fiche: dict, region: str = "FR") -> list[dict]:
     voulu = " ".join(p for p in (fiche.get("prenom"), fiche.get("nom")) if p)
     if voulu and fn and fn != voulu:
         ecarts.append({"champ": "nom", "avant": fn, "apres": voulu})
+    for ligne in synchro.deplier(texte):
+        _, nom, v = synchro._decouper(ligne)
+        # Date en 1900 = année inconnue : iCloud doit la recevoir sans année (« 14 mars »)
+        if nom == "BDAY" and "X-APPLE-OMIT-YEAR" not in ligne.upper() and v.strip().startswith(("1900-", "19000")):
+            brut = v.strip().replace("-", "")
+            ecarts.append({"champ": "anniversaire", "avant": f"{brut[6:8]}/{brut[4:6]}/1900",
+                           "apres": f"{date_lisible(fiche.get('anniversaire', ''))} (sans année)"})
     for g, nom, v in map(synchro._decouper, synchro.deplier(texte)):
         if nom != "TEL":
             continue

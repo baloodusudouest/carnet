@@ -453,8 +453,9 @@ def anniversaire(brut: str, sans_annee: bool = False, ordre: str = "jm") -> str:
             return ""
     else:
         return ""
-    if a is not None and (sans_annee or a <= 1604):
-        a = None  # 1604 = année « inconnue » chez Apple
+    if a is not None and (sans_annee or a <= 1604 or a == 1900):
+        # 1604 = année « inconnue » chez Apple ; 1900 = « je ne connais pas l'année » (saisie de Julien)
+        a = None
     try:
         date(a or 2000, m, j)
     except ValueError:

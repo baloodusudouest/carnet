@@ -12,6 +12,10 @@ Accès en réseau local et par Tailscale uniquement, jamais exposé sur Internet
 | **Contacts** | Liste avec recherche (nom, société, numéro), tri par prénom ou par nom (gardé sur l'appareil), menu des groupes et index des lettres (fin sur iPhone, à parcourir du pouce ; tranche de carnet sur PC, où la fiche s'ouvre à côté de la liste). La fiche : appeler, écrire, modifier (aperçu des changements avant d'écrire, « Annuler » 10 s), liaisons, photo et affiche depuis Immich, logo de la société, réunion avec une autre fiche. Import d'un .vcf ou du Connections.csv de LinkedIn. |
 | **État** | Lecture d'iCloud et nuit, sauvegardes et restauration, Synology Contacts, kit d'urgence, LinkedIn (API), services configurés, journal. |
 
+## Dates sans année
+
+Une date saisie en **1900** (par exemple 14/03/1900) veut dire « année inconnue » : iCloud la reçoit sans année, comme une date entrée sans année sur l'iPhone, et carnet l'affiche « 14 mars ». Une carte iCloud déjà enregistrée en 1900 est proposée dans « À traiter › Mise en forme ».
+
 ## Les règles qui protègent tes contacts
 
 - **Référence d'abord** : la première lecture complète d'iCloud sert de point de départ. Rien n'est signalé ni écrit avant.

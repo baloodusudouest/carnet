@@ -143,6 +143,9 @@ def test_pas_de_defilement_horizontal(page):
 
 def test_etat_et_deconnexion(page):
     page.click("nav.onglets >> text=État")
-    page.wait_for_selector("text=Sauvegardes d'iCloud")
+    page.locator(".tuile", has_text="Sauvegardes").click()
+    page.wait_for_selector("h2:has-text(\"Sauvegardes d'iCloud\")")
+    page.locator(".tuile", has_text="Journal").click()
+    assert page.locator("h2", has_text="Sauvegardes d'iCloud").count() == 0      # une section à la fois
     page.click("text=Se déconnecter")
     page.wait_for_selector("#mdp")
