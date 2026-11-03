@@ -159,19 +159,31 @@ def _relire_une(c: Carnet, dav, uid: str, href: str) -> tuple[str, str] | None:
 
 # ================================================================ écriture
 
-def _groupes_actuels(c: Carnet) -> dict[str, dict]:
-    return {l["nom"]: {"uid": l["uid"], "href": l["href"], "etag": l["etag"], "texte": l["texte"],
-                       "membres": json.loads(l["membres"])} for l in c.base.tous("SELECT * FROM groupes")}
+def _groupes_actuels(c: Carnet) -> dict[str, list[dict]]:
+    """nom → cartes de groupe portant ce nom (iCloud permet deux groupes du même nom)."""
+    res: dict[str, list[dict]] = {}
+    for l in c.base.tous("SELECT * FROM groupes ORDER BY uid"):
+        res.setdefault(l["nom"], []).append({"uid": l["uid"], "href": l["href"], "etag": l["etag"], "texte": l["texte"],
+                                             "membres": json.loads(l["membres"])})
+    return res
 
 
-def carte(c: Carnet, uid: str, fiche: dict, photo: tuple[bytes, str] | None, texte_distant: str | None) -> str:
-    """Carte complète à écrire : la fiche de carnet + tout ce qu'iCloud avait en plus.
+def carte(c: Carnet, uid: str, fiche: dict, photo: tuple[bytes, str] | None, texte_distant: str | None,
+          avant: dict | None = None, forcer: set[str] | None = None) -> str:
+    """Carte à écrire. Sur une carte existante, seules les propriétés des champs qui changent
+    sont remplacées ; tout le reste de la carte iCloud est gardé à l'identique.
     Contrôle de taille : la photo est réduite si besoin, sinon l'écriture est refusée."""
-    nouvelle = export.vcard(fiche, uid, photo)
-    texte = synchro.assembler(nouvelle, texte_distant)
+    def assembler(image):
+        nouvelle = export.vcard(fiche, uid, image)
+        if not texte_distant:
+            return nouvelle
+        champs = ({d["champ"] for d in F.differences(avant or {}, fiche)} | (forcer or set())) - {"groupes"}
+        if image:
+            champs.add("photo")
+        return synchro.assembler_partiel(nouvelle, texte_distant, champs)
+    texte = assembler(photo)
     if len(texte.encode()) > TAILLE_MAX and photo:
-        nouvelle = export.vcard(fiche, uid, images.alleger(photo, 50_000))
-        texte = synchro.assembler(nouvelle, texte_distant)
+        texte = assembler(images.alleger(photo, 50_000))
     if len(texte.encode()) > TAILLE_MAX:
         raise ErreurCarnet(f"Fiche trop lourde pour iCloud ({len(texte.encode()) // 1000} Ko) : "
                            "réduis les notes ou retire la photo.")
@@ -234,89 +246,130 @@ def purger(c: Carnet) -> int:
     return retires
 
 
+def _etag_sur(c: Carnet, dav, ligne) -> str:
+    """ETag de la carte pour un If-Match : jamais vide (une écriture sans condition pourrait
+    écraser l'iPhone). Relu dans iCloud s'il manque ; s'il a changé, c'est un conflit."""
+    if ligne["etag"]:
+        return ligne["etag"]
+    relue = dav.lire_une(ligne["href"])
+    if not relue or not relue.etag:
+        raise ErreurCarnet("iCloud ne donne pas la version de cette carte : relis iCloud, puis réessaie.")
+    if synchro.empreinte(relue.texte) != synchro.empreinte(ligne["texte"]):
+        raise Conflit("Carte modifiée dans iCloud depuis la lecture.")
+    return relue.etag
+
+
+def _enregistrer(c: Carnet, uid: str, href: str, etag: str, texte: str, groupes: list[str]) -> dict:
+    """La base suit iCloud aussitôt la carte écrite (avant de toucher aux groupes)."""
+    fiche, a_photo = F.lire(texte, groupes, c.cfg.region)
+    with c.base.transaction() as cx:
+        cx.execute("INSERT INTO fiches(uid, href, etag, texte, fiche, photo, lu_le) VALUES (?,?,?,?,?,?,?) "
+                   "ON CONFLICT(uid) DO UPDATE SET href=excluded.href, etag=excluded.etag, texte=excluded.texte, "
+                   "fiche=excluded.fiche, photo=excluded.photo, lu_le=excluded.lu_le",
+                   (uid, href, etag, texte, json.dumps(fiche, ensure_ascii=False), int(a_photo), iso(maintenant())))
+    c.oublier()
+    return fiche
+
+
+def _apres_ecriture(c: Carnet, dav, uid: str, href: str, texte_envoye: str, etag_put: str | None) -> tuple[str, str]:
+    relue = dav.lire_une(href)
+    if relue:
+        return relue.etag, relue.texte
+    return etag_put or dav.etag(href) or "", texte_envoye
+
+
+def _maj_groupes(c: Carnet, dav, uid: str, avant: list[str], apres: list[str]) -> int:
+    """Cartes de groupe mises à jour, puis groupes de la fiche dans la base."""
+    n = _ecrire_groupes(c, dav, uid, avant, apres)
+    if n or sorted(avant) != sorted(apres):
+        ligne = c.base.un("SELECT fiche FROM fiches WHERE uid = ?", (uid,))
+        if ligne:
+            f = json.loads(ligne["fiche"])
+            f["groupes"] = sorted(set(apres))
+            c.base.executer("UPDATE fiches SET fiche = ? WHERE uid = ?", (json.dumps(f, ensure_ascii=False), uid))
+            c.oublier()
+    return n
+
+
 def ecrire(c: Carnet, uid: str, fiche: dict, photo: tuple[bytes, str] | None = None,
-           origine: str = "manuel", motif: str = "modification") -> dict:
+           origine: str = "manuel", motif: str = "modification", etag_vu: str | None = None,
+           forcer: set[str] | None = None) -> dict:
     """Écrit une fiche existante dans iCloud (verrou d'écriture déjà pris).
+    forcer : champs réécrits même s'ils semblent identiques (mise en forme de la carte).
+    etag_vu : version que l'interface avait affichée ; si la carte a changé depuis (relue la nuit
+    après une modification sur l'iPhone), rien n'est écrit et les deux versions vont en conflit.
     Renvoie {etag, jeton} ; jeton sert à « Annuler » pendant 10 s."""
     ligne = c.base.un("SELECT * FROM fiches WHERE uid = ?", (uid,))
     if not ligne:
         raise ErreurCarnet("Ce contact n'existe plus dans iCloud : relis iCloud avant de le modifier.")
-    sauvegarde_du_jour(c)
     avant = json.loads(ligne["fiche"])
-    texte = carte(c, uid, fiche, photo, ligne["texte"])
+    if etag_vu is not None and etag_vu != ligne["etag"]:
+        with c.base.transaction() as cx:
+            traiter.ajouter(cx, "conflit", uid, uid, {"voulue": fiche, "iphone": avant}, remplacer=True)
+        raise ErreurCarnet("Cette fiche a changé sur l'iPhone depuis que tu l'as ouverte : rien n'a été écrasé. "
+                           "Les deux versions t'attendent dans « À traiter ».")
+    sauvegarde_du_jour(c)
+    texte = carte(c, uid, fiche, photo, ligne["texte"], avant, forcer)
+    groupes_avant = sorted(avant.get("groupes", []))
     dav = c.icloud()
     try:
         try:
-            nouvel_etag = dav.ecrire(ligne["href"], texte, ligne["etag"])
+            etag_put = dav.ecrire(ligne["href"], texte, _etag_sur(c, dav, ligne))
         except Conflit:
             _signaler_conflit(c, dav, uid, ligne, fiche)
             raise ErreurCarnet("Ce contact vient d'être modifié sur l'iPhone : rien n'a été écrasé. "
                                "Les deux versions t'attendent dans « À traiter ».")
-        relue = _relire_une(c, dav, uid, ligne["href"])
-        etag, texte_final = relue if relue else (nouvel_etag or dav.etag(ligne["href"]) or "", texte)
-        groupes_avant = sorted(avant.get("groupes", []))
-        modifs_groupes = _ecrire_groupes(c, dav, uid, groupes_avant, sorted(set(fiche.get("groupes", []))))
+        etag, texte_final = _apres_ecriture(c, dav, uid, ligne["href"], texte, etag_put)
+        lue = _enregistrer(c, uid, ligne["href"], etag, texte_final, groupes_avant)
+        c.annulations[jeton := secrets.token_urlsafe(12)] = {
+            "uid": uid, "texte": ligne["texte"], "etag": etag, "groupes": groupes_avant,
+            "jusqua": time.monotonic() + DELAI_ANNULER}
+        modifs_groupes = _maj_groupes(c, dav, uid, groupes_avant, sorted(set(fiche.get("groupes", []))))
     finally:
         dav.fermer()
-    lue, a_photo = F.lire(texte_final, fiche.get("groupes", []), c.cfg.region)
-    with c.base.transaction() as cx:
-        cx.execute("UPDATE fiches SET etag = ?, texte = ?, fiche = ?, photo = ?, lu_le = ? WHERE uid = ?",
-                   (etag, texte_final, json.dumps(lue, ensure_ascii=False), int(a_photo), iso(maintenant()), uid))
-    c.oublier()
-    diff = F.differences(avant, lue, photo=bool(photo))
+    diff = F.differences(avant, dict(lue, groupes=sorted(set(fiche.get("groupes", [])))), photo=bool(photo))
     c.base.noter("ecriture", f"{origine} : {motif} écrite dans iCloud ({len(diff)} champ(s), {modifs_groupes} groupe(s))",
                  {"uid": uid, "champs": [d["champ"] for d in diff], "origine": origine})
-    jeton = secrets.token_urlsafe(12)
-    c.annulations[jeton] = {"uid": uid, "texte": ligne["texte"], "etag": etag, "groupes": groupes_avant,
-                            "jusqua": time.monotonic() + DELAI_ANNULER}
     return {"uid": uid, "etag": etag, "jeton": jeton, "champs": diff, "groupes": modifs_groupes}
 
 
 def creer(c: Carnet, fiche: dict, photo: tuple[bytes, str] | None = None, origine: str = "manuel") -> dict:
-    """Nouvelle fiche dans iCloud (import, recréation)."""
+    """Nouvelle fiche dans iCloud (import)."""
     uid = str(uuid.uuid4()).upper()
     sauvegarde_du_jour(c)
     dav = c.icloud()
     try:
         href = dav.href_nouveau(uid)
         texte = carte(c, uid, fiche, photo, None)
-        dav.ecrire(href, texte, None)
-        relue = _relire_une(c, dav, uid, href)
-        etag, texte_final = relue if relue else (dav.etag(href) or "", texte)
-        _ecrire_groupes(c, dav, uid, [], sorted(set(fiche.get("groupes", []))))
+        etag_put = dav.ecrire(href, texte, None)
+        etag, texte_final = _apres_ecriture(c, dav, uid, href, texte, etag_put)
+        _enregistrer(c, uid, href, etag, texte_final, [])
+        _maj_groupes(c, dav, uid, [], sorted(set(fiche.get("groupes", []))))
     finally:
         dav.fermer()
-    lue, a_photo = F.lire(texte_final, fiche.get("groupes", []), c.cfg.region)
-    with c.base.transaction() as cx:
-        cx.execute("INSERT INTO fiches(uid, href, etag, texte, fiche, photo, lu_le) VALUES (?,?,?,?,?,?,?)",
-                   (uid, href, etag, texte_final, json.dumps(lue, ensure_ascii=False), int(a_photo), iso(maintenant())))
-    c.oublier()
     c.base.noter("ecriture", f"{origine} : fiche créée dans iCloud", {"uid": uid, "origine": origine})
     return {"uid": uid, "etag": etag}
 
 
-def recreer(c: Carnet, texte: str, href: str) -> dict:
-    """Remet dans iCloud une carte supprimée sur l'iPhone, à l'identique (même UID)."""
+def recreer(c: Carnet, texte: str, href: str, groupes: list[str]) -> dict:
+    """Remet dans iCloud une carte supprimée sur l'iPhone, à l'identique (même UID, mêmes groupes)."""
     carte_ = synchro.analyser(href, "", texte)
     sauvegarde_du_jour(c)
     dav = c.icloud()
     try:
-        dav.ecrire(href, texte, None)
-        relue = _relire_une(c, dav, carte_.uid, href)
-        etag, texte_final = relue if relue else (dav.etag(href) or "", texte)
+        etag_put = dav.ecrire(href, texte, None)
+        etag, texte_final = _apres_ecriture(c, dav, carte_.uid, href, texte, etag_put)
+        _enregistrer(c, carte_.uid, href, etag, texte_final, [])
+        _maj_groupes(c, dav, carte_.uid, [], sorted(set(groupes)))
     finally:
         dav.fermer()
-    fiche, a_photo = F.lire(texte_final, [], c.cfg.region)
-    with c.base.transaction() as cx:
-        cx.execute("INSERT OR REPLACE INTO fiches(uid, href, etag, texte, fiche, photo, lu_le) VALUES (?,?,?,?,?,?,?)",
-                   (carte_.uid, href, etag, texte_final, json.dumps(fiche, ensure_ascii=False), int(a_photo), iso(maintenant())))
-    c.oublier()
     c.base.noter("ecriture", "Fiche supprimée sur l'iPhone recréée dans iCloud", {"uid": carte_.uid})
     return {"uid": carte_.uid}
 
 
 def supprimer(c: Carnet, uid: str, origine: str = "fusion") -> None:
-    """Suppression d'une carte : seulement à la demande (fusion), jamais la nuit."""
+    """Suppression d'une carte : seulement à la demande (fusion), jamais la nuit. La carte est
+    supprimée d'abord ; les groupes ne sont nettoyés qu'ensuite."""
     ligne = c.base.un("SELECT * FROM fiches WHERE uid = ?", (uid,))
     if not ligne:
         return
@@ -324,17 +377,17 @@ def supprimer(c: Carnet, uid: str, origine: str = "fusion") -> None:
     avant = json.loads(ligne["fiche"])
     dav = c.icloud()
     try:
-        _ecrire_groupes(c, dav, uid, sorted(avant.get("groupes", [])), [])
         try:
-            dav.supprimer(ligne["href"], ligne["etag"])
+            dav.supprimer(ligne["href"], _etag_sur(c, dav, ligne))
         except Conflit:
             raise ErreurCarnet("Ce contact vient d'être modifié sur l'iPhone : il n'a pas été supprimé. Relis iCloud.")
+        with c.base.transaction() as cx:
+            cx.execute("DELETE FROM fiches WHERE uid = ?", (uid,))
+            cx.execute("DELETE FROM a_traiter WHERE uid = ?", (uid,))
+        c.oublier()
+        _ecrire_groupes(c, dav, uid, sorted(avant.get("groupes", [])), [])
     finally:
         dav.fermer()
-    with c.base.transaction() as cx:
-        cx.execute("DELETE FROM fiches WHERE uid = ?", (uid,))
-        cx.execute("DELETE FROM a_traiter WHERE uid = ?", (uid,))
-    c.oublier()
     c.base.noter("ecriture", f"{origine} : fiche retirée d'iCloud", {"uid": uid, "origine": origine})
 
 
@@ -348,47 +401,53 @@ def _signaler_conflit(c: Carnet, dav, uid: str, ligne, fiche_voulue: dict) -> No
 
 def _ecrire_groupes(c: Carnet, dav, uid: str, avant: list[str], apres: list[str]) -> int:
     """Met à jour les cartes de groupe d'iCloud (ajout ou retrait de ce membre). Retourne le
-    nombre de cartes de groupe écrites."""
+    nombre de cartes de groupe écrites. Deux groupes du même nom : le membre est retiré de tous,
+    ajouté au premier."""
     ajoutes, retires = set(apres) - set(avant), set(avant) - set(apres)
     if not (ajoutes or retires):
         return 0
     actuels = _groupes_actuels(c)
     ecrites = 0
     for nom in sorted(ajoutes | retires):
-        for essai in range(2):
-            g = actuels.get(nom)
-            membres = set(g["membres"]) if g else set()
-            if nom in ajoutes:
-                membres.add(uid)
-            else:
-                membres.discard(uid)
-            if g is None:
-                if nom in retires:
-                    break
+        cartes = actuels.get(nom) or []
+        if nom in ajoutes:
+            cibles = [g for g in cartes if uid in g["membres"]][:1] or cartes[:1]
+            if not cibles:
                 guid = _uid_groupe(nom)
                 href = dav.href_nouveau(guid)
-                texte = synchro.carte_groupe(nom, guid, sorted(membres))
-                dav.ecrire(href, texte, None)
-                etag = dav.etag(href) or ""
-                g = {"uid": guid, "href": href}
-            else:
+                texte = synchro.carte_groupe(nom, guid, [uid])
+                etag = dav.ecrire(href, texte, None) or dav.etag(href) or ""
+                c.base.executer("INSERT OR REPLACE INTO groupes(uid, href, etag, nom, texte, membres) VALUES (?,?,?,?,?,?)",
+                                (guid, href, etag, nom, texte, json.dumps([uid])))
+                ecrites += 1
+                continue
+        else:
+            cibles = [g for g in cartes if uid in g["membres"]]
+        for g in cibles:
+            for essai in range(2):
+                membres = set(g["membres"])
+                if nom in ajoutes:
+                    membres.add(uid)
+                else:
+                    membres.discard(uid)
+                if membres == set(g["membres"]):
+                    break
                 texte = synchro.carte_groupe(nom, g["uid"], sorted(membres), g["texte"])
                 try:
+                    if not g["etag"]:
+                        raise Conflit("ETag inconnu")
                     etag = dav.ecrire(g["href"], texte, g["etag"]) or dav.etag(g["href"]) or ""
                 except Conflit:
-                    if essai:
-                        raise ErreurCarnet(f"Le groupe « {nom} » change en ce moment dans iCloud : réessaie.")
                     relue = dav.lire_une(g["href"])
-                    if relue:
-                        x = synchro.analyser(relue.href, relue.etag, relue.texte)
-                        actuels[nom] = {**g, "etag": x.etag, "texte": x.texte, "membres": x.membres}
+                    if essai or not relue:
+                        raise ErreurCarnet(f"Le groupe « {nom} » change en ce moment dans iCloud : réessaie.")
+                    x = synchro.analyser(relue.href, relue.etag, relue.texte)
+                    g = {**g, "etag": x.etag, "texte": x.texte, "membres": x.membres}
                     continue
-            with c.base.transaction() as cx:
-                cx.execute("INSERT OR REPLACE INTO groupes(uid, href, etag, nom, texte, membres) VALUES (?,?,?,?,?,?)",
-                           (g["uid"], g["href"], etag, nom, texte, json.dumps(sorted(membres))))
-            actuels[nom] = {"uid": g["uid"], "href": g["href"], "etag": etag, "texte": texte, "membres": sorted(membres)}
-            ecrites += 1
-            break
+                c.base.executer("INSERT OR REPLACE INTO groupes(uid, href, etag, nom, texte, membres) VALUES (?,?,?,?,?,?)",
+                                (g["uid"], g["href"], etag, nom, texte, json.dumps(sorted(membres))))
+                ecrites += 1
+                break
     return ecrites
 
 
@@ -399,23 +458,18 @@ def remettre(c: Carnet, uid: str, texte_avant: str, groupes_avant: list[str], mo
     if not ligne:
         raise ErreurCarnet("Ce contact n'existe plus dans iCloud.")
     sauvegarde_du_jour(c)
+    actuels = sorted(json.loads(ligne["fiche"]).get("groupes", []))
     dav = c.icloud()
     try:
         try:
-            dav.ecrire(ligne["href"], texte_avant, ligne["etag"])
+            etag_put = dav.ecrire(ligne["href"], texte_avant, _etag_sur(c, dav, ligne))
         except Conflit:
             raise ErreurCarnet("La fiche vient d'être modifiée sur l'iPhone : rien n'a été remis.")
-        relue = _relire_une(c, dav, uid, ligne["href"])
-        actuels = json.loads(ligne["fiche"]).get("groupes", [])
-        _ecrire_groupes(c, dav, uid, sorted(actuels), sorted(groupes_avant))
+        etag, texte = _apres_ecriture(c, dav, uid, ligne["href"], texte_avant, etag_put)
+        _enregistrer(c, uid, ligne["href"], etag, texte, actuels)
+        _maj_groupes(c, dav, uid, actuels, sorted(groupes_avant))
     finally:
         dav.fermer()
-    etag, texte = relue if relue else ("", texte_avant)
-    fiche, a_photo = F.lire(texte, groupes_avant, c.cfg.region)
-    with c.base.transaction() as cx:
-        cx.execute("UPDATE fiches SET etag = ?, texte = ?, fiche = ?, photo = ? WHERE uid = ?",
-                   (etag, texte, json.dumps(fiche, ensure_ascii=False), int(a_photo), uid))
-    c.oublier()
     c.base.noter("ecriture", motif, {"uid": uid})
     return {"ok": True, "uid": uid}
 
@@ -470,10 +524,13 @@ def restaurer(c: Carnet, nom: str, uids: list[str]) -> dict:
     (verrou d'écriture déjà pris). Une copie de l'état actuel est faite d'abord."""
     texte = _fichier(c, nom).read_text(encoding="utf-8")
     voulues = set(uids)
-    blocs = {}
+    blocs, groupes_sauves = {}, {}
     for bloc in re.findall(r"BEGIN:VCARD.*?END:VCARD\r?\n?", texte, flags=re.S | re.I):
         x = synchro.analyser("", "", bloc)
-        if not x.groupe and x.uid in voulues:
+        if x.groupe:
+            for m in x.membres:
+                groupes_sauves.setdefault(m, set()).add(x.nom)
+        elif x.uid in voulues:
             blocs[x.uid] = bloc
     if not blocs:
         raise ErreurCarnet("Aucune des fiches choisies n'est dans cette sauvegarde.")
@@ -482,16 +539,17 @@ def restaurer(c: Carnet, nom: str, uids: list[str]) -> dict:
     dav = c.icloud()
     try:
         for uid, bloc in blocs.items():
-            ligne = c.base.un("SELECT href, etag FROM fiches WHERE uid = ?", (uid,))
+            ligne = c.base.un("SELECT href, etag, texte FROM fiches WHERE uid = ?", (uid,))
             try:
                 if ligne:
-                    dav.ecrire(ligne["href"], bloc, ligne["etag"])
+                    dav.ecrire(ligne["href"], bloc, _etag_sur(c, dav, ligne))
                     bilan["restaurees"] += 1
                 else:
                     dav.ecrire(dav.href_nouveau(uid), bloc, None)
                     bilan["recreees"] += 1
-            except (Conflit, ErreurICloud) as exc:
+            except (Conflit, ErreurICloud, ErreurCarnet) as exc:
                 bilan["erreurs"].append(f"{synchro.analyser('', '', bloc).nom} : {exc}")
+                blocs[uid] = None
     finally:
         dav.fermer()
     c.base.noter("restauration", f"Restauration depuis {nom} : {bilan['restaurees']} remise(s), "
@@ -499,8 +557,18 @@ def restaurer(c: Carnet, nom: str, uids: list[str]) -> dict:
     # La base reprend l'état réel d'iCloud ; les cartes restaurées ne sont pas signalées
     # comme « modifiées sur l'iPhone » : la restauration est ton geste
     relire(c, "après restauration")
+    remises = [u for u, b in blocs.items() if b]
+    dav = c.icloud()
+    try:
+        for uid in remises:
+            ligne = c.base.un("SELECT fiche FROM fiches WHERE uid = ?", (uid,))
+            if ligne:
+                _maj_groupes(c, dav, uid, sorted(json.loads(ligne["fiche"]).get("groupes", [])),
+                             sorted(groupes_sauves.get(uid, set())))
+    finally:
+        dav.fermer()
     with c.base.transaction() as cx:
-        for uid in blocs:
+        for uid in remises:
             cx.execute("DELETE FROM a_traiter WHERE uid = ? AND motif IN ('iphone_modifiee', 'iphone_nouvelle', 'iphone_supprimee')", (uid,))
     c.oublier()
     return bilan

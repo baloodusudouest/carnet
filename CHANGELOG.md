@@ -14,11 +14,20 @@ carnet n'est plus un outil de migration : le grand ménage est fini, **iCloud es
 - **Home Assistant** : nouvelle adresse `/ha/contacts` (avec `carnet_id` stable). Les adresses de la 1.3 (`/ha/personnes`, `/ha/anniversaires`, `/ha/invite`, `/ha/portraits/candidats`, `/ha/portrait`) et les champs de `/status` lus par le paquet restent identiques : **rien à changer dans HA**.
 - **LinkedIn** : CSV ou API de portabilité, comme avant ; seuls les changements remontent.
 
+### Garde-fous ajoutés après une relecture indépendante
+- Une écriture ne remplace que les propriétés des champs qui changent : titre et suffixe du nom, service, boîte postale, étiquettes personnalisées, IMPP, notes… restent tels qu'iCloud les a.
+- Une page restée ouverte n'écrase jamais une modification faite sur l'iPhone entre-temps : l'interface renvoie la version qu'elle a affichée ; si elle a changé, rien n'est écrit et les deux versions vont en conflit.
+- La nuit ne touche jamais une fiche qui attend ta relecture, et revérifie le poste LinkedIn au moment d'écrire.
+- Une carte annoncée par iCloud mais non fournie est relue seule ; s'il en manque encore, la lecture est refusée (plus jamais prise pour une suppression).
+- Photo par lien : le mot de passe iCloud ne part que vers iCloud.
+- La base suit iCloud aussitôt la carte écrite, même si un groupe échoue ensuite ; fusion : la carte est supprimée avant de toucher aux groupes ; « Remettre la fiche » et la restauration remettent aussi les groupes ; deux groupes du même nom sont gérés.
+- Jamais d'écriture ni de suppression sans ETag ; reprise retentée tant qu'elle n'a pas réussi ; plus de journal d'accès (les adresses HA contiennent des noms).
+
 ### Reprise de la 1.3
 Au premier démarrage : lecture complète d'iCloud (elle sert de référence, rien n'est signalé ni écrit), puis reprise unique depuis l'ancienne base (`/state/carnet.db`, clé `CARNET_DB_KEY` déjà présente) : liaisons et refus, photos choisies, affiches et leur pose, relations LinkedIn. L'ancienne base n'est jamais modifiée. La copie Synology faite par la 1.3 (identifiants « carnet-… ») est remplacée par un miroir exact d'iCloud.
 
 ### Retiré
-Lecteurs Gmail et Outlook (un import .vcf générique reste), SQLCipher pour la nouvelle base (`carnet2.db` en SQLite simple, dossier protégé), test de restauration de base et clé Enpass, OpenCV et le modèle YuNet, simulation manuelle d'écriture, plafonds réglables, période à blanc, table `etat` à 38 clés. Serveur : 8 100 → 5 800 lignes (aucun fichier au-delà de 600), 88 → 54 adresses, 34 → 21 variables ; interface : 5 200 → 1 500 lignes.
+Lecteurs Gmail et Outlook (un import .vcf générique reste), SQLCipher pour la nouvelle base (`carnet2.db` en SQLite simple, dossier protégé), test de restauration de base et clé Enpass, OpenCV et le modèle YuNet, simulation manuelle d'écriture, plafonds réglables, période à blanc, table `etat` à 38 clés. Serveur : 8 100 → 6 000 lignes (aucun fichier au-delà de 600), 88 → 54 adresses, 34 → 21 variables ; interface : 5 200 → 1 500 lignes.
 
 ### Retour arrière
 `CARNET_VERSION=1.3.1` et `CARNET_VEILLE_HEURE=off` (la nuit de la 1.3 ne démarre pas : sinon elle réécrirait des fiches devenues périmées), puis Recreate. L'ancienne base est restée intacte.

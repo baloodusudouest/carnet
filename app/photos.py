@@ -98,7 +98,8 @@ def poser(c: Carnet, uid: str, asset: str, origine: str = "manuel") -> dict:
     """Le portrait choisi devient la photo de la fiche dans iCloud."""
     from . import actions
     image = portrait(c, uid, asset)
-    res = actions.valider(c, uid, c.fiche(uid), photo=image, origine=origine, motif="photo")
+    res = actions.valider(c, uid, c.fiche(uid), photo=image, origine=origine, motif="photo",
+                          etag_vu=actions._etag(c, uid))
     c.base.executer("UPDATE portraits SET asset = ?, manuel = ?, le = ? WHERE uid = ?",
                     (asset, int(origine == "manuel"), iso(maintenant()), uid))
     return res
@@ -250,4 +251,4 @@ def choisir_logo(c: Carnet, uid: str, n: int, sorte: str) -> dict:
     if sorte == "affiche":
         return preparer_affiche(c, uid, logo=contenu)
     photo = images.alleger((logos.photo(contenu), "image/jpeg"))
-    return actions.valider(c, uid, c.fiche(uid), photo=photo, motif="logo en photo")
+    return actions.valider(c, uid, c.fiche(uid), photo=photo, motif="logo en photo", etag_vu=actions._etag(c, uid))

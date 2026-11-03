@@ -111,7 +111,7 @@ def importer(c, texte: str) -> dict:
                 if not v or v == f.get(champ, "") or (ancienne and v == ancien.get(champ, "")):
                     continue
                 if ancien.get(champ) and f.get(champ, "") == ancien.get(champ):
-                    auto[champ] = v
+                    auto[champ] = {"ancien": ancien[champ], "nouveau": v}
                 else:
                     propose[champ] = v
             courriel = nouveau["courriel"]

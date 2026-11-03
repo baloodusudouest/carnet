@@ -153,6 +153,52 @@ def assembler(nouvelle: str, distante: str | None) -> str:
     return "\r\n".join(plier(l) for l in lignes) + "\r\n"
 
 
+# Champs de la fiche → propriétés vCard qui les portent
+PROPRIETES = {
+    "prenom": {"N", "FN"}, "nom": {"N", "FN"}, "surnom": {"NICKNAME"}, "societe": {"ORG", "X-ABSHOWAS", "FN"},
+    "fonction": {"TITLE"}, "anniversaire": {"BDAY"}, "telephones": {"TEL"}, "courriels": {"EMAIL"},
+    "adresses": {"ADR"}, "sites": {"URL", "X-SOCIALPROFILE"}, "noms_associes": {"X-ABRELATEDNAMES"},
+    "notes": {"NOTE"}, "photo": {"PHOTO"} | PHOTO_ANNEXES,
+}
+
+
+def assembler_partiel(nouvelle: str, distante: str, champs: set[str]) -> str:
+    """Carte écrite quand seuls certains champs changent : les lignes d'origine d'iCloud restent
+    telles quelles pour tout le reste (titre et suffixe du nom, service, boîte postale, étiquettes
+    personnalisées, IMPP…). Seules les propriétés des champs modifiés viennent de carnet."""
+    props = set().union(*(PROPRIETES.get(ch, set()) for ch in champs)) if champs else set()
+    if not props:
+        return nettoyer_texte(distante)
+
+    def groupes_de(lignes: list[str]) -> dict[str, str]:
+        """itemN → propriété principale du groupe (TEL, EMAIL…), l'étiquette X-ABLabel suit."""
+        res = {}
+        for l in lignes:
+            g, nom, _ = _decouper(l)
+            if g and nom not in ("X-ABLABEL", "X-ABADR"):
+                res.setdefault(g, nom)
+        return res
+
+    dist = deplier(distante)
+    gdist = groupes_de(dist)
+    gardees = []
+    for l in dist:
+        g, nom, v = _decouper(l)
+        principal = gdist.get(g, nom) if g else nom
+        if nom == "END" or nom in JETEES:
+            continue
+        if principal in props and not _apple(principal, v):
+            continue
+        gardees.append(l)
+    neuves = deplier(nouvelle)
+    gneuf = groupes_de(neuves)
+    ajout = [l for l in neuves if (gneuf.get(_decouper(l)[0], _decouper(l)[1]) if _decouper(l)[0] else _decouper(l)[1]) in props]
+    items = [int(m) for l in gardees if (m := (re.match(r"item(\d+)\.", l) or [None, None])[1])]
+    ajout = _renumeroter(ajout, max(items, default=0) + 1)
+    lignes = gardees + ajout + ["END:VCARD"]
+    return "\r\n".join(plier(l) for l in lignes) + "\r\n"
+
+
 def carte_groupe(nom: str, uid: str, membres: list[str], distante: str | None = None) -> str:
     lignes = ["BEGIN:VCARD", "VERSION:3.0", "PRODID:-//carnet//FR", f"N:{echapper(nom)}", f"FN:{echapper(nom)}",
               "X-ADDRESSBOOKSERVER-KIND:group"]

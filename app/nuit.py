@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timedelta
 
 from . import icloud, liaisons, photos, sorties
+from .carddav import ErreurICloud
 from .carnet import Carnet, ErreurCarnet, Occupe
 from .temps import iso, maintenant, ZONE
 
@@ -88,10 +89,16 @@ def _ecritures_sures(c: Carnet, d: dict, bilan: dict) -> None:
     for x in liaisons.dates_manquantes(c, d):
         a_faire.setdefault(x["uid"], {})["anniversaire"] = x["date"]
     for l in c.base.tous("SELECT uid, donnees FROM en_attente WHERE motif = 'linkedin'"):
-        a_faire.setdefault(l["uid"], {}).update(json.loads(l["donnees"]))
+        a_faire.setdefault(l["uid"], {})["_linkedin"] = json.loads(l["donnees"])
     sans_photo = [u for u, f in c.fiches().items() if not f.get("a_photo") and c.liaisons().get(u, {}).get("immich")]
     for u in sans_photo:
         a_faire.setdefault(u, {})["_photo"] = True
+    # Une fiche qui attend ta relecture (modifiée sur l'iPhone, conflit) n'est jamais touchée la nuit
+    en_revue = {l["uid"] for l in c.base.tous("SELECT uid FROM a_traiter WHERE motif IN "
+                                              "('iphone_modifiee', 'iphone_nouvelle', 'conflit')")}
+    for uid in en_revue & set(a_faire):
+        a_faire.pop(uid)
+        bilan["details"].append("Fiche en attente de relecture : écriture sûre remise à plus tard.")
     if not a_faire:
         return
     icloud.sauvegarder(c, "nuit")
@@ -111,11 +118,12 @@ def _ecritures_sures(c: Carnet, d: dict, bilan: dict) -> None:
                     photo = photos.portrait(c, uid, cands[0]["asset"])
             except ErreurCarnet as exc:
                 bilan["details"].append(f"Photo : {exc}")
-        for champ, v in changements.items():
-            if champ in ("societe", "fonction"):
-                fiche[champ] = v
-            elif champ == "anniversaire" and not fiche.get("anniversaire"):
-                fiche[champ] = v
+        for champ, x in changements.pop("_linkedin", {}).items():
+            # Revérifié au moment d'écrire : seulement si la fiche porte encore l'ancienne valeur LinkedIn
+            if champ in ("societe", "fonction") and isinstance(x, dict) and fiche.get(champ, "") == x.get("ancien"):
+                fiche[champ] = x["nouveau"]
+        if changements.get("anniversaire") and not fiche.get("anniversaire"):
+            fiche["anniversaire"] = changements["anniversaire"]
         if photo is None and fiche == {k: v for k, v in f.items() if k != "a_photo"}:
             c.base.executer("DELETE FROM en_attente WHERE uid = ?", (uid,))
             continue
@@ -125,8 +133,9 @@ def _ecritures_sures(c: Carnet, d: dict, bilan: dict) -> None:
             if photo is not None:
                 cands = photos.candidats(c, uid)
                 c.base.executer("UPDATE portraits SET asset = ? WHERE uid = ?", (cands[0]["asset"], uid))
-        except ErreurCarnet as exc:   # conflit iPhone : la carte n'est pas écrasée, elle part en « À traiter »
+        except (ErreurCarnet, ErreurICloud) as exc:   # conflit iPhone (carte non écrasée), carte refusée…
             bilan["details"].append(str(exc))
+        # Retirée même après une erreur : la même carte ne bloque pas chaque nuit
         c.base.executer("DELETE FROM en_attente WHERE uid = ?", (uid,))
 
 

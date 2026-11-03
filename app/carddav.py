@@ -176,11 +176,18 @@ class CardDAV:
                 if texte:
                     etag = (prop.findtext(f"{{{D}}}getetag") or etags.get(href, "")).strip()
                     cartes.append(Brute(href, etag, texte))
-        # Lecture incomplète (cartes annoncées mais non fournies) : mieux vaut s'arrêter que de
-        # croire ces fiches supprimées de l'iPhone
-        manquantes = len(etags) - len(cartes)
-        if manquantes > max(2, len(etags) // 100):
-            raise ErreurICloud(f"Lecture d'iCloud incomplète : {manquantes} fiche(s) annoncée(s) mais non fournie(s). "
+        # Cartes annoncées mais non fournies : relues une par une ; s'il en manque encore, la
+        # lecture est refusée (sinon ces fiches passeraient pour supprimées de l'iPhone)
+        recues = {urlsplit(self._url(b.href, carnet)).path for b in cartes}
+        manquantes = [h for h in hrefs if urlsplit(self._url(h, carnet)).path not in recues]
+        for h in manquantes[:30]:
+            brute = self.lire_une(h)
+            if brute:
+                cartes.append(brute)
+                recues.add(urlsplit(self._url(h, carnet)).path)
+        reste = [h for h in manquantes if urlsplit(self._url(h, carnet)).path not in recues]
+        if reste:
+            raise ErreurICloud(f"Lecture d'iCloud incomplète : {len(reste)} fiche(s) annoncée(s) mais non fournie(s). "
                                "Rien n'est modifié ; nouvel essai au prochain passage.")
         return cartes
 
@@ -206,9 +213,16 @@ class CardDAV:
         return next(((p.findtext(f"{{{D}}}getetag") or "").strip() or None for _, p in reps), None)
 
     def telecharger(self, url: str) -> bytes | None:
-        """Image d'une carte que iCloud ne fournit que sous forme de lien (avec authentification)."""
+        """Image d'une carte que iCloud ne fournit que sous forme de lien. Les identifiants ne
+        partent que vers iCloud (ou le serveur configuré) ; ailleurs, téléchargement anonyme."""
+        hote = (urlsplit(url).hostname or "").lower()
+        a_soi = hote == (urlsplit(self.base).hostname or "").lower() or hote == "icloud.com" or hote.endswith(".icloud.com")
         try:
-            r = self.client.get(url)
+            if a_soi:
+                r = self.client.get(url)
+            else:
+                with httpx.Client(timeout=30, follow_redirects=False, transport=self.client._transport) as anonyme:
+                    r = anonyme.get(url)
         except httpx.HTTPError:
             return None
         return r.content if r.status_code == 200 and r.content else None
@@ -227,7 +241,9 @@ class CardDAV:
         return r.headers.get("ETag")
 
     def supprimer(self, href: str, etag: str | None) -> None:
-        entetes = {"If-Match": etag} if etag else {}
+        if not etag:   # jamais de suppression sans condition
+            raise Conflit("Version de la carte inconnue : suppression refusée.")
+        entetes = {"If-Match": etag}
         self._requete("DELETE", self._url(href, self.decouvrir()), headers=entetes)
 
 
