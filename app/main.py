@@ -9,10 +9,11 @@ import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
-from . import (__version__, actions, icloud, liaisons, linkedin, nuit, photos, reprise, sorties, traiter, vcard)
+from . import (__version__, actions, completude, icloud, liaisons, linkedin, nuit, photos, reprise, reseaux, sorties,
+               telegram, traiter, vcard)
 from .auth import COOKIE, DUREE, Sessions
 from .carddav import ErreurICloud
 from .carnet import Carnet, ErreurCarnet, Occupe
@@ -44,6 +45,7 @@ def demarrage(c: Carnet) -> None:
         if c.cfg.immich_cle or c.cfg.treemich_email:
             c.tache = {"nom": "demarrage", "etat": "en_cours", "message": "Lecture d'Immich et de Treemich…"}
             liaisons.donnees(c)
+        reseaux.purger(c)
         c.tache = {"nom": "demarrage", "etat": "termine", "message": "Prêt."}
     except Exception as exc:  # noqa: BLE001
         log.exception("Démarrage")
@@ -165,6 +167,7 @@ def deconnexion():
 @app.get("/api/accueil")
 def accueil():
     c = carnet()
+    reseaux.purger_si_besoin(c)
     return {"version": __version__, "a_traiter": traiter.compte(c), "tache": c.tache,
             "contacts": len(c.fiches()), "reference": bool(c.base.lire("reference")),
             "icloud": bool(c.cfg.icloud_user), "nuit": c.base.lire("nuit"), "lecture": c.base.lire("derniere_lecture")}
@@ -175,6 +178,11 @@ def a_traiter():
     return traiter.liste(carnet())
 
 
+@app.post("/api/a-traiter-lot")
+def repondre_lot(corps: dict = Body(...)):
+    return actions.repondre_lot(carnet(), [str(i) for i in corps.get("ids") or []], str(corps.get("action", "")))
+
+
 @app.post("/api/a-traiter/{ident:path}")
 def repondre(ident: str, corps: dict = Body(...)):
     return actions.repondre(carnet(), ident, str(corps.get("action", "")), corps.get("valeur"))
@@ -182,14 +190,17 @@ def repondre(ident: str, corps: dict = Body(...)):
 
 # ================================================================ contacts
 
-def _resume(uid: str, f: dict, liens: dict, en_attente: dict) -> dict:
+def _resume(uid: str, f: dict, liens: dict, en_attente: dict, audit: dict | None = None) -> dict:
     tel = (f.get("telephones") or [{}])[0]
+    audit = audit or {}
     return {"uid": uid, "nom": nom_affiche(f), "prenom": f.get("prenom", ""), "nom_famille": f.get("nom", ""),
             "societe": f.get("societe", ""), "fonction": f.get("fonction", ""), "groupes": f.get("groupes", []),
             "a_photo": f.get("a_photo", False), "immich": bool(liens.get(uid, {}).get("immich")),
             "treemich": bool(liens.get(uid, {}).get("treemich")), "telephone": tel.get("affichage") or tel.get("valeur", ""),
             "valeur_tel": tel.get("valeur", ""), "courriel": (f.get("courriels") or [{}])[0].get("valeur", ""),
-            "anniversaire": f.get("anniversaire", ""), "a_traiter": en_attente.get(uid, 0)}
+            "anniversaire": f.get("anniversaire", ""), "a_traiter": en_attente.get(uid, 0),
+            "manques": audit.get("manques", []), "statut": audit.get("statut"), "plateformes": audit.get("plateformes", ["icloud"]),
+            "score": audit.get("score", 0)}
 
 
 @app.get("/api/contacts")
@@ -202,7 +213,8 @@ def contacts():
         for p in traiter.liste(c):
             if p.get("uid"):
                 compte[p["uid"]] = compte.get(p["uid"], 0) + 1
-        liste = [_resume(u, f, liens, compte) for u, f in c.fiches().items()]
+        audit = completude.resume(c)
+        liste = [_resume(u, f, liens, compte, audit.get(u)) for u, f in c.fiches().items()]
         return sorted(liste, key=lambda x: (x["nom_famille"] or x["nom"]).casefold())
     return c.memo("contacts", calcul)
 
@@ -236,7 +248,63 @@ def contact(uid: str):
             "portraits": {"candidats": json.loads(portrait["candidats"]), "asset": portrait["asset"]} if portrait else None,
             "affiche": dict(affiche) if affiche else None,
             "linkedin": {"url": lk["url"], **json.loads(lk["donnees"])} if lk else None,
-            "a_traiter": points, "groupes_connus": [g["nom"] for g in groupes()]}
+            "a_traiter": points, "groupes_connus": [g["nom"] for g in groupes()],
+            "completude": completude.resume(c).get(uid, {}), "criteres": completude.CRITERES}
+
+
+@app.get("/api/completude")
+def compteurs_completude():
+    c = carnet()
+    return {"criteres": completude.CRITERES, "compteurs": completude.compteurs(c)}
+
+
+@app.post("/api/contacts/{uid}/valider")
+def valider_fiche(uid: str, corps: dict = Body(default={})):
+    return completude.valider(carnet(), uid, corps.get("etag"))
+
+
+@app.post("/api/contacts/{uid}/devalider")
+def devalider_fiche(uid: str):
+    return completude.devalider(carnet(), uid)
+
+
+@app.post("/api/contacts/{uid}/profil")
+def ajouter_profil(uid: str, corps: dict = Body(...)):
+    return reseaux.ajouter_profil(carnet(), uid, str(corps.get("service", "")), str(corps.get("valeur", "")),
+                                  corps.get("etag") or None)
+
+
+@app.post("/api/contacts/{uid}/delier-reseau")
+def delier_reseau(uid: str, corps: dict = Body(...)):
+    return reseaux.delier(carnet(), uid, str(corps.get("service", "")), corps.get("etag") or None)
+
+
+@app.post("/api/analyse")
+def analyse(corps: dict = Body(default={})):
+    c = carnet()
+    zero = bool(corps.get("remettre_a_zero")) and corps.get("confirmation") == "REMETTRE"
+    return _fond("analyse", lambda: completude.analyse_globale(c, zero) and {"message": "Analyse globale terminée."})
+
+
+@app.get("/api/telegram")
+def telegram_etat():
+    return telegram.etat(carnet())
+
+
+@app.post("/api/telegram/code")
+def telegram_code(corps: dict = Body(...)):
+    return telegram.demander_code(carnet(), str(corps.get("telephone", "")))
+
+
+@app.post("/api/telegram/import")
+def telegram_import(corps: dict = Body(...)):
+    return telegram.importer(carnet(), str(corps.get("code", "")), str(corps.get("mot_de_passe", "")))
+
+
+@app.post("/api/telegram/abandon")
+def telegram_abandon():
+    telegram.abandonner(carnet())
+    return {"ok": True}
 
 
 @app.post("/api/contacts/{uid}/apercu")
@@ -248,7 +316,7 @@ def apercu(uid: str, corps: dict = Body(...)):
 def valider(uid: str, corps: dict = Body(...)):
     if not corps.get("etag"):
         raise ErreurCarnet("Version de la fiche absente : recharge la page.")
-    return actions.valider(carnet(), uid, corps.get("fiche") or {}, etag_vu=str(corps["etag"]))
+    return actions.valider(carnet(), uid, corps.get("fiche") or {}, etag_vu=str(corps["etag"]), regler_revue=True)
 
 
 @app.post("/api/annuler/{jeton}")
@@ -377,7 +445,7 @@ def etat():
                          "treemich": bool(c.cfg.treemich_email), "synology": bool(c.cfg.synology_url),
                          "kit": bool(c.cfg.kit_config and c.cfg.kit_config.is_dir()), "ha": bool(c.cfg.ha_token),
                          "nuit": c.cfg.veille_heure if c.cfg.nuit_active else None},
-            "tache": c.tache}
+            "reseaux": reseaux.bilan(c), "telegram": telegram.etat(c), "tache": c.tache}
 
 
 @app.post("/api/icloud/relire")
@@ -421,10 +489,28 @@ def kit():
     return sorties.envoyer_kit(carnet())
 
 
+IMPORT_MAX = 100 * 1024 * 1024
+
+
 @app.post("/api/import")
-async def importer(fichier: UploadFile = File(...)):
+async def importer(request: Request, nom: str = ""):
+    """Fichier envoyé tel quel dans le corps (pas de formulaire) : lu en mémoire seulement,
+    jamais écrit sur le disque, 100 Mo au plus."""
     c = carnet()
-    contenu = (await fichier.read()).decode("utf-8-sig", errors="replace")
+    morceaux, taille = [], 0
+    async for m in request.stream():
+        taille += len(m)
+        if taille > IMPORT_MAX:
+            raise ErreurCarnet("Fichier trop gros (100 Mo au plus) : pour Instagram, ne demande que « Abonnés et abonnements ».")
+        morceaux.append(m)
+    brut = b"".join(morceaux)
+    del morceaux
+    fichier_nom = nom.rsplit("/", 1)[-1][:120] or "fichier"
+    nom = fichier_nom.lower()
+    # Export Instagram : archive .zip ou JSON d'abonnements ; l'archive n'est jamais gardée
+    if nom.endswith(".zip") or brut[:2] == b"PK" or (nom.endswith(".json") and b"string_list_data" in brut[:200000]):
+        return reseaux.importer_instagram(c, brut, nom)
+    contenu = brut.decode("utf-8-sig", errors="replace")
     if "First Name" in contenu[:4000] and ("Connected On" in contenu or "linkedin" in contenu.lower()):
         return {"source": "linkedin", **linkedin.importer(c, contenu)}
     if "BEGIN:VCARD" not in contenu.upper():
@@ -434,10 +520,10 @@ async def importer(fichier: UploadFile = File(...)):
     with c.base.transaction() as cx:
         for lue in lues:
             f = dict(lue.fiche, photo=None)
-            if traiter.ajouter(cx, "import", None, traiter.empreinte(f), {"fiche": f, "fichier": fichier.filename}):
+            if traiter.ajouter(cx, "import", None, traiter.empreinte(f), {"fiche": f, "fichier": fichier_nom}):
                 ajoutees += 1
     c.oublier()
-    c.base.noter("import", f"Import de {fichier.filename} : {len(lues)} fiche(s), {ajoutees} à traiter")
+    c.base.noter("import", f"Import de {fichier_nom} : {len(lues)} fiche(s), {ajoutees} à traiter")
     return {"source": "vcf", "lues": len(lues), "a_traiter": ajoutees, "avertissements": avertissements[:20]}
 
 

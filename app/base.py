@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-VERSION = 1
+VERSION = 2   # 2 : validations, personnes_externes (carnet 2.1)
 
 SCHEMA = """
 -- Cartes contact lues dans iCloud : la source maître. `fiche` est la forme lisible (JSON),
@@ -99,6 +99,21 @@ CREATE TABLE IF NOT EXISTS en_attente (
     motif    TEXT NOT NULL,
     donnees  TEXT NOT NULL,
     PRIMARY KEY (uid, motif)
+);
+-- Fiches validées : empreinte des champs audités au moment de la validation (carnet 2.1)
+CREATE TABLE IF NOT EXISTS validations (
+    uid       TEXT PRIMARY KEY,
+    empreinte TEXT NOT NULL,
+    le        TEXT NOT NULL
+);
+-- Personnes lues dans Telegram ou un export Instagram, en attente de rattachement (purgées à 90 jours)
+CREATE TABLE IF NOT EXISTS personnes_externes (
+    service  TEXT NOT NULL,
+    ext_id   TEXT NOT NULL,
+    nom      TEXT NOT NULL,
+    donnees  TEXT NOT NULL,
+    vu_le    TEXT NOT NULL,
+    PRIMARY KEY (service, ext_id)
 );
 CREATE TABLE IF NOT EXISTS journal (
     id       INTEGER PRIMARY KEY,

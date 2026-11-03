@@ -5,7 +5,10 @@ export class ErreurApi extends Error {
 
 async function appel(methode, chemin, corps) {
   const options = { method: methode, headers: {}, credentials: 'same-origin' }
-  if (corps instanceof FormData) options.body = corps
+  if (corps instanceof Blob) {   // fichier envoyé tel quel (le serveur le lit en mémoire)
+    options.headers['Content-Type'] = 'application/octet-stream'
+    options.body = corps
+  } else if (corps instanceof FormData) options.body = corps
   else if (corps !== undefined) {
     options.headers['Content-Type'] = 'application/json'
     options.body = JSON.stringify(corps)
@@ -28,4 +31,5 @@ export const api = {
   get: (c) => appel('GET', c),
   post: (c, corps = {}) => appel('POST', c, corps),
   put: (c, corps) => appel('PUT', c, corps),
+  envoyer: (fichier) => appel('POST', `/api/import?nom=${encodeURIComponent(fichier.name)}`, fichier),
 }
