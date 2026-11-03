@@ -1,36 +1,41 @@
-# Service à ajouter dans une stack Docker Compose (ex. Portainer).
-# Les variables viennent des « Environment variables » de la stack (voir .env.example).
+# Service carnet à placer dans la stack homelab.yml (Portainer).
+# Les variables viennent des « Environment variables » de la stack (voir .env.example) :
+# ce sont les mêmes que pour la 1.3, rien à ajouter.
 services:
   carnet:
-    image: ghcr.io/baloodusudouest/carnet:latest
+    image: ghcr.io/baloodusudouest/carnet:${CARNET_VERSION:-latest}
     container_name: carnet
     restart: unless-stopped
+    labels:
+      # carnet écrit dans iCloud : pas de mise à jour automatique par Watchtower
+      - com.centurylinklabs.watchtower.enable=false
     ports:
-      - "${PORT_CARNET:-8096}:8096"              # réseau local uniquement (pas de reverse proxy)
+      - "${PORT_CARNET:-8096}:8096"                # réseau local et Tailscale uniquement
     environment:
       - TZ=Europe/Paris
       - CARNET_PASSWORD=${CARNET_PASSWORD}         # mot de passe de l'interface
-      - CARNET_DB_KEY=${CARNET_DB_KEY}             # clé de chiffrement de la base (ne jamais la perdre)
-      - KIT_API_TOKEN=${KIT_API_TOKEN}             # même jeton que le kit : régénération après envoi
-      - KIT_URL=http://kit-urgence:8095            # nom du service du kit dans la même stack
-      - CARNET_EMOJI_GROUPES=${CARNET_EMOJI_GROUPES:-}  # règles émoji → groupe (facultatif)
-      - CARNET_ICLOUD_USER=${CARNET_ICLOUD_USER:-}          # identifiant Apple (écriture iCloud)
+      - CARNET_DB_KEY=${CARNET_DB_KEY}             # clé de la base 1.3 : lue une seule fois pour la reprise
+      - CARNET_VEILLE_HEURE=${CARNET_VEILLE_HEURE:-03:00}   # heure de la nuit ; « off » : désactivée
+      - CARNET_EMOJI_GROUPES=${CARNET_EMOJI_GROUPES:-}
+      - CARNET_ICLOUD_USER=${CARNET_ICLOUD_USER:-}
       - CARNET_ICLOUD_PASSWORD=${CARNET_ICLOUD_PASSWORD:-}  # mot de passe d'application Apple
-      - CARNET_LINKEDIN_CLIENT_ID=${CARNET_LINKEDIN_CLIENT_ID:-}           # app LinkedIn (onglet Auth)
-      - CARNET_LINKEDIN_CLIENT_SECRET=${CARNET_LINKEDIN_CLIENT_SECRET:-}   # secret de l'app LinkedIn
-      - CARNET_SYNOLOGY_URL=${CARNET_SYNOLOGY_URL:-}             # CardDAV de Synology Contacts (copie de nuit)
-      - CARNET_SYNOLOGY_PASSWORD=${CARNET_SYNOLOGY_PASSWORD:-}   # mot de passe du compte DSM « carnet »
-      - CARNET_SYNOLOGY_CARNET=${CARNET_SYNOLOGY_CARNET:-My Contacts}   # carnet personnel, jamais celui de l'équipe
-      - CARNET_SYNOLOGY_VERIFIER_TLS=${CARNET_SYNOLOGY_VERIFIER_TLS:-oui}   # « non » : HTTPS sur l'IP du NAS (réseau local)
-      - CARNET_IMMICH_CLE=${CARNET_IMMICH_CLE:-}                 # clé d'API Immich (droits : voir README, « Droits de la clé d'API Immich »)
-      - CARNET_TREEMICH_EMAIL=${CARNET_TREEMICH_EMAIL:-}         # compte Treemich
+      - CARNET_SYNOLOGY_URL=${CARNET_SYNOLOGY_URL:-}
+      - CARNET_SYNOLOGY_PASSWORD=${CARNET_SYNOLOGY_PASSWORD:-}
+      - CARNET_SYNOLOGY_CARNET=${CARNET_SYNOLOGY_CARNET:-My Contacts}
+      - CARNET_SYNOLOGY_VERIFIER_TLS=${CARNET_SYNOLOGY_VERIFIER_TLS:-oui}
+      - CARNET_IMMICH_CLE=${CARNET_IMMICH_CLE:-}
+      - CARNET_TREEMICH_EMAIL=${CARNET_TREEMICH_EMAIL:-}
       - CARNET_TREEMICH_PASSWORD=${CARNET_TREEMICH_PASSWORD:-}
-      - CARNET_HA_TOKEN=${CARNET_HA_TOKEN:-}                     # jeton des appels de Home Assistant (/ha/…)
+      - CARNET_HA_TOKEN=${CARNET_HA_TOKEN:-}
+      - CARNET_LINKEDIN_CLIENT_ID=${CARNET_LINKEDIN_CLIENT_ID:-}
+      - CARNET_LINKEDIN_CLIENT_SECRET=${CARNET_LINKEDIN_CLIENT_SECRET:-}
+      - KIT_API_TOKEN=${KIT_API_TOKEN}
+      - KIT_URL=http://kit-urgence:8095
       - LOG_LEVEL=INFO
     volumes:
-      # Dépôt des exports, archives, export propre : visibles depuis le PC
+      # Fichiers déposés à la main (dossier visible depuis le PC)
       - ${CARNET_DATA_DIR}:/data
-      # Base chiffrée : hors de tout partage réseau
+      # Base carnet2.db, sauvegardes d'iCloud et ancienne base 1.3 : hors de tout partage et de OneDrive
       - ${CARNET_STATE_DIR}:/state
       # Dossier config/ du kit d'urgence : carnet y écrit contacts-urgence.vcf
       - ${KIT_DATA_DIR}/config:/kit-config

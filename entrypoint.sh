@@ -5,14 +5,14 @@ set -eu
 
 DATA="${CARNET_DATA:-/data}"
 STATE="${CARNET_STATE:-/state}"
-mkdir -p "$DATA/depot" "$DATA/archives" "$DATA/export" "$STATE"
+mkdir -p "$DATA/depot" "$STATE/sauvegardes"
 
 PUID="$(stat -c %u "$DATA")"
 PGID="$(stat -c %g "$DATA")"
 echo "carnet : exécution avec UID=$PUID GID=$PGID (propriétaire de $DATA)"
 
 chown -R "$PUID:$PGID" "$DATA" "$STATE"
-chmod 700 "$STATE"
+chmod 700 "$STATE"   # base et sauvegardes : lisibles par ton compte seulement
 # Le dossier config/ du kit appartient déjà au même compte : rien à changer
 
 export HOME="$STATE"

@@ -1,80 +1,55 @@
-// État partagé de l'interface (runes Svelte 5).
-export const session = $state({ connecte: null })
-export const ref = $state({ groupes: [], regles: {}, types: {}, sources: {}, groupe_verifies: '✓ Vérifiés' })
-export const statut = $state({ total: 0, verifies: 0, a_reviser: 0 })
-export const message = $state({ texte: '', erreur: false, id: 0, action: null })
+// État partagé de l'interface : page affichée (adresse #/…), accueil (compteurs, tâche en
+// cours), liste des contacts gardée en mémoire et message bref avec « Annuler ».
+import { api } from './api.js'
 
-// Message bref en bas de l'écran ; `action` = { libelle, faire } ajoute un bouton (« Annuler », « Rouvrir »…)
-export function annoncer(texte, erreur = false, action = null) {
-  message.texte = texte
-  message.erreur = erreur
-  message.action = action
-  message.id += 1
+export const etat = $state({
+  route: lireRoute(),
+  accueil: null,
+  contacts: null,
+  message: null,       // { texte, erreur, jeton }
+  connecte: null,
+})
+
+function lireRoute() {
+  const morceaux = (location.hash.replace(/^#\/?/, '') || 'a-traiter').split('/').map(decodeURIComponent)
+  return { page: morceaux[0], args: morceaux.slice(1) }
 }
 
-// Navigation par l'ancre : #/revision, #/revision/<id>, #/contacts…
-export const route = $state({ page: 'accueil', id: null })
+window.addEventListener('hashchange', () => { etat.route = lireRoute(); window.scrollTo(0, 0) })
+window.addEventListener('carnet:deconnecte', () => { etat.connecte = false })
 
-function lireAncre() {
-  const [page, id] = location.hash.replace(/^#\/?/, '').split('/')
-  route.page = page || 'accueil'
-  route.id = id || null
-}
-window.addEventListener('hashchange', lireAncre)
-lireAncre()
-
-export function aller(page, id = null) {
-  location.hash = id ? `#/${page}/${id}` : `#/${page}`
+export function aller(...morceaux) {
+  location.hash = '#/' + morceaux.map(encodeURIComponent).join('/')
 }
 
-// Vue iPhone : automatique sur un écran étroit ; « Vue PC » la désactive (mémorisé sur cet appareil)
-const ETROIT = '(max-width: 767px)'
-function lirePreference() {
+let minuterie
+export function dire(texte, { erreur = false, jeton = null } = {}) {
+  clearTimeout(minuterie)
+  etat.message = { texte, erreur, jeton }
+  minuterie = setTimeout(() => { etat.message = null }, jeton ? 10000 : erreur ? 8000 : 4000)
+}
+
+export function erreur(e) { dire(e?.message || String(e), { erreur: true }) }
+
+export async function rafraichirAccueil() {
+  try { etat.accueil = await api.get('/api/accueil') } catch { /* hors ligne : on garde l'ancien */ }
+}
+
+export async function rafraichirContacts() {
+  etat.contacts = await api.get('/api/contacts')
+  return etat.contacts
+}
+
+// Après une écriture : listes à jour, et message avec « Annuler » quand l'écriture le permet
+export async function apresEcriture(res, texte = 'Écrit dans iCloud.') {
+  dire(texte, { jeton: res?.jeton || null })
+  await Promise.all([rafraichirAccueil(), rafraichirContacts()])
+}
+
+export async function annuler(jeton) {
   try {
-    return localStorage.getItem('carnet-vue') === 'pc'
-  } catch {
-    return false
-  }
-}
-export const ecran = $state({ etroit: matchMedia(ETROIT).matches, forcerPC: lirePreference() })
-matchMedia(ETROIT).addEventListener('change', (e) => (ecran.etroit = e.matches))
-export function choisirVue(pc) {
-  ecran.forcerPC = pc
-  try {
-    if (pc) localStorage.setItem('carnet-vue', 'pc')
-    else localStorage.removeItem('carnet-vue')
-  } catch {
-    /* navigation privée : préférence non gardée */
-  }
-}
-
-// Bilan des actions en attente (Accueil et compteurs des sous-onglets), rechargé à la navigation
-export const bilan = $state({ donnees: null })
-
-// Un seul appel à la fois (l'en-tête et l'Accueil le demandent ensemble au chargement)
-let bilanEnVol = null
-export function chargerBilan(api) {
-  if (!bilanEnVol) {
-    bilanEnVol = api.get('/api/bilan').then((b) => {
-      bilan.donnees = b
-      Object.assign(statut, b.statut)
-      return b
-    }).finally(() => (bilanEnVol = null))
-  }
-  return bilanEnVol
-}
-
-// Liste des contacts partagée entre les pages : servie tout de suite depuis la mémoire, puis
-// rafraîchie en arrière-plan (la recherche s'ouvre sans attendre)
-export const contacts = $state({ liste: null, le: 0 })
-let contactsEnVol = null
-export function chargerContacts(api, forcer = false) {
-  if (!contactsEnVol && (forcer || !contacts.liste || Date.now() - contacts.le > 15000)) {
-    contactsEnVol = api.get('/api/contacts').then((l) => {
-      contacts.liste = l
-      contacts.le = Date.now()
-      return l
-    }).finally(() => (contactsEnVol = null))
-  }
-  return contactsEnVol ?? Promise.resolve(contacts.liste)
+    await api.post(`/api/annuler/${jeton}`)
+    dire('Annulé : la fiche est revenue comme avant.')
+    await Promise.all([rafraichirAccueil(), rafraichirContacts()])
+  } catch (e) { erreur(e) }
 }

@@ -1,201 +1,87 @@
 # carnet
 
-Application auto-hébergée qui **rassemble les contacts** de plusieurs carnets (iCloud, Gmail, Outlook.com, LinkedIn en complément), les fait **relire un par un**, **fusionne les doublons champ par champ**, puis produit un export `.vcf` propre et la liste des contacts d'urgence pour [kit-urgence](https://github.com/baloodusudouest/kit-urgence).
+Gardien de tes contacts iCloud, auto-hébergé sur le NAS. iCloud reste la **source maître** (l'iPhone est l'usage réel) ; carnet relit, signale, propose, relie les fiches à **Immich** (visages), **Treemich** (arbre) et **LinkedIn**, puis écrit dans iCloud — quand tu valides, ou la nuit pour ce qui est sûr. Il copie le résultat dans **Synology Contacts**, alimente le **kit d'urgence** et **Home Assistant**.
 
-Les contacts sont importés depuis des exports faits à la main. Depuis la V2, carnet peut **réécrire iCloud** avec les fiches vérifiées (CardDAV), après simulation et sauvegarde. Gmail et Outlook ne sont jamais modifiés.
+Accès en réseau local et par Tailscale uniquement, jamais exposé sur Internet.
 
-## Ce que fait carnet
+## Les trois onglets
 
-| Étape | Détail |
-| --- | --- |
-| Dépôt | glisser les exports dans l'interface, ou les copier dans `depot/` |
-| Import | lecture des `.vcf` iCloud et Gmail, du `.csv` Outlook et de `Connections.csv` LinkedIn ; chaque fichier est archivé tel quel |
-| Doublons | même mobile, même courriel, même fixe avec un nom compatible, noms proches (RapidFuzz) renforcés par la date de naissance ou la société |
-| Révision | une colonne par source, la fiche retenue à droite ; tout se fait au clavier (`?` affiche les raccourcis) |
-| Formats | numéros stockés en E.164 et affichés `+33 6 12 34 56 78` ; noms `Prénom NOM` |
-| Export | `export/carnet-AAAA-MM-JJ_HHMM.vcf` (vCard 3.0, lisible par iCloud), contacts vérifiés seulement |
-| Kit d'urgence | bouton « Envoyer au kit » : réécrit `contacts-urgence.vcf` dans le dossier du kit, puis lui demande de se régénérer |
-| iCloud (V2) | onglet iCloud : simulation, essai sur sa propre fiche (groupe Moi), puis écriture ; voir ci-dessous |
-| Archives | exports d'origine gardés 365 jours puis supprimés ; un onglet et Home Assistant préviennent 30 jours avant |
-
-LinkedIn complète des contacts existants (société, poste, profil) mais n'en crée jamais. Chaque relation est reconnue par l'adresse de son profil : un réimport ne remonte que les changements (nouveau poste, nouvelle société, nouveau courriel), et seulement si la fiche portait encore l'ancienne valeur.
-
-## Synchro iCloud de nuit (1.3)
-
-Chaque nuit (`CARNET_VEILLE_HEURE`) : copie chiffrée de la base, veille de l'iPhone, liaisons sûres, puis **écriture dans iCloud des fiches validées qui ont changé**, puis sauvegarde. Onglet **État**.
-
-- **Deux semaines à blanc** après la mise à jour : le plan est noté chaque nuit, rien n'est écrit (« Écrire pour de bon dès cette nuit » pour avancer).
-- **Jamais de suppression la nuit** : contacts mis de côté, doublons et groupes absents de carnet attendent ton accord dans État › iCloud en détail.
-- **Plafonds** : au-delà de max(10, 5 %) créations ou max(20, 10 %) modifications prévues, rien n'est écrit et une alerte est notée (Home Assistant : `binary_sensor.carnet_synchro_en_echec`).
-- **Rien d'écrit si la veille de la nuit est en erreur.** Une carte modifiée sur l'iPhone depuis la dernière lecture n'est jamais écrasée : elle part en Révision.
-- « Synchroniser maintenant » applique le même plan et les mêmes garde-fous, et écrit même pendant la période à blanc. L'interrupteur coupe l'écriture de nuit (la veille et la sauvegarde continuent).
-
-Retour en arrière : l'image est publiée avec les étiquettes `latest`, `1.3.0` et `sha-<commit>` ; dans Portainer, remplace `latest` par l'étiquette voulue puis Recreate. Avant chaque migration du schéma, une copie `carnet.db.avant-vN` est faite à côté de la base.
-
-## Écriture dans iCloud en détail (V2)
-
-1. **Simuler** : carnet lit tout iCloud et calcule les écritures, sans rien modifier. La simulation reste valable 30 minutes.
-2. **Essai** : n'écrit que la fiche du groupe Moi, pour contrôler le rendu sur l'iPhone.
-3. **Écrire** (après confirmation) : une **sauvegarde complète** d'iCloud est d'abord enregistrée dans `archives/AAAA-MM-JJ_HHMMSS_icloud-sauvegarde.vcf` (toutes celles des 14 derniers jours, puis une par mois pendant un an), puis :
-   - chaque contact vérifié met à jour sa fiche iCloud (UID conservé) ou est créé s'il venait de Gmail ou Outlook ;
-   - seules les propriétés gérées par carnet sont remplacées : les champs qu'il ne connaît pas (dates personnalisées, etc.) sont gardés, et la photo iCloud reste si carnet n'en a pas ;
-   - les autres fiches iCloud d'une personne fusionnée et les contacts mis de côté sont supprimés ;
-   - les groupes de carnet sont créés ou mis à jour dans iCloud ; les membres que carnet ne gère pas (contacts à réviser) restent ;
-   - les groupes iCloud vides, en double ou absents de carnet sont supprimés (leurs contacts restent) ;
-   - les contacts créés dans iCloud sans carnet sont importés pour révision ;
-   - les contacts encore à réviser ne sont pas touchés.
-
-### Liaisons Immich et Treemich (V3)
-
-Onglet Liaisons : carnet propose, pour chaque contact vérifié, la personne Immich et la personne Treemich du même nom (la personne Treemich liée à ce visage Immich si elle existe). Les correspondances **sûres** (même nom, une seule personne Immich et un seul contact de ce nom, même date de naissance complète) sont liées seules la nuit, et listées dans À traiter avec « Annuler » ; les autres se confirment d'un toucher dans À traiter. Une personne Immich ou Treemich n'est liée qu'à un seul contact. Ensuite, chaque nuit : le visage Immich devient la photo du contact, et les relations Treemich (conjoint, parents, enfants, frères et sœurs) complètent ses noms associés ; une relation qui contredit un nom associé saisi est proposée dans « À compléter ». Les orthographes différentes se tranchent ligne par ligne, et les noms Immich peuvent être mis au format « Prénom NOM ».
-
-Dates de naissance (même onglet) : simulation, essai sur une personne, puis écriture vers Immich ou Treemich. carnet fait foi ; une date différente n'est remplacée que sur demande ; l'arbre Treemich est exporté en GEDCOM dans `archives/` avant d'écrire, et le journal garde chaque ancienne valeur.
-
-Photos HD (même onglet) : pour chaque contact lié sans photo ou avec la vignette Immich, carnet cherche le visage entier le plus grand, le plus net et le plus de face (les photos d'écran et images pixélisées sont écartées), et le découpe en portrait carré depuis la photo d'origine. Il devient la photo du contact et la photo de la personne dans Immich. Un choix manuel parmi les 6 meilleurs n'est plus changé. Recherche sur bouton, puis une fois par mois pendant la tâche de nuit (seules les nouvelles photos sont lues). Les photos envoyées à iCloud sont limitées à 120 Ko (iCloud refuse les fiches de plus de ~256 Ko).
-
-Affiches iPhone (onglet Photos) : pour tous les contacts liés à Immich, carnet propose jusqu'à 6 photos Immich qui se prêtent au plein écran (visage de face, net, de la place autour), déjà cadrées au format écran d'iPhone, dans un tableau (agrandies au survol). Rien n'est envoyé sans ton choix : la photo choisie est rangée, archivée, dans l'album Immich « Affiches de contacts ». Les propositions sont rafraîchies chaque mois ; un choix n'est jamais changé. L'affiche de contact (plein écran à l'appel) se crée ensuite à la main sur l'iPhone : Apple ne permet pas de la remplir par CardDAV.
-
-Bouton ↻ de l'onglet Photos : « Chercher les manquants » (contacts sans proposition, sites jamais lus) ou « Tout régénérer » (toutes les photos réexaminées, tous les sites relus) enchaîne photos HD, affiches et logos, avec une barre de progression ; les choix déjà faits ne sont jamais changés.
-
-Logos de sociétés (onglet Photos › Logos) : pour les contacts vérifiés des groupes choisis (Clients et Artisans et services par défaut) qui n'ont pas de vraie photo, carnet lit le site de leur société — adresse du site de la fiche, sinon domaine du courriel professionnel — et y prend les icônes déclarées (apple-touch-icon, icon, og:image ; pas de service tiers, les SVG sont ignorés). Chaque logo est proposé en photo ronde du contact (fond de sa couleur) et en affiche iPhone (logo et nom de la société) ; rien n'est posé sans ton choix. Les logos téléchargés sont gardés dans `/state/logos`, et chaque site n'est lu qu'une fois (« Relire tous les sites » pour recommencer).
-
-Noms proches dans la Révision : en haut de chaque fiche à relire, carnet signale les personnes Immich, les personnes Treemich et les autres contacts dont le nom ressemble (faute de frappe, accent, tiret, diminutif, ordre des mots ; ressemblance ≥ 80 %), d'après la dernière lecture d'Immich et Treemich. Boutons : Lier (Treemich suit la personne Immich qui lui est reliée ; photo et relations ajoutées à la validation de la fiche), Prendre la date (si la fiche n'en a pas ; une date différente est signalée), Nom → fiche ou Fiche → Immich / Treemich pour l'orthographe, ✕ pour « pas la même personne », et « Réunir ici » pour un autre contact.
-
-#### Droits de la clé d'API Immich
-
-| Fonction | Droits |
+| Onglet | Rôle |
 |---|---|
-| Liaisons, visages, noms, dates de naissance | `person.read`, `person.update` |
-| Photos HD | `asset.read`, `asset.view`, `asset.download`, `face.read` |
-| Affiches iPhone | `asset.upload`, `asset.delete`, `album.create`, `album.read`, `albumAsset.create` |
+| **À traiter** | Tout ce qui attend une décision : fiche modifiée, créée ou supprimée sur l'iPhone, conflit d'écriture, doublon, mise en forme (« Prénom NOM », numéros), émoji sans son groupe, liaison à confirmer, date de naissance à trancher, nom à reporter dans Immich ou Treemich, liens familiaux, changement LinkedIn, fiche importée. Un point écarté n'est plus reproposé. |
+| **Contacts** | Liste avec recherche (nom, société, numéro), groupes et index des lettres. La fiche : appeler, écrire, modifier (aperçu des changements avant d'écrire, « Annuler » 10 s), liaisons, photo et affiche depuis Immich, logo de la société, réunion avec une autre fiche. Import d'un .vcf ou du Connections.csv de LinkedIn. |
+| **État** | Lecture d'iCloud et nuit, sauvegardes et restauration, Synology Contacts, kit d'urgence, LinkedIn (API), services configurés, journal. |
 
-Dans Immich : Paramètres du compte › Clés d'API › modifier la clé de carnet. Un droit manquant est signalé par son nom dans l'interface.
+## Les règles qui protègent tes contacts
 
-### Sauvegarde de nuit (V3)
+- **Référence d'abord** : la première lecture complète d'iCloud sert de point de départ. Rien n'est signalé ni écrit avant.
+- **L'iPhone a toujours raison, mais tu relis** : toute fiche modifiée, créée ou supprimée sur l'iPhone arrive dans « À traiter ». Une fiche supprimée n'est jamais recréée sans ton accord.
+- **Jamais d'écrasement** : chaque écriture porte l'ETag de la dernière lecture (If-Match). Une carte changée sur l'iPhone entre-temps n'est pas touchée ; les deux versions t'attendent dans « À traiter ».
+- **Coupe-circuit** : lecture incomplète, ou plus de 5 % des fiches disparues d'un coup → arrêt, rien n'est changé (« Relire quand même » dans État, après vérification).
+- **Un seul écrivain** : un verrou commun couvre Valider, Annuler, Restaurer, la fusion et la nuit.
+- **La nuit n'écrit que du sûr**, 20 fiches au plus, jamais de suppression : liaison exacte (même nom, unique des deux côtés, même date de naissance complète), photo d'une fiche liée qui n'en a pas, date de naissance manquante connue sans conflit, nouveau poste ou société LinkedIn quand la fiche portait encore l'ancien.
+- **Rien n'est perdu à l'écriture** : carnet ne remplace que les champs qu'il gère ; tout le reste de la carte iCloud (champs propres à Apple, profils iMessage…) est gardé. Une carte de plus de 110 Ko est refusée (iCloud refuserait), la photo est réduite d'abord.
+- **Sauvegardes** : copie complète avant la première écriture du jour et chaque nuit, gardée 30 jours puis une par mois pendant un an (2 Go au plus). État › Sauvegardes compare une copie à iCloud et remet les fiches choisies à l'identique.
+- **Suppression** : seulement quand tu réunis deux fiches (la carte absorbée est retirée, ses liaisons, photo, affiche et relation LinkedIn passent sur la fiche gardée).
 
-Après la veille, carnet écrit `archives/sauvegardes/carnet-AAAA-MM-JJ.vcf` (contacts vérifiés, sans photos, gardé 30 jours) puis recopie à l'identique les contacts vérifiés et leurs groupes dans Synology Contacts. Si plus de 5 % des fiches déjà copiées devaient être supprimées ou modifiées d'un coup, la copie s'arrête sans rien écrire (bouton « Forcer la copie » dans l'onglet Export et kit) et Home Assistant alerte.
+## La nuit (`CARNET_VEILLE_HEURE`, 03:00)
 
-Avant cela, la base entière (fiches, photos, liaisons, réglages, journaux) est copiée dans `archives/sauvegardes/carnet-AAAA-MM-JJ.db`, chiffrée avec la même clé (gardée 14 jours). Ces copies sont dans le dossier de données, donc prises par les sauvegardes du NAS.
+1. Lecture complète d'iCloud (veille).
+2. Relecture d'Immich et Treemich, liaisons sûres.
+3. Sauvegarde, puis les écritures sûres.
+4. Copie dans Synology Contacts, kit d'urgence, purge des sauvegardes.
 
-#### Test de restauration
+Si une autre opération tourne, la nuit réessaie toutes les 10 min pendant 3 h. `CARNET_VEILLE_HEURE=off` la désactive.
 
-Onglet Export et kit › Test de restauration : coller la clé notée dans le gestionnaire de mots de passe. carnet ouvre la dernière copie avec cette clé, contrôle son intégrité, la compare à la base en service et relit le dernier `.vcf`. La clé n'est ni enregistrée ni notée dans le journal. À refaire après tout changement de clé.
+## Home Assistant
 
-#### Restaurer carnet
-
-1. Arrêter le conteneur carnet.
-2. Dans `${CARNET_STATE_DIR}`, renommer `carnet.db` (et supprimer `carnet.db-wal` / `carnet.db-shm` s'ils existent).
-3. Copier la sauvegarde voulue `archives/sauvegardes/carnet-AAAA-MM-JJ.db` dans `${CARNET_STATE_DIR}` sous le nom `carnet.db`.
-4. Vérifier que `CARNET_DB_KEY` dans la stack est bien la clé de cette copie, puis redémarrer.
-5. Faire une simulation iCloud avant toute écriture : elle montre ce qui diffère entre la copie restaurée et iCloud.
-
-Sans la base, les `.vcf` datés restent importables dans un carnet neuf (ou directement sur l'iPhone).
-
-### Veille de l'iPhone (V3)
-
-Chaque nuit (`CARNET_VEILLE_HEURE`, 03:00 par défaut), carnet relit iCloud et compare chaque fiche à la version validée. Les différences de forme (réécritures d'iCloud, données Siri, photo, types recalculés) sont ignorées. Tout contact modifié, créé ou supprimé sur l'iPhone **repasse en Révision** : la fiche iCloud est importée (rattachée à son contact par l'UID, y compris pour les cartes créées par carnet) ; une fiche supprimée n'est jamais recréée sans que tu la revalides. `/status` expose le résultat (compteurs seulement) et le paquet Home Assistant alerte si la veille échoue ou ne tourne plus.
-
-Chaque écriture se fait avec contrôle d'ETag, et carnet compare chaque carte à la dernière lecture (veille ou écriture) : une fiche modifiée sur l'iPhone entre-temps n'est pas écrasée, elle repasse en Révision.
-Le compte utilise un **mot de passe d'application** Apple (account.apple.com > Connexion et sécurité > Mots de passe pour app), jamais le mot de passe du compte.
-
-## Sécurité
-
-- **Réseau local uniquement** : ne pas publier carnet derrière un reverse proxy.
-- **Mot de passe unique** (`CARNET_PASSWORD`), session de 30 jours dans un cookie signé.
-- **Base chiffrée** avec SQLCipher (`CARNET_DB_KEY`). La clé n'est jamais écrite sur disque ; sans elle, la base est illisible : note-la en lieu sûr.
-- `/status` n'expose que des compteurs, pour Home Assistant.
-- Le dépôt Git ne contient aucune donnée personnelle (`tests/donnees/` : contacts fictifs).
-
-## Installation
-
-### 1. Dossiers sur le NAS
-- Crée le dossier de données **dans File Station**, par exemple `/volume1/homes/<utilisateur>/carnet`. Le conteneur adopte son propriétaire : rien à régler côté UID/GID.
-- Le dossier d'état, par exemple `/volume1/docker/carnet/state`, est créé tout seul.
-
-### 2. Service Docker
-Ajoute le service de `docker-compose.yml` à la stack (dans la même stack que le kit, pour que `http://kit-urgence:8095` soit joignable), puis renseigne les variables de `.env.example` :
-`CARNET_DATA_DIR`, `CARNET_STATE_DIR`, `CARNET_PASSWORD`, `CARNET_DB_KEY`, et les variables existantes du kit `KIT_DATA_DIR` et `KIT_API_TOKEN`.
-
-L'image `ghcr.io/<propriétaire>/carnet:latest` est publiée par `.github/workflows/docker.yml` à chaque push sur `main`.
-
-### 3. Home Assistant (facultatif)
-Copie `homeassistant/carnet.yaml` dans `/config/packages/`, ajoute `carnet_status_url` dans `secrets.yaml`, puis redémarre.
-
-#### Adresses `/ha/…` (jeton `CARNET_HA_TOKEN`)
-
-Toutes exigent l'en-tête `Authorization: Bearer <CARNET_HA_TOKEN>` (401 sinon, 503 si le jeton n'est pas défini dans la stack), sont en lecture seule et ne sont jamais mises en cache. Le nom renvoyé est le même partout : le nom de la personne dans Immich quand le contact est lié, sinon le nom carnet.
+Toutes les adresses `/ha/…` demandent `Authorization: Bearer <CARNET_HA_TOKEN>`, sont en lecture seule, et rien de personnel (nom, date) n'est écrit dans les journaux. `/status` ne donne que des compteurs, sans jeton.
 
 | Adresse | Contenu |
 |---|---|
-| `GET /ha/personnes` | contacts liés à Immich et proches : `{"personnes": [{"nom", "immich"}]}` (carte de réservation) |
-| `GET /ha/invite?nom=…` | date de naissance d'un invité (journal de naissance) ; 404 inconnu, 409 nom ambigu |
-| `GET /ha/anniversaires` | tous les contacts vérifiés ayant une date de naissance, pour un calendrier « Anniversaires » |
-| `GET /ha/portraits/candidats?immich=<uuid>[&nombre=3]` | meilleurs candidats Photos HD de la personne (`{"candidats": [{"asset", "score", "le"}], "actuel"}`), proposés dans la carte de réservation ; le choix reste dans Home Assistant |
-| `GET /ha/portrait?immich=<uuid>[&cadre=centre][&asset=<id>]` | portrait HD (Photos HD) de la personne Immich, JPEG carré ; en-tête `X-Visage: x1,y1,x2,y2` (cadre du visage, de 0 à 1) ; `cadre=centre` : visage entier au milieu du carré (cheveux, menton et cou compris), découpé dans l'aperçu Immich de la même photo ; `asset` : un des candidats, découpé de la même façon (losange du cadre PicPak de porte, avatars ronds) ; 404 si le contact n'a pas de portrait HD (Home Assistant reprend la vignette Immich) |
+| `/ha/contacts` | Toutes les fiches : `carnet_id` (UID iCloud), `nom` (celui d'Immich si liée), `prenom`, `immich_id`, `treemich_id`, `groupes`, `proche`, `naissance`, `jour`, `mois`, `annee` (null si inconnue) |
+| `/ha/personnes` | Fiches liées à Immich et proches (carte de réservation) — identique à la 1.3 |
+| `/ha/anniversaires` | Calendrier des anniversaires — identique à la 1.3 |
+| `/ha/invite?nom=` | Fiche d'un invité (« Nom (dates) » accepté) ; 404 inconnu, 409 plusieurs — identique à la 1.3 |
+| `/ha/portraits/candidats?immich=` et `/ha/portrait?immich=` | Portraits pour les cadres ; en-tête `X-Visage` — identiques à la 1.3 |
+| `/status` | Compteurs (mêmes champs que la 1.3 pour le paquet `homeassistant/carnet.yaml`, plus `a_traiter` et `par_motif`) |
 
-`/ha/anniversaires` :
+Le paquet `homeassistant/carnet.yaml` de la 1.3 fonctionne sans changement.
 
-```json
-{"genere_le": "2026-10-31T18:15:00+01:00", "nombre": 2,
- "anniversaires": [{"nom": "Adeline FREY", "jour": 4, "mois": 3, "annee": 1985, "immich": true},
-                   {"nom": "Adam MARMANDE", "jour": 29, "mois": 2, "annee": null, "immich": false}]}
-```
+## Installation (Portainer, stack homelab.yml)
 
-- Tri par mois, jour puis nom ; une seule entrée pour un même nom à la même date.
-- `annee` vaut `null` quand l'année est inconnue (`--0304`, `--03-04`, année 1604 d'Apple, année < 1900 avec `X-APPLE-OMIT-YEAR`). Une date avec heure (`1985-03-04T00:00:00Z`) donne la date écrite, sans décalage de fuseau.
-- Une date illisible ou impossible (31 février…) est ignorée ; le journal du conteneur ne note que le nombre d'entrées renvoyées et ignorées, jamais de nom ni de date.
+Le service est décrit dans `docker-compose.yml` ; les variables sont dans `.env.example` (les mêmes que pour la 1.3). Volumes :
 
-Test depuis le NAS (le jeton dans une variable du shell, pas dans l'historique d'un fichier) :
+| Volume | Dossier du NAS | Contenu |
+|---|---|---|
+| `/data` | `/volume1/homes/JBE/carnet` | fichiers déposés à la main (`depot/`) |
+| `/state` | `/volume1/docker/carnet/state` | `carnet2.db`, `sauvegardes/`, ancienne base `carnet.db` de la 1.3 |
+| `/kit-config` | `${KIT_DATA_DIR}/config` | `contacts-urgence.vcf` pour le kit |
 
-```sh
-curl -s -H "Authorization: Bearer $CARNET_HA_TOKEN" http://localhost:8096/ha/anniversaires | head -c 600
-```
+`/state` n'est ni partagé ni synchronisé vers OneDrive : la base et les sauvegardes y restent.
 
-## Exports à déposer
+### Passer de la 1.3 à la 2.0
 
-| Source | Où le faire | Fichier |
-| --- | --- | --- |
-| iCloud | icloud.com > Contacts > tout sélectionner > Exporter la vCard | `.vcf` |
-| Gmail | contacts.google.com > Exporter > vCard (et de même pour « Autres contacts ») | `.vcf` |
-| Outlook.com | Contacts > Gérer les contacts > Exporter les contacts | `.csv` |
-| LinkedIn | Préférences > Confidentialité des données > Obtenir une copie de vos données | `Connections.csv` |
+1. Dans Portainer : **Recreate + Re-pull image** (image `latest` ou `2.0.0`). Rien d'autre à changer.
+2. Au premier démarrage, carnet lit iCloud (référence), puis reprend une seule fois les choix de la 1.3 depuis `carnet.db` avec `CARNET_DB_KEY` : liaisons et refus, photos choisies, affiches et leur pose, relations LinkedIn. L'ancienne base n'est jamais modifiée. Le bilan est dans État › Services.
+3. Vérifie : même nombre de fiches qu'avant (État), adresses HA qui répondent, et essaie « Remettre comme dans la sauvegarde » sur ta propre fiche.
+4. La première copie Synology remplace celle de la 1.3 (identifiants « carnet-… ») par un miroir exact d'iCloud.
 
-## Variables
+**Retour arrière** : `CARNET_VERSION=1.3.1` et `CARNET_VEILLE_HEURE=off` (la nuit de la 1.3 ne doit pas tourner : elle réécrirait des fiches devenues périmées), puis Recreate.
 
-| Variable | Défaut | Rôle |
-| --- | --- | --- |
-| `CARNET_PASSWORD` | obligatoire | mot de passe de l'interface |
-| `CARNET_DB_KEY` | obligatoire | clé SQLCipher de la base |
-| `CARNET_REGION` | `FR` | indicatif par défaut des numéros nationaux |
-| `CARNET_ARCHIVE_JOURS` | `365` | conservation des exports d'origine |
-| `CARNET_ALERTE_JOURS` | `30` | préavis avant suppression |
-| `CARNET_SESSION_JOURS` | `30` | durée de la session |
-| `CARNET_EMOJI_GROUPES` | vide | règles « émoji:groupe » séparées par `;` (ex. `🍕:Amis;🔧:Artisans et services`) : un contact contenant l'émoji rejoint le groupe |
-| `CARNET_ICLOUD_USER` | vide | identifiant Apple (V2) |
-| `CARNET_ICLOUD_PASSWORD` | vide | mot de passe d'application Apple (V2) |
-| `CARNET_LINKEDIN_CLIENT_ID` / `_SECRET` | vide | app LinkedIn (portabilité des données) pour le bouton « Se connecter à LinkedIn » |
-| `CARNET_LINKEDIN_REDIRECT` | `https://localhost/carnet-linkedin` | adresse de retour déclarée dans l'onglet Auth de l'app |
-| `CARNET_SYNOLOGY_URL` | vide | CardDAV de Synology Contacts, ex. `http://192.168.1.90:5000/carddav/carnet/` (copie de nuit) |
-| `CARNET_SYNOLOGY_USER` / `_PASSWORD` | `carnet` / vide | compte DSM dédié, limité à l'application Contacts |
-| `CARNET_SYNOLOGY_CARNET` | `My Contacts\|Mes contacts` | carnet d'adresses visé (nom CardDAV, souvent en anglais ; plusieurs noms séparés par `\|`) ; jamais un carnet partagé (« Contacts de l'équipe ») |
-| `CARNET_SYNOLOGY_VERIFIER_TLS` | `oui` | `non` pour accepter le certificat du NAS joint par son adresse IP (réseau local) |
-| `CARNET_SAUVEGARDE_JOURS` | `30` | exports .vcf datés gardés dans `archives/sauvegardes` |
-| `CARNET_IMMICH_URL` / `CARNET_IMMICH_CLE` | `http://immich-server:2283` / vide | Immich : liaisons, photos HD, dates de naissance, affiches — droits : voir « Droits de la clé d'API Immich » |
-| `CARNET_TREEMICH_URL` / `_EMAIL` / `_PASSWORD` | `http://treemich-api:4000` / vide | Treemich : relations familiales des contacts liés |
-| `CARNET_HA_TOKEN` | vide | jeton des appels `/ha/…` de Home Assistant (noms et dates de naissance) |
-| `CARNET_VEILLE_HEURE` | `03:00` | heure de la veille iCloud quotidienne (vide : désactivée) |
-| `KIT_URL` | `http://kit-urgence:8095` | API du kit d'urgence |
-| `KIT_API_TOKEN` | vide | jeton du kit ; sans lui, le kit se régénère à sa prochaine synchronisation |
+### Droits de la clé d'API Immich
+`person.read`, `person.update` (liaisons, noms, dates) ; `asset.read`, `asset.view`, `asset.download`, `face.read` (portraits) ; `asset.upload`, `asset.delete`, `album.create`, `album.read`, `albumAsset.create` (affiches).
+
+### LinkedIn
+- **API de portabilité** (membres UE) : app LinkedIn Developers avec le produit « Member Data Portability API (Member) », adresse de retour `https://localhost/carnet-linkedin`. État › LinkedIn › « Se connecter », puis colle l'adresse de retour. Juste après la première autorisation, LinkedIn prépare les données environ 30 minutes : « Réessayer ».
+- **Fichier** : Contacts › Importer › `Connections.csv`.
+- Une relation est reconnue par l'adresse de son profil ; LinkedIn ne crée jamais de fiche ; une relation détachée reste détachée.
 
 ## Développement
 
-```sh
-pip install -r requirements-dev.txt && python -m pytest -q
-cd frontend && npm ci && npm run build      # écrit app/static
-python -m playwright install chromium && python -m pytest -q tests/interface   # interface, PC et iPhone
-CARNET_PASSWORD=x CARNET_DB_KEY=y CARNET_DATA=./data CARNET_STATE=./state CARNET_KIT_CONFIG= \
-  uvicorn app.main:app --port 8096
-```
+- Back-end : FastAPI (Python 3.12), un module par sujet dans `app/` : `icloud.py` (lecture, écriture, sauvegardes), `traiter.py` (boîte À traiter), `actions.py` (décisions), `nuit.py`, `liaisons.py`, `photos.py`, `linkedin.py`, `sorties.py` (kit, Synology, HA), `reprise.py`, `base.py` (SQLite, schéma versionné).
+- Interface : Svelte 5 et Tailwind 4 dans `frontend/`, compilée dans `app/static`.
+- Tests : `python -m pytest -q tests` (faux iCloud, Immich, Treemich et Synology ; tests d'interface Playwright sur PC et iPhone si l'interface est compilée).
+- Démo locale : `cd frontend && npm ci && npx vite build --outDir ../app/static --emptyOutDir`, puis `python -m tests.interface.serveur /tmp/demo 8097` (mot de passe `essai`).
 
-## Suite prévue
-- **V3** : veille quotidienne, Home Assistant complet, liens Immich et Treemich, copie nocturne vers Synology Contacts.
+Aucune donnée personnelle dans ce dépôt : les secrets vont dans les variables de la stack.

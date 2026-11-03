@@ -1,140 +1,126 @@
-"""API FastAPI de carnet et service de l'interface compilée (Svelte)."""
+"""Application FastAPI de carnet 2 : interface (3 onglets), API et adresses Home Assistant."""
 from __future__ import annotations
 
 import asyncio
-import hmac
+import json
 import logging
 import os
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
-from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
-from . import __version__, config
-from .auth import COOKIE, Sessions
-from .db import Base
-from .normalisation import configurer_emojis
-from .modele import GROUPE_VERIFIES, LIBELLES_SOURCES, TYPES, groupes_tous, regles_groupes
+from . import (__version__, actions, icloud, liaisons, linkedin, nuit, photos, reprise, sorties, traiter, vcard)
+from .auth import COOKIE, DUREE, Sessions
 from .carddav import ErreurICloud
+from .carnet import Carnet, ErreurCarnet, Occupe
+from .config import charger
 from .liens import ErreurLien
-from .service import Carnet, ErreurCarnet
+from .modele import groupes_tous, nom_affiche
 
-logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"),
-                    format="%(asctime)s %(levelname)s %(name)s : %(message)s")
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("carnet")
 
-OUVERTS = {"/api/connexion", "/api/session", "/api/deconnexion"}
-etat: dict = {}
+ETAT: dict = {}
 
 
-def _purge_quotidienne(carnet: Carnet, arret: threading.Event) -> None:
-    while not arret.is_set():
-        try:
-            n = carnet.purger()
-            if n:
-                log.info("%d archive(s) supprimée(s)", n)
-        except Exception:
-            log.exception("Purge des archives impossible")
-        arret.wait(6 * 3600)
+def carnet() -> Carnet:
+    return ETAT["carnet"]
 
 
-def _veille_nocturne(carnet: Carnet, cfg, arret: threading.Event) -> None:
-    """Veille iCloud chaque nuit à l'heure CARNET_VEILLE_HEURE (03:00 par défaut, heure locale)."""
-    from datetime import datetime, timedelta
-    h, _, m = (cfg.veille_heure or "03:00").partition(":")
-    while not arret.is_set():
-        maintenant = datetime.now().astimezone()
-        prochaine = maintenant.replace(hour=int(h), minute=int(m or 0), second=0, microsecond=0)
-        if prochaine <= maintenant:
-            prochaine += timedelta(days=1)
-        if arret.wait((prochaine - maintenant).total_seconds()):
-            return
-        # Une opération lancée à la main tourne encore : nouvel essai toutes les 10 min pendant 3 h
-        for _ in range(18):
-            try:
-                carnet.nuit()
-                break
-            except ErreurCarnet as exc:
-                log.info("Tâche de nuit reportée de 10 min : %s", exc)
-                if arret.wait(600):
-                    return
-            except Exception:  # noqa: BLE001
-                log.exception("Tâche de nuit non lancée")
-                break
+def demarrage(c: Carnet) -> None:
+    """Au démarrage : première lecture d'iCloud (référence), reprise unique de la 1.3,
+    puis données d'Immich et de Treemich en mémoire."""
+    try:
+        if c.cfg.icloud_user and not c.base.lire("reference"):
+            with c.ecriture(attendre=60):
+                c.tache = {"nom": "demarrage", "etat": "en_cours", "message": "Première lecture d'iCloud…"}
+                icloud.relire(c, "démarrage")
+        if reprise.a_faire(c):
+            c.tache = {"nom": "demarrage", "etat": "en_cours", "message": "Reprise des choix de la 1.3…"}
+            reprise.reprendre(c)
+        if c.cfg.immich_cle or c.cfg.treemich_email:
+            c.tache = {"nom": "demarrage", "etat": "en_cours", "message": "Lecture d'Immich et de Treemich…"}
+            liaisons.donnees(c)
+        c.tache = {"nom": "demarrage", "etat": "termine", "message": "Prêt."}
+    except Exception as exc:  # noqa: BLE001
+        log.exception("Démarrage")
+        c.tache = {"nom": "demarrage", "etat": "erreur", "message": str(exc)}
+        c.base.noter("veille", f"Démarrage : {exc}")
 
 
 @asynccontextmanager
 async def cycle(app: FastAPI):
-    cfg = config.charger()
-    configurer_emojis(cfg.emoji_groupes)
-    base = Base(cfg.db_path, cfg.db_key)
-    carnet = Carnet(cfg, base)
-    arret = threading.Event()
-    threading.Thread(target=_purge_quotidienne, args=(carnet, arret), daemon=True).start()
-    if cfg.veille_heure:
-        threading.Thread(target=_veille_nocturne, args=(carnet, cfg, arret), daemon=True).start()
-    etat.update(cfg=cfg, base=base, carnet=carnet,
-                sessions=Sessions(cfg.password, cfg.db_key, cfg.session_jours,
-                                  base.etat("generation_session", 0)))
-    log.info("carnet %s prêt (données : %s)", __version__, cfg.data)
+    if "carnet" not in ETAT:
+        c = Carnet(charger())
+        ETAT["carnet"] = c
+        threading.Thread(target=demarrage, args=(c,), daemon=True).start()
+        nuit.demarrer(c)
+    c = carnet()
+    ETAT["sessions"] = Sessions(c.cfg.password, c.base.lire("session_generation", 0))
     yield
-    arret.set()
-    base.fermer()
 
 
 app = FastAPI(title="carnet", version=__version__, lifespan=cycle, docs_url=None, redoc_url=None)
-# Pages, scripts et réponses JSON compressés (les images, déjà compressées, passent telles quelles)
-app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
 
-def carnet() -> Carnet:
-    return etat["carnet"]
-
+# ================================================================ sécurité
 
 @app.middleware("http")
-async def garde(request: Request, call_next):
+async def garde(request: Request, appel):
     chemin = request.url.path
-    if chemin.startswith("/api/"):
-        # Toute écriture porte un en-tête que seul le code de carnet envoie : une page d'un autre
-        # service (même hôte, autre port) ne peut pas le poser sans autorisation CORS.
-        if request.method not in ("GET", "HEAD") and request.headers.get("x-carnet") != "1":
-            return JSONResponse({"detail": "Requête refusée."}, status_code=403)
-        if chemin not in OUVERTS and not etat["sessions"].valide(request.cookies.get(COOKIE)):
-            return JSONResponse({"detail": "Connexion requise."}, status_code=401)
     if chemin.startswith("/ha/"):
-        # Home Assistant : jeton dédié (dates de naissance), jamais le cookie de l'interface
-        jeton = etat["cfg"].ha_token
-        if not jeton:
-            return JSONResponse({"detail": "CARNET_HA_TOKEN n'est pas défini dans la stack."}, status_code=503)
-        if not hmac.compare_digest(request.headers.get("authorization", ""), f"Bearer {jeton}"):
-            return JSONResponse({"detail": "Jeton refusé."}, status_code=401)
-    reponse = await call_next(request)
+        jeton = carnet().cfg.ha_token
+        attendu = f"Bearer {jeton}"
+        if not jeton or request.headers.get("authorization", "") != attendu:
+            return JSONResponse({"detail": "Jeton Home Assistant manquant ou invalide."}, status_code=401)
+    elif chemin.startswith("/api/") and chemin not in ("/api/connexion", "/api/session"):
+        if not ETAT["sessions"].valide(request.cookies.get(COOKIE)):
+            return JSONResponse({"detail": "Connexion nécessaire."}, status_code=401)
+    reponse = await appel(request)
     if chemin.startswith(("/api/", "/ha/")):
         reponse.headers["Cache-Control"] = "no-store"
     return reponse
 
 
 @app.exception_handler(ErreurCarnet)
-async def erreur_carnet(_: Request, exc: ErreurCarnet):
-    return JSONResponse({"detail": str(exc)}, status_code=400)
-
-
-@app.exception_handler(ErreurLien)
-async def erreur_lien(_: Request, exc: ErreurLien):
-    return JSONResponse({"detail": str(exc)}, status_code=400)
+async def _erreur(_: Request, exc: ErreurCarnet):
+    return JSONResponse({"detail": str(exc)}, status_code=409 if isinstance(exc, Occupe) else 400)
 
 
 @app.exception_handler(ErreurICloud)
-async def erreur_icloud(_: Request, exc: ErreurICloud):
-    return JSONResponse({"detail": str(exc)}, status_code=400)
+async def _erreur_icloud(_: Request, exc: ErreurICloud):
+    return JSONResponse({"detail": str(exc)}, status_code=502)
 
 
-# ------------------------------------------------------------------ ouverts
+@app.exception_handler(ErreurLien)
+async def _erreur_lien(_: Request, exc: ErreurLien):
+    return JSONResponse({"detail": str(exc)}, status_code=502)
+
+
+def _fond(nom: str, travail, *args) -> dict:
+    """Opération longue lancée à part ; son avancement se lit dans /api/accueil (tache)."""
+    c = carnet()
+    if c.tache.get("etat") == "en_cours":
+        raise Occupe(f"Une opération est déjà en cours : {c.tache.get('message')}")
+    c.tache = {"nom": nom, "etat": "en_cours", "message": "En cours…"}
+
+    def lancer():
+        try:
+            res = travail(*args)
+            if c.tache.get("nom") == nom and c.tache.get("etat") == "en_cours":
+                c.tache = {"nom": nom, "etat": "termine", "message": (res or {}).get("message", "Terminé.")
+                           if isinstance(res, dict) else "Terminé."}
+        except Exception as exc:  # noqa: BLE001
+            log.warning("%s : %s", nom, exc)
+            c.tache = {"nom": nom, "etat": "erreur", "message": str(exc)}
+    threading.Thread(target=lancer, daemon=True).start()
+    return {"lance": True}
+
+
+# ================================================================ public
 
 @app.get("/health")
 def sante():
@@ -142,832 +128,389 @@ def sante():
 
 
 @app.get("/status")
-def statut_public():
-    """Compteurs seulement (aucune donnée personnelle) : lus par Home Assistant."""
-    return carnet().statut()
+def status():
+    return sorties.statut(carnet())
 
 
-class Connexion(BaseModel):
-    mot_de_passe: str
-
-
-@app.post("/api/connexion")
-async def connexion(corps: Connexion):
-    sessions: Sessions = etat["sessions"]
-    attente = sessions.attente()
-    if not sessions.verifier_mot_de_passe(corps.mot_de_passe):
-        await asyncio.sleep(attente)  # freine les essais sans bloquer le serveur
-        raise HTTPException(401, "Mot de passe incorrect.")
-    reponse = JSONResponse({"connecte": True})
-    reponse.set_cookie(COOKIE, sessions.creer(), max_age=sessions.duree, httponly=True,
-                       samesite="strict", path="/")
-    return reponse
-
+# ================================================================ connexion
 
 @app.get("/api/session")
 def session(request: Request):
-    return {"connecte": etat["sessions"].valide(request.cookies.get(COOKIE))}
+    return {"connecte": ETAT["sessions"].valide(request.cookies.get(COOKIE)), "version": __version__}
+
+
+@app.post("/api/connexion")
+async def connexion(corps: dict = Body(...)):
+    s = ETAT["sessions"]
+    await asyncio.sleep(s.attente())
+    if not s.verifier_mot_de_passe(str(corps.get("mot_de_passe", ""))):
+        raise HTTPException(401, "Mot de passe incorrect.")
+    r = JSONResponse({"ok": True})
+    r.set_cookie(COOKIE, s.creer(), max_age=DUREE, httponly=True, samesite="strict")
+    return r
 
 
 @app.post("/api/deconnexion")
 def deconnexion():
-    # Invalide tous les cookies déjà émis (y compris un cookie copié ailleurs)
-    sessions: Sessions = etat["sessions"]
-    sessions.generation += 1
-    etat["base"].ecrire_etat("generation_session", sessions.generation)
-    reponse = JSONResponse({"connecte": False})
-    reponse.delete_cookie(COOKIE, path="/")
-    return reponse
+    c, s = carnet(), ETAT["sessions"]
+    s.generation += 1
+    c.base.ecrire("session_generation", s.generation)
+    r = JSONResponse({"ok": True})
+    r.delete_cookie(COOKIE)
+    return r
 
 
-# ------------------------------------------------------------------ référentiel
+# ================================================================ accueil et « À traiter »
 
-@app.get("/api/config")
-def referentiel():
-    return {"groupes": groupes_tous(), "regles": regles_groupes(), "groupe_verifies": GROUPE_VERIFIES, "types": TYPES,
-            "sources": LIBELLES_SOURCES, "version": __version__,
-            "archive_jours": etat["cfg"].archive_jours, "alerte_jours": etat["cfg"].alerte_jours}
-
-
-@app.get("/api/bilan")
-def bilan():
-    return carnet().bilan()
+@app.get("/api/accueil")
+def accueil():
+    c = carnet()
+    return {"version": __version__, "a_traiter": traiter.compte(c), "tache": c.tache,
+            "contacts": len(c.fiches()), "reference": bool(c.base.lire("reference")),
+            "icloud": bool(c.cfg.icloud_user), "nuit": c.base.lire("nuit"), "lecture": c.base.lire("derniere_lecture")}
 
 
-@app.get("/api/statut")
-def statut():
-    return carnet().statut()
+@app.get("/api/a-traiter")
+def a_traiter():
+    return traiter.liste(carnet())
 
 
-# ------------------------------------------------------------------ dépôt et import
-
-@app.get("/api/depot")
-def depot():
-    return carnet().depot()
+@app.post("/api/a-traiter/{ident:path}")
+def repondre(ident: str, corps: dict = Body(...)):
+    return actions.repondre(carnet(), ident, str(corps.get("action", "")), corps.get("valeur"))
 
 
-@app.post("/api/depot")
-async def deposer(fichiers: list[UploadFile] = File(...)):
-    res = []
-    for f in fichiers:
-        contenu = await f.read()
-        if len(contenu) > 50 * 1024 * 1024:
-            raise ErreurCarnet(f"{f.filename} dépasse 50 Mo.")
-        res.append(carnet().deposer(f.filename or "export.vcf", contenu))
-    return res
+# ================================================================ contacts
 
+def _resume(uid: str, f: dict, liens: dict, en_attente: dict) -> dict:
+    tel = (f.get("telephones") or [{}])[0]
+    return {"uid": uid, "nom": nom_affiche(f), "prenom": f.get("prenom", ""), "nom_famille": f.get("nom", ""),
+            "societe": f.get("societe", ""), "fonction": f.get("fonction", ""), "groupes": f.get("groupes", []),
+            "a_photo": f.get("a_photo", False), "immich": bool(liens.get(uid, {}).get("immich")),
+            "treemich": bool(liens.get(uid, {}).get("treemich")), "telephone": tel.get("affichage") or tel.get("valeur", ""),
+            "valeur_tel": tel.get("valeur", ""), "courriel": (f.get("courriels") or [{}])[0].get("valeur", ""),
+            "anniversaire": f.get("anniversaire", ""), "a_traiter": en_attente.get(uid, 0)}
 
-class Import(BaseModel):
-    nom: str
-    source: str
-
-
-@app.post("/api/importer")
-def importer(corps: Import):
-    return carnet().importer(corps.nom, corps.source)
-
-
-class JetonLinkedIn(BaseModel):
-    jeton: str
-
-
-@app.post("/api/linkedin")
-def linkedin_api(corps: JetonLinkedIn):
-    return carnet().linkedin_api(corps.jeton)
-
-
-@app.get("/api/linkedin/etat")
-def linkedin_etat():
-    cfg = etat["cfg"]
-    return {"oauth": bool(cfg.linkedin_client_id and cfg.linkedin_client_secret), "retour": cfg.linkedin_redirect,
-            "en_attente": bool(getattr(carnet(), "_jeton_linkedin", None))}
-
-
-@app.post("/api/linkedin/reessayer")
-def linkedin_reessayer():
-    return carnet().linkedin_reessayer()
-
-
-@app.post("/api/linkedin/autorisation")
-def linkedin_autorisation():
-    return carnet().linkedin_autorisation()
-
-
-class RetourLinkedIn(BaseModel):
-    adresse: str
-
-
-@app.post("/api/linkedin/code")
-def linkedin_code(corps: RetourLinkedIn):
-    return carnet().linkedin_code(corps.adresse)
-
-
-# ------------------------------------------------------------------ contacts et révision
 
 @app.get("/api/contacts")
-def contacts(tout: bool = False):
-    return carnet().liste_complete() if tout else carnet().liste()
-
-
-class FusionMultiple(BaseModel):
-    ids: list[str]
-
-
-class GroupeMultiple(BaseModel):
-    ids: list[str]
-    groupe: str
-    retirer: bool = False
-
-
-@app.post("/api/contacts/groupe")
-def grouper(corps: GroupeMultiple):
-    return carnet().grouper(corps.ids, corps.groupe, corps.retirer)
-
-
-@app.post("/api/contacts/fusion")
-def fusionner_plusieurs(corps: FusionMultiple):
-    return carnet().fusionner_plusieurs(corps.ids)
-
-
-@app.get("/api/file")
-def file_revision():
-    return carnet().file()
-
-
-class ProfilLinkedin(BaseModel):
-    url: str
-
-
-@app.post("/api/personnes/{pid}/linkedin")
-def ajouter_linkedin(pid: str, corps: ProfilLinkedin):
-    return carnet().ajouter_linkedin(pid, corps.url)
-
-
-@app.get("/api/personnes/{pid}")
-def personne(pid: str):
-    return carnet().dossier(pid)
-
-
-class Enregistrement(BaseModel):
-    fiche: dict
-    valider: bool = False
-
-
-@app.put("/api/personnes/{pid}")
-def enregistrer(pid: str, corps: Enregistrement):
-    return carnet().enregistrer(pid, corps.fiche, corps.valider)
-
-
-@app.post("/api/personnes/{pid}/ecarter")
-def ecarter(pid: str):
-    return carnet().ecarter(pid)
-
-
-@app.post("/api/personnes/{pid}/restaurer")
-def restaurer(pid: str):
-    return carnet().restaurer(pid)
-
-
-@app.post("/api/personnes/{pid}/rouvrir")
-def rouvrir(pid: str):
-    return carnet().rouvrir(pid)
-
-
-@app.post("/api/personnes/{pid}/repartir")
-def repartir(pid: str):
-    return carnet().repartir(pid)
-
-
-class Detachement(BaseModel):
-    source_id: int
-
-
-@app.post("/api/personnes/{pid}/detacher")
-def detacher(pid: str, corps: Detachement):
-    return carnet().detacher(pid, corps.source_id)
-
-
-class Fusion(BaseModel):
-    autre: str
-
-
-@app.post("/api/personnes/{pid}/fusionner")
-def fusionner(pid: str, corps: Fusion):
-    return carnet().fusionner(pid, corps.autre)
-
-
-# Vignettes d'avatars : calculées une fois, gardées en mémoire (clé : contenu + taille)
-_vignettes: dict[tuple[str, int], tuple[bytes, str]] = {}
-
-
-def reponse_image(request: Request, image: tuple[bytes, str], taille: int | None) -> Response:
-    """Image (réduite si `taille` est demandée), avec ETag : le navigateur garde sa copie et
-    redemande seulement si la photo a changé (une photo HD remplace la vignette au même lien)."""
-    import hashlib
-    from . import portraits
-    empreinte = hashlib.sha1(image[0]).hexdigest()
-    if taille:
-        taille = max(32, min(int(taille), 400))
-        cle = (empreinte, taille)
-        if cle not in _vignettes:
-            try:
-                _vignettes[cle] = portraits.vignette(image[0], taille)
-            except Exception:  # noqa: BLE001 — format illisible : l'original est servi
-                _vignettes[cle] = image
-            if len(_vignettes) > 2000:
-                _vignettes.pop(next(iter(_vignettes)))
-        image = _vignettes[cle]
-        empreinte = f"{empreinte}-{taille}"
-    etag = f'"{empreinte}"'
-    entetes = {"ETag": etag, "Cache-Control": "private, no-cache"}
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers=entetes)
-    return Response(image[0], media_type=image[1], headers=entetes)
-
-
-@app.get("/api/photos/{source_id}")
-def photo(source_id: int, request: Request, taille: int | None = None):
-    p = carnet().photo(source_id)
-    if not p:
-        raise HTTPException(404, "Pas de photo.")
-    return reponse_image(request, p, taille)
-
-
-# ------------------------------------------------------------------ revue
-
-@app.get("/api/revue")
-def revue():
-    return carnet().revue()
-
-
-class Retouche(BaseModel):
-    anniversaire: str | None = None
-    societe: str | None = None
-    ajouter: list[str] = []
-    retirer: list[str] = []
-    telephone: str | None = None
-    type_telephone: str | None = None
-    types: dict[str, str] = {}
-    types_sites: dict[str, str] = {}
-    natures: dict[str, str] = {}
-
-
-class Societes(BaseModel):
-    variantes: list[str]
-    nom: str = ""
-
-
-@app.post("/api/societes/uniformiser")
-def uniformiser(corps: Societes):
-    return carnet().uniformiser_societes(corps.variantes, corps.nom)
-
-
-@app.post("/api/societes/ignorer")
-def ignorer(corps: Societes):
-    return carnet().ignorer_societes(corps.variantes)
-
-
-class Paire(BaseModel):
-    a: str
-    b: str
-
-
-@app.post("/api/doublons/ignorer")
-def ignorer_doublon(corps: Paire):
-    return carnet().ignorer_doublon(corps.a, corps.b)
-
-
-@app.post("/api/personnes/{pid}/retoucher")
-def retoucher(pid: str, corps: Retouche):
-    return carnet().retoucher(pid, corps.anniversaire, corps.societe, corps.ajouter, corps.retirer,
-                              corps.telephone, corps.type_telephone, corps.types, corps.types_sites, corps.natures)
-
-
-# ------------------------------------------------------------------ groupes
-
-class Groupe(BaseModel):
-    nom: str
-    regle: str | None = None
-
-
-class ModifGroupe(BaseModel):
-    ancien: str
-    nom: str
-    regle: str | None = None
-
-
-class SuppressionGroupe(BaseModel):
-    nom: str
-    vers: str | None = None
+def contacts():
+    c = carnet()
+
+    def calcul():
+        liens = c.liaisons()
+        compte: dict[str, int] = {}
+        for p in traiter.liste(c):
+            if p.get("uid"):
+                compte[p["uid"]] = compte.get(p["uid"], 0) + 1
+        liste = [_resume(u, f, liens, compte) for u, f in c.fiches().items()]
+        return sorted(liste, key=lambda x: (x["nom_famille"] or x["nom"]).casefold())
+    return c.memo("contacts", calcul)
 
 
 @app.get("/api/groupes")
 def groupes():
-    return carnet().groupes()
+    c = carnet()
+    noms = {l["nom"] for l in c.base.tous("SELECT nom FROM groupes")} | set(groupes_tous())
+    compte = {n: 0 for n in noms}
+    for f in c.fiches().values():
+        for g in f.get("groupes", []):
+            compte[g] = compte.get(g, 0) + 1
+    return [{"nom": n, "nombre": compte[n]} for n in sorted(compte, key=str.casefold)]
 
 
-@app.post("/api/groupes")
-def creer_groupe(corps: Groupe):
-    return carnet().creer_groupe(corps.nom, corps.regle)
+@app.get("/api/contacts/{uid}")
+def contact(uid: str):
+    c = carnet()
+    f = c.fiche(uid)
+    lien = c.liaison(uid)
+    noms = {(s, p["id"]): p["nom"] for s in ("immich", "treemich")
+            for p in (c.memo_present("liens", liaisons.DUREE_CACHE) or {}).get(s, [])}
+    portrait = c.base.un("SELECT candidats, asset, manuel FROM portraits WHERE uid = ?", (uid,))
+    affiche = c.base.un("SELECT immich, posee, le, source FROM affiches WHERE uid = ?", (uid,))
+    lk = c.base.un("SELECT url, donnees FROM linkedin WHERE uid = ?", (uid,))
+    points = [p for p in traiter.liste(c) if p.get("uid") == uid]
+    return {"uid": uid, "fiche": f, "nom": nom_affiche(f),
+            "liaisons": {s: {"id": lien[s], "nom": noms.get((s, lien[s])), "statut": lien.get(s + "_statut")}
+                         for s in ("immich", "treemich") if lien.get(s)},
+            "portraits": {"candidats": json.loads(portrait["candidats"]), "asset": portrait["asset"]} if portrait else None,
+            "affiche": dict(affiche) if affiche else None,
+            "linkedin": {"url": lk["url"], **json.loads(lk["donnees"])} if lk else None,
+            "a_traiter": points, "groupes_connus": [g["nom"] for g in groupes()]}
 
 
-@app.post("/api/groupes/modifier")
-def modifier_groupe(corps: ModifGroupe):
-    return carnet().modifier_groupe(corps.ancien, corps.nom, corps.regle)
+@app.post("/api/contacts/{uid}/apercu")
+def apercu(uid: str, corps: dict = Body(...)):
+    return actions.apercu(carnet(), uid, corps.get("fiche") or {})
 
 
-@app.post("/api/groupes/supprimer")
-def supprimer_groupe(corps: SuppressionGroupe):
-    return carnet().supprimer_groupe(corps.nom, corps.vers)
+@app.put("/api/contacts/{uid}")
+def valider(uid: str, corps: dict = Body(...)):
+    return actions.valider(carnet(), uid, corps.get("fiche") or {})
 
 
-# ------------------------------------------------------------------ Home Assistant (jeton)
+@app.post("/api/annuler/{jeton}")
+def annuler(jeton: str):
+    return actions.annuler(carnet(), jeton)
 
-@app.get("/ha/personnes")
-def ha_personnes():
-    """Noms proposés dans la carte de réservation (nom Immich des contacts liés, proches)."""
-    return carnet().ha_personnes()
 
+@app.get("/api/contacts/{uid}/photo")
+def photo(uid: str, cote: int = 160):
+    v = photos.vignette(carnet(), uid, max(48, min(cote, 640)))
+    if not v:
+        return Response(status_code=404)
+    return Response(v[0], media_type=v[1], headers={"Cache-Control": "private, max-age=600"})
 
-@app.get("/ha/anniversaires")
-def ha_anniversaires():
-    """Calendrier « Anniversaires » : tous les contacts vérifiés qui ont une date de naissance
-    (nom identique à /ha/personnes), triés par mois puis jour. Lecture seule."""
-    return carnet().ha_anniversaires()
 
+# ---------------------------------------------------------------- liaisons
 
-@app.get("/ha/portraits/candidats")
-def ha_portraits_candidats(immich: str, nombre: int = 3):
-    """Carte de réservation : meilleurs candidats Photos HD d'une personne Immich
-    (``{"candidats": [{"asset", "score", "le"}], "actuel": asset ou null}``)."""
-    return carnet().ha_candidats(immich, nombre)
+@app.get("/api/contacts/{uid}/proches")
+def proches(uid: str):
+    return liaisons.proches(carnet(), uid)
 
 
-@app.get("/ha/portrait")
-def ha_portrait(immich: str, cadre: str | None = None, asset: str | None = None):
-    """Cadres PicPak et dashboards : portrait HD de la personne Immich (JPEG carré), avec le cadre
-    du visage dans l'en-tête X-Visage (« x1,y1,x2,y2 », de 0 à 1). ``cadre=centre`` : visage
-    entier au milieu du carré (losange du cadre de porte, avatars ronds). ``asset`` : un candidat
-    précis (choix fait dans Home Assistant), découpé centré. 404 sans portrait HD."""
-    trouve = carnet().ha_portrait(immich, cadre, asset)
-    if not trouve:
-        raise HTTPException(404, "Pas de portrait HD pour cette personne.")
-    image, type_, visage = trouve
-    entetes = {"X-Visage": ",".join(f"{v:.4f}" for v in visage)} if visage else {}
-    return Response(image, media_type=type_, headers=entetes)
+@app.post("/api/contacts/{uid}/lier")
+def lier(uid: str, corps: dict = Body(...)):
+    liaisons.lier(carnet(), uid, str(corps.get("service")), str(corps.get("id")))
+    return {"ok": True}
 
 
-@app.get("/ha/invite")
-def ha_invite(nom: str):
-    """Journal de naissance : date de naissance de l'invité écrit dans la réservation."""
-    return carnet().ha_invite(nom)
+@app.post("/api/contacts/{uid}/delier")
+def delier(uid: str, corps: dict = Body(...)):
+    liaisons.delier(carnet(), uid, str(corps.get("service")))
+    return {"ok": True}
 
 
-# ------------------------------------------------------------------ iCloud (V2)
+@app.post("/api/liens/rafraichir")
+def rafraichir_liens():
+    c = carnet()
+    return _fond("liens", lambda: liaisons.donnees(c, rafraichir=True) and {"message": "Immich et Treemich relus."})
 
-@app.get("/api/icloud")
-def icloud_etat():
-    return carnet().icloud_etat()
 
+# ---------------------------------------------------------------- photos
 
-@app.post("/api/icloud/simulation")
-def icloud_simuler():
-    return carnet().icloud_simuler()
+@app.get("/api/contacts/{uid}/portraits")
+def portraits(uid: str, rafraichir: bool = False):
+    return photos.candidats(carnet(), uid, rafraichir)
 
 
-@app.get("/api/icloud/brute/{pid}")
-def icloud_brute(pid: str):
-    texte, nom = carnet().icloud_brute(pid)
-    return Response(texte.encode("utf-8"), media_type="text/vcard; charset=utf-8",
-                    headers={"Content-Disposition": f'attachment; filename="{nom}"'})
+@app.get("/api/immich/{asset}/apercu")
+def apercu_immich(asset: str):
+    contenu = photos.apercu_candidat(carnet(), asset)
+    if not contenu:
+        return Response(status_code=404)
+    return Response(contenu, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
 
 
-@app.get("/api/liaisons")
-def liaisons(rafraichir: bool = False):
-    return carnet().liaisons(rafraichir)
+@app.post("/api/contacts/{uid}/portrait")
+def poser_portrait(uid: str, corps: dict = Body(...)):
+    return photos.poser(carnet(), uid, str(corps.get("asset")))
 
 
-class Liaison(BaseModel):
-    pid: str
-    immich: str | None = None
-    treemich: str | None = None
+@app.post("/api/contacts/{uid}/affiche")
+def preparer_affiche(uid: str, corps: dict = Body(default={})):
+    return photos.preparer_affiche(carnet(), uid, corps.get("asset"))
 
 
-class Liaisons(BaseModel):
-    liaisons: list[Liaison]
+@app.get("/api/contacts/{uid}/affiche")
+def image_affiche(uid: str):
+    c = carnet()
+    nom = nom_affiche(c.fiche(uid))
+    contenu = photos.image_affiche(c, uid)
+    sur = "".join(ch for ch in nom if ch not in '/\\:*?"<>|') or "contact"
+    return Response(contenu, media_type="image/jpeg",
+                    headers={"Content-Disposition": f"inline; filename*=UTF-8''{__import__('urllib.parse').parse.quote(sur)}.jpg"})
 
 
-@app.post("/api/liaisons/valider")
-def valider_liaisons(corps: Liaisons):
-    return carnet().valider_liaisons([l.model_dump() for l in corps.liaisons])
-
-
-class Refus(BaseModel):
-    pid: str
-    immich: str
-
-
-class LienRevision(BaseModel):
-    immich: str | None = None
-    treemich: str | None = None
-    prenom: str | None = None
-    nom: str | None = None
-
-
-@app.get("/api/personnes/{pid}/proches")
-def proches(pid: str):
-    """Révision : noms proches dans Immich, Treemich et les autres contacts."""
-    return carnet().proches(pid)
-
-
-@app.post("/api/personnes/{pid}/lier")
-def lier_depuis_revision(pid: str, corps: LienRevision):
-    return carnet().lier_depuis_revision(pid, corps.immich, corps.treemich)
-
-
-@app.post("/api/personnes/{pid}/renommer-liens")
-def renommer_depuis_revision(pid: str, corps: LienRevision):
-    """Immich et/ou Treemich prennent l'orthographe de la fiche."""
-    return carnet().renommer_depuis_revision(pid, corps.immich, corps.treemich, corps.prenom, corps.nom)
-
-
-@app.post("/api/liaisons/refuser")
-def refuser_liaison(corps: Refus):
-    return carnet().refuser_liaison(corps.pid, corps.immich)
-
-
-class CorrectionNom(BaseModel):
-    pid: str
-    garder: str
-
-
-@app.post("/api/liaisons/nom")
-def corriger_nom(corps: CorrectionNom):
-    return carnet().corriger_nom(corps.pid, corps.garder)
-
-
-class RenommageImmich(BaseModel):
-    id: str
-    nom: str
-
-
-@app.post("/api/immich/renommer")
-def renommer_immich(corps: RenommageImmich):
-    return carnet().renommer_immich(corps.id, corps.nom)
-
-
-class Deliaison(BaseModel):
-    pid: str
-    refuser: bool = True
-
-
-@app.get("/api/liaisons/auto")
-def liaisons_auto():
-    return carnet().liaisons_auto()
-
-
-@app.post("/api/liaisons/delier")
-def delier(corps: Deliaison):
-    return carnet().delier(corps.pid, corps.refuser)
-
-
-@app.post("/api/liaisons/actualiser")
-def actualiser_liens():
-    return carnet().actualiser_liens()
-
-
-class Tranche(BaseModel):
-    choix: str
-
-
-@app.post("/api/personnes/{pid}/relations")
-def trancher_relations(pid: str, corps: Tranche):
-    return carnet().trancher_relations(pid, corps.choix)
-
-
-@app.get("/api/immich/visage/{immich_id}")
-def visage_immich(immich_id: str, request: Request, taille: int | None = None):
-    try:
-        image = carnet().visage_immich(immich_id)
-    except Exception:  # noqa: BLE001 — pas de visage : l'interface affiche une initiale
-        image = None
-    if not image:
-        raise HTTPException(404, "Pas de visage.")
-    return reponse_image(request, image, taille)
-
-
-@app.get("/api/portraits")
-def portraits_hd():
-    return carnet().photos_hd()
-
-
-@app.post("/api/portraits/recherche")
-def chercher_portraits():
-    return carnet().chercher_portraits()
-
-
-class ChoixPortrait(BaseModel):
-    pid: str
-    asset: str | None = None
-
-
-@app.post("/api/portraits/choix")
-def choisir_portrait(corps: ChoixPortrait):
-    if not corps.asset:
-        return carnet().portrait_auto(corps.pid)
-    return carnet().choisir_portrait(corps.pid, corps.asset)
-
-
-@app.get("/api/portraits/apercu/{pid}/{asset}")
-def apercu_portrait(pid: str, asset: str):
-    try:
-        image = carnet().apercu_portrait(pid, asset)
-    except Exception:  # noqa: BLE001 — l'interface affiche un cadre vide
-        image = None
-    if not image:
-        raise HTTPException(404, "Pas d'aperçu.")
-    return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=86400"})
+@app.post("/api/contacts/{uid}/affiche/posee")
+def affiche_posee(uid: str, corps: dict = Body(...)):
+    photos.marquer_posee(carnet(), uid, bool(corps.get("posee")))
+    return {"ok": True}
 
 
 @app.get("/api/affiches")
 def affiches():
-    return carnet().affiches()
+    return photos.affiches(carnet())
 
 
-class GroupesAffiches(BaseModel):
-    groupes: list[str]
+@app.get("/api/contacts/{uid}/logos")
+def logos_(uid: str):
+    return photos.chercher_logos(carnet(), uid)
 
 
-@app.post("/api/affiches/groupes")
-def affiches_groupes(corps: GroupesAffiches):
-    return carnet().affiches_groupes(corps.groupes)
+@app.get("/api/contacts/{uid}/logos/{n}")
+def logo(uid: str, n: int):
+    return Response(photos.apercu_logo(carnet(), uid, n), media_type="image/png")
 
 
-class RecherchePhotos(BaseModel):
-    mode: str = "manquants"
+@app.post("/api/contacts/{uid}/logos/{n}")
+def choisir_logo(uid: str, n: int, corps: dict = Body(...)):
+    return photos.choisir_logo(carnet(), uid, n, str(corps.get("sorte", "photo")))
 
 
-@app.post("/api/photos/recherche")
-def rechercher_photos(corps: RecherchePhotos):
-    """Photos HD, affiches et logos en une fois (« manquants » ou « tout »)."""
-    return carnet().rechercher_photos(corps.mode)
+# ---------------------------------------------------------------- fusion
+
+@app.get("/api/fusion")
+def proposition(a: str, b: str):
+    return actions.proposition_fusion(carnet(), a, b)
 
 
-@app.post("/api/affiches/preparation")
-def preparer_affiches():
-    return carnet().preparer_affiches()
+@app.post("/api/fusion")
+def fusion(corps: dict = Body(...)):
+    return actions.fusionner(carnet(), str(corps.get("garder")), str(corps.get("absorber")), corps.get("fiche") or {})
 
 
-class ChoixAffiche(BaseModel):
-    pid: str
-    asset: str | None = None
+# ================================================================ état
+
+@app.get("/api/etat")
+def etat():
+    c = carnet()
+    return {"version": __version__, "statut": sorties.statut(c), "lecture": c.base.lire("derniere_lecture"),
+            "nuit": c.base.lire("nuit"), "reference": c.base.lire("reference"), "reprise": c.base.lire("reprise"),
+            "synology": c.base.lire("synology"), "kit": c.base.lire("dernier_envoi_kit"),
+            "sauvegardes": icloud.liste_sauvegardes(c)[:60], "journal": c.base.journal(limite=80),
+            "linkedin": {"sans_contact": linkedin.sans_contact(c), "api": bool(c.cfg.linkedin_client_id),
+                         "en_attente": bool(c.__dict__.get("_jeton_linkedin"))},
+            "services": {"icloud": bool(c.cfg.icloud_user), "immich": bool(c.cfg.immich_cle),
+                         "treemich": bool(c.cfg.treemich_email), "synology": bool(c.cfg.synology_url),
+                         "kit": bool(c.cfg.kit_config and c.cfg.kit_config.is_dir()), "ha": bool(c.cfg.ha_token),
+                         "nuit": c.cfg.veille_heure if c.cfg.nuit_active else None},
+            "tache": c.tache}
 
 
-@app.post("/api/affiches/choix")
-def choisir_affiche(corps: ChoixAffiche):
-    return carnet().choisir_affiche(corps.pid, corps.asset)
+@app.post("/api/icloud/relire")
+def relire(corps: dict = Body(default={})):
+    c = carnet()
+
+    def travail():
+        with c.ecriture(attendre=30):
+            b = icloud.relire_quand_meme(c) if corps.get("forcer") else icloud.relire(c, "manuel")
+        return {"message": f"iCloud relu : {b['contacts']} fiches, {b['revision']} à relire."}
+    return _fond("relecture", travail)
 
 
-class AffichePosee(BaseModel):
-    pid: str
-    posee: bool = True
-
-
-@app.post("/api/affiches/posee")
-def marquer_affiche_posee(corps: AffichePosee):
-    return carnet().marquer_affiche_posee(corps.pid, corps.posee)
-
-
-@app.get("/api/logos")
-def logos_liste():
-    return carnet().logos()
-
-
-@app.post("/api/logos/groupes")
-def logos_groupes(corps: GroupesAffiches):
-    return carnet().logos_groupes(corps.groupes)
-
-
-@app.post("/api/logos/recherche")
-def chercher_logos(relire: bool = False):
-    return carnet().relire_logos() if relire else carnet().chercher_logos()
-
-
-class ChoixLogo(BaseModel):
-    pid: str
-    n: int
-    sorte: str   # photo | affiche
-
-
-@app.post("/api/logos/choix")
-def choisir_logo(corps: ChoixLogo):
-    return carnet().choisir_logo(corps.pid, corps.n, corps.sorte)
-
-
-@app.get("/api/logos/apercu/{pid}/{n}")
-def apercu_logo(pid: str, n: int, sorte: str = "photo"):
-    try:
-        image = carnet().apercu_logo(pid, n, sorte)
-    except Exception:  # noqa: BLE001
-        image = None
-    if not image:
-        raise HTTPException(404, "Pas d'aperçu.")
-    return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=3600"})
-
-
-@app.get("/api/affiches/image/{pid}")
-def image_affiche(pid: str):
-    image = carnet().image_affiche(pid)
-    if not image:
-        raise HTTPException(404, "Pas d'affiche choisie.")
-    return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, no-cache"})
-
-
-@app.get("/api/affiches/proposition/{pid}/{asset}")
-def apercu_proposition(pid: str, asset: str, grand: bool = False):
-    try:
-        image = carnet().apercu_proposition(pid, asset, grand)
-    except Exception:  # noqa: BLE001
-        image = None
-    if not image:
-        raise HTTPException(404, "Pas d'aperçu.")
-    return Response(image[0], media_type=image[1], headers={"Cache-Control": "private, max-age=86400"})
-
-
-@app.get("/api/naissances")
-def naissances():
-    return carnet().naissances_plan()
-
-
-@app.post("/api/naissances/simulation")
-def naissances_simuler():
-    return carnet().naissances_simuler()
-
-
-class EcritureNaissances(BaseModel):
-    cible: str
-    remplacer: bool = False
-    essai: str | None = None
-    confirme: bool = False
-
-
-@app.post("/api/naissances/ecriture")
-def naissances_ecrire(corps: EcritureNaissances):
-    return carnet().naissances_ecrire(corps.cible, corps.remplacer, corps.essai, corps.confirme)
-
-
-@app.get("/api/sauvegardes")
-def sauvegardes():
-    return carnet().sauvegardes()
-
-
-@app.post("/api/sauvegardes")
-def sauvegarder():
-    return carnet().sauvegarder()
-
-
-@app.post("/api/sauvegardes/forcer")
-def forcer_sauvegarde():
-    return carnet().forcer_synology()
-
-
-class TestRestauration(BaseModel):
-    cle: str | None = None
-
-
-@app.post("/api/sauvegardes/restauration")
-def tester_restauration(corps: TestRestauration):
-    return carnet().tester_restauration((corps.cle or "").strip() or None)
+@app.post("/api/nuit")
+def nuit_maintenant():
+    c = carnet()
+    return _fond("nuit", lambda: nuit.passer(c, "manuel") and {"message": c.tache.get("message")})
 
 
 @app.get("/api/sauvegardes/{nom}")
-def telecharger_sauvegarde(nom: str):
-    chemin = etat["cfg"].archives / "sauvegardes" / Path(nom).name
-    if not chemin.is_file():
-        raise HTTPException(404, "Sauvegarde introuvable.")
-    media = "application/octet-stream" if chemin.suffix == ".db" else "text/vcard"
-    return FileResponse(chemin, media_type=media, filename=chemin.name)
+def sauvegarde(nom: str):
+    return icloud.contenu_sauvegarde(carnet(), nom)
 
 
-class ReglageSynchro(BaseModel):
-    actif: bool | None = None
-    reel: bool | None = None
+@app.post("/api/sauvegardes/{nom}/restaurer")
+def restaurer(nom: str, corps: dict = Body(...)):
+    c = carnet()
+    with c.ecriture(attendre=10):
+        return icloud.restaurer(c, nom, [str(u) for u in corps.get("uids") or []])
 
 
-@app.get("/api/synchro")
-def synchro():
-    """Synchro iCloud de nuit : réglage (période à blanc), journal des nuits."""
-    return carnet().synchro()
-
-
-@app.post("/api/synchro/reglage")
-def regler_synchro(corps: ReglageSynchro):
-    return carnet().regler_synchro(corps.actif, corps.reel)
-
-
-class Decision(BaseModel):
-    valider: list[str] = []
-    revoir: list[str] = []
-
-
-@app.get("/api/synchro/attente")
-def attente():
-    """Changements qui partiraient dans iCloud maintenant, à valider ou à revoir un par un."""
-    return carnet().attente()
-
-
-@app.post("/api/synchro/attente/actualiser")
-def actualiser_attente():
-    return carnet().actualiser_attente()
-
-
-@app.post("/api/synchro/attente/decision")
-def decider(corps: Decision):
-    return carnet().decider(corps.valider, corps.revoir)
-
-
-@app.post("/api/synchro/maintenant")
-def synchroniser():
-    return carnet().synchroniser()
-
-
-@app.post("/api/icloud/veille")
-def icloud_veille(forcer: bool = False):
-    return carnet().veiller(forcer)
-
-
-class ModeVeille(BaseModel):
-    revision: bool
-
-
-@app.post("/api/icloud/veille/mode")
-def icloud_veille_mode(corps: ModeVeille):
-    return carnet().veille_mode(corps.revision)
-
-
-class Ecriture(BaseModel):
-    essai: bool = False
-    confirme: bool = False
-
-
-@app.post("/api/icloud/ecriture")
-def icloud_ecrire(corps: Ecriture):
-    if not corps.essai and not corps.confirme:
-        raise HTTPException(400, "Coche la confirmation avant d'écrire dans iCloud.")
-    return carnet().icloud_ecrire(corps.essai)
-
-
-# ------------------------------------------------------------------ export, kit, archives
-
-@app.post("/api/export")
-def exporter():
-    return carnet().exporter()
-
-
-@app.get("/api/exports")
-def exports():
-    return carnet().exports()
-
-
-@app.get("/api/exports/{nom}")
-def telecharger(nom: str):
-    chemin = etat["cfg"].export / Path(nom).name
-    if not chemin.is_file():
-        raise HTTPException(404, "Export introuvable.")
-    media = "application/octet-stream" if chemin.suffix == ".db" else "text/vcard"
-    return FileResponse(chemin, media_type=media, filename=chemin.name)
-
-
-@app.get("/api/kit")
-def kit():
-    return carnet().apercu_kit()
+@app.post("/api/synology")
+def synology(corps: dict = Body(default={})):
+    return sorties.copier_synology(carnet(), forcer=bool(corps.get("forcer")))
 
 
 @app.post("/api/kit")
-def envoyer_kit():
-    return carnet().envoyer_kit()
+def kit():
+    return sorties.envoyer_kit(carnet())
 
 
-@app.get("/api/archives")
-def archives():
-    return carnet().archives()
+@app.post("/api/import")
+async def importer(fichier: UploadFile = File(...)):
+    c = carnet()
+    contenu = (await fichier.read()).decode("utf-8-sig", errors="replace")
+    if "First Name" in contenu[:4000] and ("Connected On" in contenu or "linkedin" in contenu.lower()):
+        return {"source": "linkedin", **linkedin.importer(c, contenu)}
+    if "BEGIN:VCARD" not in contenu.upper():
+        raise ErreurCarnet("Fichier non reconnu : dépose un .vcf ou le Connections.csv de LinkedIn.")
+    lues, avertissements = vcard.lire(contenu, c.cfg.region)
+    ajoutees = 0
+    with c.base.transaction() as cx:
+        for lue in lues:
+            f = dict(lue.fiche, photo=None)
+            if traiter.ajouter(cx, "import", None, traiter.empreinte(f), {"fiche": f, "fichier": fichier.filename}):
+                ajoutees += 1
+    c.oublier()
+    c.base.noter("import", f"Import de {fichier.filename} : {len(lues)} fiche(s), {ajoutees} à traiter")
+    return {"source": "vcf", "lues": len(lues), "a_traiter": ajoutees, "avertissements": avertissements[:20]}
 
 
-# ------------------------------------------------------------------ interface
-
-STATIC = Path(os.environ.get("CARNET_STATIC", str(Path(__file__).parent / "static")))
-if (STATIC / "assets").is_dir():
-    app.mount("/assets", StaticFiles(directory=STATIC / "assets"), name="assets")
+@app.post("/api/linkedin/autorisation")
+def linkedin_autorisation():
+    return linkedin.autorisation(carnet())
 
 
-@app.get("/{chemin:path}", include_in_schema=False)
+@app.post("/api/linkedin/code")
+def linkedin_code(corps: dict = Body(...)):
+    return linkedin.code(carnet(), str(corps.get("adresse", "")))
+
+
+@app.post("/api/linkedin/reessayer")
+def linkedin_reessayer():
+    return linkedin.api(carnet(), "")
+
+
+@app.post("/api/linkedin/rattacher")
+def linkedin_rattacher(corps: dict = Body(...)):
+    linkedin.rattacher(carnet(), str(corps.get("url")), corps.get("uid") or None)
+    return {"ok": True}
+
+
+# ================================================================ Home Assistant (Bearer)
+
+@app.get("/ha/contacts")
+def ha_contacts():
+    return sorties.ha_contacts(carnet())
+
+
+@app.get("/ha/personnes")
+def ha_personnes():
+    return sorties.ha_personnes(carnet())
+
+
+@app.get("/ha/anniversaires")
+def ha_anniversaires():
+    return sorties.ha_anniversaires(carnet())
+
+
+@app.get("/ha/invite")
+def ha_invite(nom: str = ""):
+    try:
+        return sorties.ha_invite(carnet(), nom)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+
+
+@app.get("/ha/portraits/candidats")
+def ha_candidats(immich: str = "", nombre: int = 3):
+    return sorties.ha_candidats(carnet(), immich, nombre)
+
+
+@app.get("/ha/portrait")
+def ha_portrait(immich: str = "", cadre: str | None = None, asset: str | None = None):
+    trouve = sorties.ha_portrait(carnet(), immich, cadre, asset)
+    if not trouve:
+        raise HTTPException(404, "Pas de portrait HD pour cette personne.")
+    contenu, type_, visage = trouve
+    entetes = {"X-Visage": ",".join(f"{v:.4f}" for v in visage)} if visage else {}
+    return Response(contenu, media_type=type_, headers=entetes)
+
+
+# ================================================================ interface
+
+@app.get("/{chemin:path}")
 def interface(chemin: str):
-    if chemin.startswith(("api/", "ha/")):
-        raise HTTPException(404, "Route inconnue.")
-    fichier = STATIC / chemin
-    if chemin and fichier.is_file() and STATIC in fichier.resolve().parents:
+    statique = carnet().cfg.static
+    fichier = (statique / chemin).resolve() if chemin else None
+    if fichier and fichier.is_file() and statique.resolve() in fichier.parents:
         return FileResponse(fichier)
-    index = STATIC / "index.html"
+    index = statique / "index.html"
     if index.is_file():
         return FileResponse(index, headers={"Cache-Control": "no-cache"})
-    return JSONResponse({"detail": "Interface non compilée."}, status_code=503)
+    return JSONResponse({"detail": "Interface non compilée."}, status_code=404)
+
+
+__all__ = ["app", "Path"]

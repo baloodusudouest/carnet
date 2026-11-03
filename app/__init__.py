@@ -1,2 +1,2 @@
-"""carnet : rassemble, vérifie et fusionne des contacts venus de plusieurs carnets."""
-__version__ = "1.3.1"
+"""carnet : gardien des contacts iCloud — relit, propose, relie (Immich, Treemich, LinkedIn) et écrit."""
+__version__ = "2.0.0"

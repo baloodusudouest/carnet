@@ -1,60 +1,39 @@
 @import "tailwindcss";
 
-/* Carnet d'adresses en cuir sombre : fond brun chaud, papier pour le texte,
-   ocre des onglets alphabétiques comme seule couleur d'accent. */
+/* Carnet d'adresses en cuir sombre : fond brun chaud, papier pour le texte, l'ocre des onglets
+   alphabétiques comme seule couleur d'accent. L'élément marquant : l'index des lettres, taillé
+   comme la tranche d'un vrai carnet, sur le bord droit de la liste des contacts. */
 @theme {
   --color-cuir: #1c1715;        /* fond */
   --color-reliure: #241e1b;     /* surfaces */
-  --color-couture: #3a302b;     /* filets, bordures */
+  --color-couture: #3a302b;     /* filets */
   --color-tranche: #4d413a;     /* bordures actives */
-  --color-champ: #7d6e62;
-  --color-retenue: #2f2723;     /* colonne « Fiche retenue » de la Révision */       /* bord des champs de saisie (contraste ≥ 3:1 sur le fond) */
+  --color-champ: #7d6e62;       /* bord des champs (contraste ≥ 3:1 sur le fond) */
   --color-papier: #efe6d8;      /* texte principal */
   --color-mine: #a99b8b;        /* texte secondaire */
-  --color-onglet: #d9a441;      /* accent : onglets, sélection */
-  --color-onglet-sombre: #3b2f17;
-  --color-valide: #8fbf8f;      /* vérifié */
-  --color-alerte: #e57373;      /* erreur */
+  --color-onglet: #d9a441;      /* accent */
+  --color-valide: #8fbf8f;
+  --color-alerte: #e57373;
 
   --font-sans: "Instrument Sans Variable", system-ui, sans-serif;
   --font-livre: "Spectral", Georgia, serif;
 }
 
 @layer base {
-  html { color-scheme: dark; }
+  html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
   body {
-    background: var(--color-cuir);
-    color: var(--color-papier);
-    font-family: var(--font-sans);
-    font-size: 15px;
-    line-height: 1.5;
+    background: var(--color-cuir); color: var(--color-papier);
+    font-family: var(--font-sans); font-size: 15px; line-height: 1.5;
     -webkit-font-smoothing: antialiased;
   }
   :focus-visible { outline: 2px solid var(--color-onglet); outline-offset: 2px; }
   input, select, textarea {
-    background: var(--color-cuir);
-    border: 1px solid var(--color-champ);
-    border-radius: 6px;
-    padding: 0.35rem 0.55rem;
-    color: var(--color-papier);
+    background: var(--color-cuir); border: 1px solid var(--color-champ); border-radius: 6px;
+    padding: 0.45rem 0.6rem; color: var(--color-papier); width: 100%;
   }
+  input[type="checkbox"], input[type="radio"] { width: auto; }
   input:focus, select:focus, textarea:focus { border-color: var(--color-onglet); outline: none; }
-  kbd {
-    font-family: var(--font-sans);
-    font-size: 0.75rem;
-    padding: 0 0.35rem;
-    border: 1px solid var(--color-tranche);
-    border-bottom-width: 2px;
-    border-radius: 4px;
-    color: var(--color-mine);
-  }
-  /* Écran tactile : 16 px dans les champs (Safari ne zoome plus au toucher), cases à cocher
-     plus grandes, et aucune cible sous 44 px pour les boutons et liens d'action */
-  @media (pointer: coarse) {
-    input, select, textarea { font-size: 16px; }
-    input[type="checkbox"], input[type="radio"] { width: 1.375rem; height: 1.375rem; }
-    .bouton, .pastille { min-height: 2.75rem; }
-  }
+  button { cursor: pointer; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; animation: none !important; }
   }
@@ -62,26 +41,31 @@
 
 @layer components {
   .bouton {
-    display: inline-flex; align-items: center; gap: 0.4rem;
-    padding: 0.45rem 0.9rem; border-radius: 6px;
-    border: 1px solid var(--color-tranche);
-    color: var(--color-papier); font-weight: 500;
+    display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
+    min-height: 2.25rem; padding: 0.4rem 0.9rem; border-radius: 6px;
+    border: 1px solid var(--color-tranche); color: var(--color-papier); font-weight: 500;
   }
   .bouton:hover { border-color: var(--color-mine); }
   .bouton:disabled { opacity: 0.45; cursor: not-allowed; }
-  .bouton-principal:disabled { background: transparent; border-color: var(--color-tranche); color: var(--color-mine); opacity: 1; }
-  /* Pastille de choix (groupes, filtres) : même forme partout, 44 px au doigt */
-  .pastille {
-    display: inline-flex; align-items: center; gap: 0.35rem;
-    min-height: 2rem; padding: 0 0.85rem; border-radius: 9999px;
-    border: 1px solid var(--color-couture); color: var(--color-mine); font-size: 0.875rem;
-  }
-  .pastille[aria-pressed="true"] { border-color: var(--color-onglet); color: var(--color-papier); background: color-mix(in srgb, var(--color-onglet) 12%, transparent); }
-  .bouton-principal {
-    background: var(--color-onglet); border-color: var(--color-onglet);
-    color: #23190a; font-weight: 600;
-  }
+  .bouton-principal { background: var(--color-onglet); border-color: var(--color-onglet); color: #23190a; font-weight: 600; }
   .bouton-principal:hover { background: #e6b354; border-color: #e6b354; }
-  td.bg-retenue, th.bg-retenue { box-shadow: inset 2px 0 0 color-mix(in srgb, var(--color-onglet) 55%, transparent); }
+  .bouton-danger { border-color: color-mix(in srgb, var(--color-alerte) 60%, transparent); color: var(--color-alerte); }
+  .pastille {
+    display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2rem; padding: 0 0.85rem;
+    border-radius: 9999px; border: 1px solid var(--color-couture); color: var(--color-mine); font-size: 0.875rem;
+  }
+  .pastille[aria-pressed="true"] { border-color: var(--color-onglet); color: var(--color-papier);
+    background: color-mix(in srgb, var(--color-onglet) 12%, transparent); }
   .titre { font-family: var(--font-livre); font-weight: 600; letter-spacing: -0.01em; }
+  .feuille { background: var(--color-reliure); border: 1px solid var(--color-couture); border-radius: 10px; }
+  .discret { color: var(--color-mine); }
+  .avant { color: var(--color-mine); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--color-alerte) 70%, transparent); }
+  .apres { color: var(--color-papier); background: color-mix(in srgb, var(--color-onglet) 16%, transparent); border-radius: 3px; padding: 0 0.2rem; }
+  /* Écran tactile ou petit écran : 16 px dans les champs (Safari ne zoome plus) et aucune
+     cible sous 44 px. Dans cette couche, pour passer devant .bouton et .pastille. */
+  @media (pointer: coarse), (max-width: 899px) {
+    input, select, textarea { font-size: 16px; }
+    input[type="checkbox"], input[type="radio"] { width: 1.375rem; height: 1.375rem; }
+    .bouton, .pastille { min-height: 2.75rem; }
+  }
 }

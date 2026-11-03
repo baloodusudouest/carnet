@@ -6,7 +6,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from . import portraits
+from . import images
 from .modele import GROUPE_VERIFIES
 
 TEL = {"mobile": "type=CELL;type=VOICE", "domicile": "type=HOME;type=VOICE",
@@ -103,7 +103,7 @@ def vcard(fiche: dict, uid: str, photo: tuple[bytes, str] | None = None,
     if groupes:
         l.append("CATEGORIES:" + ",".join(echapper(g) for g in groupes))
     if photo and photo[0]:
-        photo = portraits.alleger(photo)   # iCloud refuse les fiches trop lourdes (~256 Ko)
+        photo = images.alleger(photo)   # iCloud refuse les fiches trop lourdes (~120 Ko)
         type_ = (photo[1] or "image/jpeg").split("/")[-1].upper().replace("JPG", "JPEG")
         l.append(f"PHOTO;ENCODING=b;TYPE={type_}:" + base64.b64encode(photo[0]).decode("ascii"))
     l.append(f"UID:{uid}")

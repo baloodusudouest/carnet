@@ -1,5 +1,28 @@
 # Journal des versions
 
+## 2.0.0 — 3 novembre 2026 — réécriture simplifiée
+
+carnet n'est plus un outil de migration : le grand ménage est fini, **iCloud est la source maître** et carnet en est le gardien. Mêmes services rendus, beaucoup moins de mécanique.
+
+### Ce qui change pour toi
+- **3 onglets**, identiques sur PC et iPhone : **À traiter** (toutes les décisions au même endroit), **Contacts** (photo, affiche et logo dans la fiche), **État**.
+- **Valider écrit tout de suite** dans iCloud, après un aperçu des champs qui changent, avec « Annuler » pendant 10 s.
+- **La nuit** n'écrit que ce qui est sûr : liaison exacte, photo d'une fiche liée qui n'en a pas, date de naissance manquante connue sans conflit, nouveau poste ou société LinkedIn quand la fiche portait l'ancien. 20 fiches au plus, jamais de suppression, une carte changée sur l'iPhone n'est jamais écrasée.
+- Toute fiche **modifiée, créée ou supprimée sur l'iPhone** arrive dans « À traiter » : Garder, Revenir à avant (carte remise à l'identique), Remettre la fiche.
+- **Sauvegardes** : copie complète d'iCloud avant la première écriture du jour et chaque nuit, dans `/state/sauvegardes` (hors OneDrive), 30 jours puis une par mois pendant un an, 2 Go au plus. Bouton pour **remettre une ou plusieurs fiches** comme dans une sauvegarde.
+- **Portraits** : recadrés à partir des visages déjà repérés par Immich ; tu choisis parmi les 6 plus grands.
+- **Home Assistant** : nouvelle adresse `/ha/contacts` (avec `carnet_id` stable). Les adresses de la 1.3 (`/ha/personnes`, `/ha/anniversaires`, `/ha/invite`, `/ha/portraits/candidats`, `/ha/portrait`) et les champs de `/status` lus par le paquet restent identiques : **rien à changer dans HA**.
+- **LinkedIn** : CSV ou API de portabilité, comme avant ; seuls les changements remontent.
+
+### Reprise de la 1.3
+Au premier démarrage : lecture complète d'iCloud (elle sert de référence, rien n'est signalé ni écrit), puis reprise unique depuis l'ancienne base (`/state/carnet.db`, clé `CARNET_DB_KEY` déjà présente) : liaisons et refus, photos choisies, affiches et leur pose, relations LinkedIn. L'ancienne base n'est jamais modifiée. La copie Synology faite par la 1.3 (identifiants « carnet-… ») est remplacée par un miroir exact d'iCloud.
+
+### Retiré
+Lecteurs Gmail et Outlook (un import .vcf générique reste), SQLCipher pour la nouvelle base (`carnet2.db` en SQLite simple, dossier protégé), test de restauration de base et clé Enpass, OpenCV et le modèle YuNet, simulation manuelle d'écriture, plafonds réglables, période à blanc, table `etat` à 38 clés. Serveur : 8 100 → 5 800 lignes (aucun fichier au-delà de 600), 88 → 54 adresses, 34 → 21 variables ; interface : 5 200 → 1 500 lignes.
+
+### Retour arrière
+`CARNET_VERSION=1.3.1` et `CARNET_VEILLE_HEURE=off` (la nuit de la 1.3 ne démarre pas : sinon elle réécrirait des fiches devenues périmées), puis Recreate. L'ancienne base est restée intacte.
+
 ## 1.3.1 — 3 novembre 2026
 - Photos : bouton ↻ en haut de la page, « Chercher les manquants » ou « Tout régénérer », qui enchaîne photos HD, affiches et logos pour tous les contacts, avec une barre de progression par étape (aussi visible si la recherche a été lancée ailleurs). Tes choix ne sont jamais changés.
 - État › « Changements pour iCloud » : tout ce qui partirait dans iCloud, sur une seule liste à jour (relue en ouvrant la page ou avec ↻) — modifications champ par champ (avant → après), créations, suppressions, groupes. Un toucher ouvre la liste ; pour chaque fiche, **Valider** (écrite dans iCloud tout de suite) ou **Revoir** (repasse en Révision, rien n'est écrit), puis « Appliquer » ; « Tout valider » en un geste. Les suppressions s'y confirment aussi.

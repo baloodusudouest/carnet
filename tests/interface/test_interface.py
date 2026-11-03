@@ -1,11 +1,5 @@
-"""Tests de l'interface dans un vrai navigateur (Chromium), sur PC (1300 px) et iPhone (390 px).
-
-Filet avant toute retouche de la navigation ou des mises en page : chaque onglet s'affiche sans
-erreur JavaScript, les raccourcis clavier de la révision fonctionnent, et les défauts connus sur
-iPhone sont notés (xfail strict : le test échouera, donc préviendra, le jour où ils sont corrigés).
-
-Lancement : construire l'interface (cd frontend && npm run build), puis python -m pytest tests/interface
-"""
+"""Tests de l'interface dans Chromium, sur PC et à la taille d'un iPhone (390 × 844).
+Il faut l'interface compilée dans app/static (voir la CI)."""
 from __future__ import annotations
 
 import re
@@ -18,31 +12,19 @@ from pathlib import Path
 import httpx
 import pytest
 
+playwright = pytest.importorskip("playwright.sync_api")
 RACINE = Path(__file__).resolve().parents[2]
-pytest.importorskip("playwright.sync_api")
 if not (RACINE / "app" / "static" / "index.html").is_file():
-    pytest.skip("interface non construite (cd frontend && npm run build)", allow_module_level=True)
-
-from playwright.sync_api import Page, expect, sync_playwright  # noqa: E402
-
-ONGLETS = [("accueil", "À traiter"), ("importer", "Importer"), ("revision", "Révision"), ("contacts", "Contacts"),
-           ("revue", "À compléter"), ("groupes", "Groupes"), ("liaisons", "Liaisons"), ("photos", "Photos"),
-           ("etat", "État"), ("export", "Export"), ("icloud", "iCloud"), ("archives", "Archives")]
-ECRANS = {"pc": {"viewport": {"width": 1300, "height": 900}},
-          "iphone": {"viewport": {"width": 390, "height": 844}, "device_scale_factor": 3, "is_mobile": True,
-                     "has_touch": True}}
-
-
-def _port_libre() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+    pytest.skip("interface non compilée", allow_module_level=True)
 
 
 @pytest.fixture(scope="module")
-def serveur(tmp_path_factory):
-    dossier, port = tmp_path_factory.mktemp("carnet-ui"), _port_libre()
-    proc = subprocess.Popen([sys.executable, "-m", "tests.interface.serveur", str(dossier), str(port)], cwd=RACINE)
+def adresse(tmp_path_factory):
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    proc = subprocess.Popen([sys.executable, "-m", "tests.interface.serveur", str(tmp_path_factory.mktemp("ui")), str(port)],
+                            cwd=RACINE)
     base = f"http://127.0.0.1:{port}"
     for _ in range(100):
         try:
@@ -50,253 +32,91 @@ def serveur(tmp_path_factory):
                 break
         except httpx.HTTPError:
             time.sleep(0.1)
-    # Données fictives : trois sources, pour avoir des doublons à réviser
-    with httpx.Client(base_url=base, headers={"X-Carnet": "1"}) as c:
-        assert c.post("/api/connexion", json={"mot_de_passe": "essai"}).status_code == 200
-        for fichier, source in (("icloud.vcf", "icloud"), ("gmail.vcf", "gmail"), ("outlook.csv", "outlook")):
-            contenu = (RACINE / "tests" / "donnees" / fichier).read_bytes()
-            assert c.post("/api/depot", files=[("fichiers", (fichier, contenu))]).status_code == 200
-            assert c.post("/api/importer", json={"nom": fichier, "source": source}).status_code == 200
     yield base
     proc.terminate()
-    proc.wait(10)
 
 
 @pytest.fixture(scope="module")
 def navigateur():
-    with sync_playwright() as p:
+    with playwright.sync_playwright() as p:
         b = p.chromium.launch()
         yield b
         b.close()
 
 
-def _page(navigateur, serveur, ecran: str) -> tuple[Page, list[str]]:
-    ctx = navigateur.new_context(**ECRANS[ecran])
-    page = ctx.new_page()
-    erreurs: list[str] = []
-    page.on("pageerror", lambda e: erreurs.append(str(e)))
-    page.on("console", lambda m: erreurs.append(m.text) if m.type == "error" and "404" not in m.text else None)
-    page.goto(serveur)
-    page.fill("input[type=password]", "essai")
-    page.keyboard.press("Enter")
-    expect(page.get_by_role("navigation", name="Sections")).to_be_visible()
-    return page, erreurs
+@pytest.fixture(params=["pc", "iphone"])
+def page(request, navigateur, adresse):
+    mobile = request.param == "iphone"
+    ctx = navigateur.new_context(viewport={"width": 390, "height": 844} if mobile else {"width": 1280, "height": 860},
+                                 is_mobile=mobile, has_touch=mobile)
+    pg = ctx.new_page()
+    erreurs = []
+    pg.on("pageerror", lambda e: erreurs.append(str(e)))
+    pg.goto(adresse)
+    pg.fill("#mdp", "essai")
+    pg.click("text=Ouvrir le carnet")
+    pg.wait_for_selector("nav.onglets")
+    pg.erreurs = erreurs
+    yield pg
+    assert not erreurs, erreurs
+    ctx.close()
 
 
-@pytest.mark.parametrize("ecran", ["pc", "iphone"])
-def test_chaque_onglet_s_affiche_sans_erreur(navigateur, serveur, ecran):
-    page, erreurs = _page(navigateur, serveur, ecran)
-    for route, _ in ONGLETS:
-        page.goto(f"{serveur}/#/{route}")
-        expect(page.locator("h1").first).to_be_visible()
+def test_trois_onglets_et_badge(page):
+    onglets = page.locator("nav.onglets a.onglet")
+    assert onglets.count() == 3
+    assert re.fullmatch(r"\d+", page.locator(".badge").inner_text())
+
+
+def test_a_traiter_garder_une_modification_iphone(page):
+    # Le serveur est partagé : la première fiche de l'iPhone déjà gardée, on prend la suivante
+    carte = page.locator("article", has=page.get_by_role("button", name="Garder", exact=True)).first
+    carte.get_by_role("button", name="Garder", exact=True).click()
+    page.wait_for_selector(".message")
+    assert "gardée" in page.locator(".message").inner_text()
+
+
+def test_contacts_recherche_et_tranche(page):
+    page.click("nav.onglets >> text=Contacts")
+    page.wait_for_selector(".ligne")
+    page.fill("input[type=search]", "fabre")
+    assert page.locator(".ligne").count() == 1
+    page.fill("input[type=search]", "")
+    assert page.locator(".tranche button").count() >= 5
+
+
+def test_fiche_apercu_puis_ecrire_et_annuler(page):
+    page.goto(page.url.split("#")[0] + "#/contacts/DDDD-4444")
+    page.click("text=Modifier")
+    page.locator("label:has-text('Fonction') input").fill("Vigneron")
+    page.click("text=Voir les changements")
+    assert "Vigneron" in page.locator(".apercu").inner_text()
+    page.click("text=Écrire dans iCloud")
+    page.wait_for_selector(".message >> text=Annuler")
+    page.click(".message >> text=Annuler")
+    page.wait_for_selector(".message >> text=revenue")
+
+
+def test_cibles_tactiles_et_champs(page):
+    if page.viewport_size["width"] > 500:
+        pytest.skip("contrôle tactile : iPhone seulement")
+    page.goto(page.url.split("#")[0] + "#/contacts/DDDD-4444")
+    page.click("text=Modifier")
+    tailles = page.eval_on_selector_all("button.bouton, a.bouton, .onglet", "els => els.map(e => e.getBoundingClientRect().height)")
+    assert min(tailles) >= 43.5
+    polices = page.eval_on_selector_all("input, select, textarea", "els => els.map(e => parseFloat(getComputedStyle(e).fontSize))")
+    assert min(polices) >= 16
+
+
+def test_pas_de_defilement_horizontal(page):
+    for route in ("#/a-traiter", "#/contacts", "#/contacts/AAAA-1111", "#/etat"):
+        page.goto(page.url.split("#")[0] + route)
         page.wait_for_timeout(300)
-    assert erreurs == []
-    page.context.close()
+        assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1"), route
 
 
-def test_raccourcis_de_la_revision(navigateur, serveur):
-    page, erreurs = _page(navigateur, serveur, "pc")
-    page.goto(f"{serveur}/#/revision")
-    titre = page.locator("h1").first
-    expect(titre).to_be_visible()
-    premier = titre.inner_text()
-    page.keyboard.press("ArrowRight")                     # → : passer sans valider
-    expect(titre).not_to_have_text(premier)
-    second = titre.inner_text()
-    page.keyboard.press("?")                              # ? : aide des raccourcis
-    expect(page.get_by_label("Raccourcis clavier")).to_be_visible()
-    page.keyboard.press("Escape")
-    expect(page.get_by_label("Raccourcis clavier")).to_have_count(0)
-    contacts = httpx.Client(base_url=serveur, cookies={c["name"]: c["value"] for c in page.context.cookies()})
-    pid = next(p["id"] for p in contacts.get("/api/contacts").json() if p["nom"] == second)
-    page.wait_for_timeout(500)                            # brouillon de la proposition enregistré
-    d = contacts.get(f"/api/personnes/{pid}").json()
-    amis_avant = "Amis" in d["fiche"]["groupes"]
-    page.keyboard.press("a")                              # A : ajouter ou retirer le groupe Amis
-    page.keyboard.press("Enter")                          # Entrée : valider et passer à la suivante
-    expect(titre).not_to_have_text(second)
-    d = contacts.get(f"/api/personnes/{pid}").json()
-    assert d["statut"] == "verifie" and ("Amis" in d["fiche"]["groupes"]) != amis_avant
-    assert erreurs == []
-    page.context.close()
-
-
-def _deborde(page: Page) -> bool:
-    """Le contenu de la page sort de l'écran, ou un bloc défile en largeur sans le vouloir
-    (les bandeaux de photos marqués data-defile défilent exprès). Sur mobile, innerWidth
-    s'agrandit avec le contenu : la largeur de l'écran est clientWidth."""
-    return page.evaluate("""() => { const l = document.documentElement.clientWidth;
-        if (document.documentElement.scrollWidth > l + 1) return true;
-        return [...document.querySelectorAll('main *')].some(el => !el.closest('[data-defile]') && (
-          el.getBoundingClientRect().right > l + 1
-          || (el.scrollWidth > el.clientWidth + 1 && ['auto', 'scroll'].includes(getComputedStyle(el).overflowX)))) }""")
-
-
-@pytest.mark.parametrize("route", ["chercher", "photos", "plus", "accueil", "revue", "groupes", "liaisons",
-                                   "export", "icloud", "archives", "contacts", "revision"])
-def test_iphone_sans_defilement_horizontal(navigateur, serveur, route):
-    page, _ = _page(navigateur, serveur, "iphone")
-    page.goto(f"{serveur}/#/{route}")
-    expect(page.locator("h1").first).to_be_attached()
-    page.wait_for_timeout(400)
-    assert not _deborde(page)
-    page.context.close()
-
-
-def test_iphone_barre_d_onglets_et_fiche(navigateur, serveur):
-    page, erreurs = _page(navigateur, serveur, "iphone")
-    barre = page.get_by_role("navigation", name="Sections")
-    for nom in ("À traiter", "Contacts", "Photos", "État"):
-        expect(barre.get_by_role("link", name=nom)).to_be_visible()
-    hauteur = page.evaluate("Math.min(...[...document.querySelectorAll('nav a')].map(a => a.getBoundingClientRect().height))")
-    assert hauteur >= 36                                    # pastilles 36 px, barre 56 px
-    barre.get_by_role("link", name="Contacts").click()
-    page.get_by_label("Rechercher un contact").fill("claire")
-    page.locator("main a[href^='#/fiche/']").first.click()
-    expect(page.locator("h1")).to_have_text("Claire MARTIN")
-    expect(page.get_by_role("link", name="Appeler")).to_have_attribute("href", "tel:+33612345678")
-    page.go_back()
-    expect(page.get_by_label("Rechercher un contact")).to_be_visible()
-    page.get_by_role("navigation", name="Pages de l'onglet").get_by_role("link", name="Groupes").click()
-    expect(page.locator("h1")).to_have_text("Groupes")
-    barre.get_by_role("link", name="État").click()
-    expect(page.get_by_role("button", name="Afficher la vue PC")).to_be_visible()
-    assert erreurs == []
-    page.context.close()
-
-
-def test_iphone_revision_mobile(navigateur, serveur):
-    """Révision au pouce : choix par carte, barre Valider en bas, fiche suivante sans attendre."""
-    page, erreurs = _page(navigateur, serveur, "iphone")
-    page.goto(f"{serveur}/#/accueil")
-    page.get_by_role("link", name=re.compile(r"^Relire")).click()
-    titre = page.locator("main h1")
-    expect(titre).to_be_visible()
-    premier = titre.inner_text()
-    valider = page.get_by_role("button", name="Valider", exact=True)
-    expect(valider).to_be_in_viewport()
-    boite = valider.bounding_box()
-    assert boite["height"] >= 48
-    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
-    # Une carte de choix : toucher une autre valeur la retient
-    radios = page.get_by_role("radio")
-    if radios.count() > 1:
-        radios.nth(1).click()
-        expect(radios.nth(1)).to_have_attribute("aria-checked", "true")
-    page.get_by_role("button", name="Passer").click()
-    expect(titre).not_to_have_text(premier)
-    assert erreurs == []
-    page.context.close()
-
-
-def test_pc_quatre_onglets_et_sous_onglets(navigateur, serveur):
-    page, erreurs = _page(navigateur, serveur, "pc")
-    principal = page.locator("header nav a")
-    expect(principal).to_have_text([re.compile(r"^À traiter"), "Contacts", re.compile(r"^Photos"), re.compile(r"^État")])
-    page.get_by_label("Chercher un contact").fill("sophie")
-    page.locator("a[href^='#/fiche/']", has_text="Sophie LEFÈVRE").click()
-    expect(page.locator("h1")).to_have_text("Sophie LEFÈVRE")
-    expect(page.get_by_role("link", name="Modifier la fiche")).to_be_visible()
-    principal.filter(has_text="À traiter").click()
-    sous = page.get_by_role("navigation", name="Pages de l'onglet")
-    for nom in ("Boîte", "Révision", "À compléter", "Liaisons"):
-        expect(sous.get_by_role("link", name=re.compile(f"^{nom}"))).to_be_visible()
-    principal.filter(has_text="État").click()
-    sous = page.get_by_role("navigation", name="Pages de l'onglet")
-    for nom in ("Synchro", "Sauvegardes et export", "iCloud en détail", "Archives"):
-        expect(sous.get_by_role("link", name=nom)).to_be_visible()
-    expect(page.get_by_role("button", name="Synchroniser maintenant")).to_be_visible()
-    assert erreurs == []
-    page.context.close()
-
-
-def test_pc_fusion_depuis_contacts_reste_sur_la_liste(navigateur, serveur):
-    page, erreurs = _page(navigateur, serveur, "pc")
-    page.goto(f"{serveur}/#/contacts")
-    lignes = page.locator("tbody tr")
-    expect(lignes.first).to_be_visible()
-    noms = [lignes.nth(i).locator("td").nth(1).inner_text().split("\n")[0] for i in (0, 1)]
-    lignes.nth(0).click()                                   # un clic sur la ligne la coche
-    lignes.nth(1).locator("input[type=checkbox]").check()
-    page.once("dialog", lambda d: d.accept())
-    page.get_by_role("button", name="Fusionner").click()
-    expect(page.get_by_text("Fusion à réviser")).to_have_count(1)
-    assert page.url.endswith("#/contacts")                  # on reste sur la liste
-    expect(page.locator("tbody input[type=checkbox]:checked")).to_have_count(0)
-    assert any(page.get_by_text(n, exact=True).count() for n in noms)
-    assert erreurs == []
-    page.context.close()
-
-
-def test_pc_linkedin_des_membres_d_un_groupe(navigateur, serveur):
-    page, erreurs = _page(navigateur, serveur, "pc")
-    page.goto(f"{serveur}/#/groupes")
-    ligne = page.locator("li", has_text="Urgence").first
-    ligne.get_by_role("button", name="LinkedIn").click()
-    lien = ligne.get_by_role("link", name="Chercher sur LinkedIn").first
-    expect(lien).to_have_attribute("href", re.compile(r"^https://www\.linkedin\.com/search/results/people/\?keywords="))
-    champ = ligne.get_by_placeholder("linkedin.com/in/…").first
-    champ.fill("linkedin.com/in/essai-carnet")
-    ligne.get_by_role("button", name="Ajouter").first.click()
-    expect(ligne.get_by_role("link", name="LinkedIn ✓").first).to_be_visible()
-    assert erreurs == []
-    page.context.close()
-
-
-def test_pc_ajouter_des_contacts_a_un_groupe(navigateur, serveur):
-    page, erreurs = _page(navigateur, serveur, "pc")
-    page.goto(f"{serveur}/#/contacts")
-    lignes = page.locator("tbody tr")
-    expect(lignes.first).to_be_visible()
-    lignes.nth(0).click()
-    lignes.nth(1).click()
-    page.get_by_label("Groupe à ajouter ou retirer").select_option("Clients")
-    page.get_by_role("button", name="Ajouter au groupe").click()
-    expect(page.get_by_text("ajouté(s) à Clients")).to_be_visible()
-    expect(page.locator("tbody input[type=checkbox]:checked")).to_have_count(0)
-    expect(lignes.filter(has_text="Clients")).to_have_count(2)
-    assert erreurs == []
-    page.context.close()
-
-
-def test_iphone_onglet_logos(navigateur, serveur):
-    page, erreurs = _page(navigateur, serveur, "iphone")
-    page.goto(f"{serveur}/#/photos")
-    page.get_by_role("tab", name="Logos").click()
-    expect(page.get_by_role("group", name="Groupes concernés")).to_be_visible()
-    expect(page.get_by_role("button", name="Clients")).to_have_attribute("aria-pressed", "true")
-    assert not _deborde(page)
-    assert erreurs == []
-    page.context.close()
-
-
-def test_iphone_en_vue_pc_bouton_menu(navigateur, serveur):
-    """Vue PC choisie sur l'iPhone : la barre du haut tient dans l'écran et un bouton en bas à droite
-    redonne les mêmes accès (onglets, sous-pages, retour à la vue iPhone)."""
-    page, erreurs = _page(navigateur, serveur, "iphone")
-    page.goto(f"{serveur}/#/etat")
-    page.get_by_role("button", name="Afficher la vue PC").click()
-    expect(page.get_by_role("button", name="Vue iPhone", exact=True)).to_be_visible()
-    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
-    page.goto(f"{serveur}/#/revision")
-    tableau = page.locator("table").first
-    expect(tableau).to_be_visible()
-    # Révision en vue PC sur iPhone : le tableau garde sa largeur et défile de côté, la page non
-    assert tableau.evaluate("t => t.parentElement.scrollWidth > t.parentElement.clientWidth")
-    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth")
-    page.mouse.wheel(0, 600)
-    page.wait_for_timeout(400)
-    page.mouse.wheel(0, -200)                             # en remontant, le bouton revient
-    page.wait_for_timeout(400)
-    menu = page.get_by_role("button", name="Menu", exact=True)
-    expect(menu).to_be_in_viewport()
-    menu.click()
-    page.locator("#menu-raccourci").get_by_role("link", name="Groupes").click()
-    expect(page.locator("h1").first).to_have_text("Groupes")
-    expect(page.locator("#menu-raccourci")).to_have_count(0)
-    menu.click()
-    page.locator("#menu-raccourci").get_by_role("button", name="Vue iPhone").click()
-    expect(page.get_by_role("button", name="Menu", exact=True)).to_have_count(0)
-    expect(page.get_by_role("navigation", name="Sections").get_by_role("link", name="État")).to_be_visible()
-    assert erreurs == []
-    page.context.close()
+def test_etat_et_deconnexion(page):
+    page.click("nav.onglets >> text=État")
+    page.wait_for_selector("text=Sauvegardes d'iCloud")
+    page.click("text=Se déconnecter")
+    page.wait_for_selector("#mdp")

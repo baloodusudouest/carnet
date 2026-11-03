@@ -1,108 +1,182 @@
 <script>
-  // Vue iPhone : fiche d'un contact en lecture, avec les actions de l'iPhone
-  // (appeler, message, courriel, Plans). « Modifier la fiche » ouvre la Révision (PC ou iPhone).
+  import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  import { route, annoncer, ecran } from '../lib/etat.svelte.js'
-  import { anniversaireLisible, texteItem } from '../lib/cles.js'
+  import { aller, apresEcriture, erreur, dire, etat } from '../lib/etat.svelte.js'
+  import Avatar from '../components/Avatar.svelte'
+  import Changements from '../components/Changements.svelte'
+  import Editeur from '../components/Editeur.svelte'
+  import Point from '../components/Point.svelte'
+  import PhotosFiche from '../components/PhotosFiche.svelte'
 
-  let dossier = $state(null)
-  $effect(() => {
-    const id = route.id
-    dossier = null
-    if (id) api.get(`/api/personnes/${id}`).then((d) => (dossier = d)).catch((e) => annoncer(e.message, true))
+  let { uid } = $props()
+  const e = encodeURIComponent(uid)
+  let donnees = $state(null)
+  let brouillon = $state(null)    // fiche en cours de modification
+  let apercu = $state(null)       // { fiche, champs } avant d'écrire
+  let attente = $state(false)
+  let proches = $state(null)
+  let reunir = $state('')
+
+  async function charger() {
+    try { donnees = await api.get(`/api/contacts/${e}`) } catch (err) { erreur(err) }
+  }
+  function modifier() { brouillon = JSON.parse(JSON.stringify(donnees.fiche)); apercu = null }
+  async function verifier() {
+    attente = true
+    try { apercu = await api.post(`/api/contacts/${e}/apercu`, { fiche: brouillon }) } catch (err) { erreur(err) } finally { attente = false }
+  }
+  async function ecrire() {
+    attente = true
+    try {
+      const res = await api.put(`/api/contacts/${e}`, { fiche: apercu.fiche })
+      brouillon = apercu = null
+      await apresEcriture(res, 'Fiche écrite dans iCloud.')
+      await charger()
+    } catch (err) { erreur(err) } finally { attente = false }
+  }
+  async function chercherProches() {
+    try { proches = await api.get(`/api/contacts/${e}/proches`) } catch (err) { erreur(err) }
+  }
+  async function lier(service, id) {
+    try { await api.post(`/api/contacts/${e}/lier`, { service, id }); dire('Lié.'); proches = null; await charger() } catch (err) { erreur(err) }
+  }
+  async function delier(service) {
+    try { await api.post(`/api/contacts/${e}/delier`, { service }); dire('Délié : cette personne ne sera plus proposée.'); await charger() }
+    catch (err) { erreur(err) }
+  }
+
+  const SERVICE = { immich: 'Immich', treemich: 'Treemich' }
+  const candidatsReunir = $derived.by(() => {
+    const q = reunir.trim().toLowerCase()
+    if (q.length < 2) return []
+    return (etat.contacts || []).filter((c) => c.uid !== uid && c.nom.toLowerCase().includes(q)).slice(0, 6)
   })
-  const f = $derived(dossier?.fiche)
-  const nom = $derived(f ? [f.prenom, f.nom].filter(Boolean).join(' ') || f.societe || f.surnom || '(sans nom)' : '')
-  const mobile = $derived(f?.telephones.find((t) => t.type === 'mobile' || t.type === 'travail') ?? f?.telephones[0])
-  const lienPlans = (a) => `https://maps.apple.com/?q=${encodeURIComponent(texteItem('adresses', a))}`
-  const lienSite = (v) => (/^[a-z]+:/i.test(v) ? v : `https://${v}`)
+  const f = $derived(donnees?.fiche)
+  onMount(charger)
 </script>
 
-{#snippet action(href, libelle, chemin)}
-  <a {href} class="flex-1 flex flex-col items-center gap-1 rounded-2xl bg-reliure border border-couture py-2.5 text-xs text-papier active:bg-couture
-    {href ? '' : 'pointer-events-none opacity-40'}" aria-disabled={!href}>
-    <svg viewBox="0 0 24 24" class="w-5 h-5 text-onglet" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html chemin}</svg>
-    {libelle}
-  </a>
-{/snippet}
+<section class="page">
+  <a class="retour discret" href="#/contacts">Contacts</a>
+  {#if !donnees}
+    <p class="discret">Chargement…</p>
+  {:else}
+    <header class="entete">
+      <Avatar {uid} nom={donnees.nom} photo={f.a_photo} taille={84} />
+      <div>
+        <h1 class="titre">{donnees.nom}</h1>
+        {#if f.societe || f.fonction}<p class="discret">{[f.fonction, f.societe].filter(Boolean).join(', ')}</p>{/if}
+        {#if f.groupes.length}<p class="groupes">{#each f.groupes as g}<span class="pastille">{g}</span>{/each}</p>{/if}
+      </div>
+    </header>
 
-{#snippet section(titre, champ, items)}
-  {#if items?.length}
-    <section class="mt-4">
-      <h2 class="text-xs uppercase tracking-wide text-mine mb-1.5 px-1">{titre}</h2>
-      <ul class="rounded-2xl border border-couture divide-y divide-couture overflow-hidden bg-reliure">
-        {#each items as it}
-          {@const href = champ === 'telephones' ? `tel:${it.valeur}` : champ === 'courriels' ? `mailto:${it.valeur}`
-            : champ === 'adresses' ? lienPlans(it) : lienSite(it.valeur)}
-          <li>
-            <a {href} class="flex items-center gap-3 px-4 min-h-12 py-2 active:bg-couture">
-              <span class="flex-1 min-w-0">
-                <span class="block text-[11px] text-mine">{it.type || ''}</span>
-                <span class="block text-onglet break-words">{texteItem(champ, it)}</span>
-              </span>
-            </a>
-          </li>
+    {#if donnees.a_traiter.length}
+      <div class="points">
+        {#each donnees.a_traiter as p (p.id)}<Point point={p} ontraite={charger} />{/each}
+      </div>
+    {/if}
+
+    {#if brouillon}
+      <div class="feuille bloc">
+        <Editeur bind:fiche={brouillon} groupesConnus={donnees.groupes_connus} />
+      </div>
+      <div class="barre">
+        {#if apercu}
+          <div class="apercu">
+            <h2 class="titre">Ce qui part dans iCloud</h2>
+            <Changements champs={apercu.champs} />
+          </div>
+          <div class="boutons">
+            <button class="bouton" onclick={() => (apercu = null)}>Continuer à modifier</button>
+            <button class="bouton bouton-principal" disabled={attente || !apercu.champs.length} onclick={ecrire}>
+              {attente ? 'Écriture…' : 'Écrire dans iCloud'}</button>
+          </div>
+        {:else}
+          <div class="boutons">
+            <button class="bouton" onclick={() => (brouillon = null)}>Abandonner</button>
+            <button class="bouton bouton-principal" disabled={attente} onclick={verifier}>{attente ? 'Vérification…' : 'Voir les changements'}</button>
+          </div>
+        {/if}
+      </div>
+    {:else}
+      <div class="feuille bloc lecture">
+        <div class="raccourcis">
+          {#each f.telephones as t}<a class="bouton" href={'tel:' + t.valeur}>{t.affichage || t.valeur} <span class="discret">{t.type}</span></a>{/each}
+          {#each f.courriels as c}<a class="bouton" href={'mailto:' + c.valeur}>{c.valeur}</a>{/each}
+        </div>
+        <dl>
+          {#if f.anniversaire}<dt>Anniversaire</dt><dd>{f.anniversaire.startsWith('--') ? f.anniversaire.slice(2).split('-').reverse().join('/') : f.anniversaire.split('-').reverse().join('/')}</dd>{/if}
+          {#if f.surnom}<dt>Surnom</dt><dd>{f.surnom}</dd>{/if}
+          {#each f.adresses as a}<dt>Adresse {a.type}</dt><dd>{[a.rue, `${a.cp} ${a.ville}`.trim(), a.pays].filter(Boolean).join(', ')}</dd>{/each}
+          {#each f.noms_associes as n}<dt>{n.type}</dt><dd>{n.valeur}</dd>{/each}
+          {#each f.sites as s}<dt>{s.type}</dt><dd><a href={s.valeur} target="_blank" rel="noreferrer">{s.valeur}</a></dd>{/each}
+          {#if f.notes}<dt>Notes</dt><dd class="notes">{f.notes}</dd>{/if}
+        </dl>
+        <button class="bouton bouton-principal" onclick={modifier}>Modifier</button>
+      </div>
+
+      <div class="feuille bloc">
+        <h2 class="titre">Liaisons</h2>
+        {#each Object.entries(donnees.liaisons) as [service, l]}
+          <p class="liaison"><span>{SERVICE[service]} : {l.nom || l.id}{l.statut === 'auto' ? ' (liée seule la nuit)' : ''}</span>
+            <button class="bouton" onclick={() => delier(service)}>Délier</button></p>
         {/each}
-      </ul>
-    </section>
-  {/if}
-{/snippet}
+        {#if !donnees.liaisons.immich || !donnees.liaisons.treemich}
+          {#if proches === null}
+            <button class="bouton" onclick={chercherProches}>Chercher dans Immich et Treemich</button>
+          {:else if !proches.length}
+            <p class="discret">Aucune personne au nom proche.</p>
+          {:else}
+            {#each proches.filter((p) => !donnees.liaisons[p.service]) as p}
+              <p class="liaison"><span>{SERVICE[p.service]} : {p.nom} <span class="discret">({p.score} %{p.naissance ? `, ${p.naissance.slice(0, 10)}` : ''})</span></span>
+                <button class="bouton" onclick={() => lier(p.service, p.id)}>Lier</button></p>
+            {/each}
+          {/if}
+        {/if}
+        {#if donnees.linkedin}<p class="discret">LinkedIn : {[donnees.linkedin.fonction, donnees.linkedin.societe].filter(Boolean).join(', ') || donnees.linkedin.url}</p>{/if}
+      </div>
 
-<div class="max-w-xl mx-auto">
-<a href="#/chercher" onclick={(e) => { if (history.length > 1) { e.preventDefault(); history.back() } }}
-  class="inline-flex items-center gap-1 text-onglet text-sm h-10">‹ Retour</a>
+      <div class="feuille bloc">
+        <h2 class="titre">Photo et affiche</h2>
+        <PhotosFiche {uid} nom={donnees.nom} lieImmich={!!donnees.liaisons.immich} portraits={donnees.portraits}
+                     affiche={donnees.affiche} societe={f.societe} onchange={charger} />
+      </div>
 
-{#if !f}
-  <p class="text-mine mt-6">Chargement…</p>
-{:else}
-  <div class="flex flex-col items-center text-center mt-1">
-    <span class="relative w-28 h-28 rounded-full overflow-hidden bg-couture grid place-items-center text-4xl text-mine">
-      {nom[0]}
-      {#if f.photo}<img class="absolute inset-0 w-full h-full object-cover" src={`/api/photos/${f.photo}?taille=240`} alt=""
-        width="112" height="112" onerror={(e) => e.currentTarget.remove()} />{/if}
-    </span>
-    <h1 class="titre text-2xl mt-3 leading-tight">{nom}</h1>
-    {#if f.surnom}<p class="text-mine text-sm">« {f.surnom} »</p>{/if}
-    {#if f.fonction || f.societe}<p class="text-mine text-sm">{[f.fonction, f.societe].filter(Boolean).join(' · ')}</p>{/if}
-  </div>
+      <div class="feuille bloc">
+        <h2 class="titre">Réunir avec une autre fiche</h2>
+        <input type="search" bind:value={reunir} placeholder="Nom de l'autre fiche" aria-label="Autre fiche" />
+        {#each candidatsReunir as c (c.uid)}
+          <button class="bouton choix" onclick={() => aller('fusion', uid, c.uid)}>{c.nom}</button>
+        {/each}
+      </div>
+    {/if}
+  {/if}
+</section>
 
-  <div class="flex gap-2 mt-4">
-    {@render action(mobile ? `tel:${mobile.valeur}` : null, 'Appeler',
-      '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>')}
-    {@render action(mobile ? `sms:${mobile.valeur}` : null, 'Message',
-      '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>')}
-    {@render action(f.courriels[0] ? `mailto:${f.courriels[0].valeur}` : null, 'Courriel',
-      '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>')}
-  </div>
-
-  {@render section('Téléphones', 'telephones', f.telephones)}
-  {@render section('Courriels', 'courriels', f.courriels)}
-  {@render section('Adresses', 'adresses', f.adresses)}
-  {@render section('Sites et réseaux', 'sites', f.sites)}
-
-  {#if f.anniversaire}
-    <section class="mt-4 rounded-2xl border border-couture bg-reliure px-4 py-2.5">
-      <span class="block text-[11px] text-mine">anniversaire</span>{anniversaireLisible(f.anniversaire)}
-    </section>
-  {/if}
-  {#if f.noms_associes?.length}
-    <section class="mt-4">
-      <h2 class="text-xs uppercase tracking-wide text-mine mb-1.5 px-1">Proches</h2>
-      <ul class="rounded-2xl border border-couture divide-y divide-couture bg-reliure">
-        {#each f.noms_associes as n}<li class="px-4 py-2.5"><span class="block text-[11px] text-mine">{n.type}</span>{n.valeur}</li>{/each}
-      </ul>
-    </section>
-  {/if}
-  {#if f.notes}
-    <section class="mt-4 rounded-2xl border border-couture bg-reliure px-4 py-2.5 whitespace-pre-line break-words">
-      <span class="block text-[11px] text-mine">notes</span>{f.notes}
-    </section>
-  {/if}
-  {#if f.groupes.length}
-    <div class="flex flex-wrap gap-1.5 mt-4">
-      {#each f.groupes as g}<span class="text-xs rounded-full px-2.5 py-1 border border-couture text-mine">{g}</span>{/each}
-    </div>
-  {/if}
-  <p class="mt-6 text-center"><a class="bouton min-h-11" href={`#/revision/${route.id}`}>Modifier la fiche</a></p>
-{/if}
-</div>
+<style>
+  .page { max-width: 46rem; display: grid; gap: 1rem; }
+  .retour { justify-self: start; min-height: 2.75rem; display: inline-flex; align-items: center; }
+  .entete { display: flex; gap: 1rem; align-items: center; }
+  h1 { font-size: 1.9rem; line-height: 1.15; }
+  h2 { font-size: 1.2rem; margin-bottom: 0.6rem; }
+  .groupes { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem; }
+  .groupes .pastille { min-height: 1.6rem; font-size: 0.8rem; }
+  .points { display: grid; gap: 0.6rem; }
+  .bloc { padding: 1rem; }
+  .lecture { display: grid; gap: 0.9rem; }
+  .lecture > .bouton { justify-self: start; }
+  .raccourcis { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  dl { display: grid; grid-template-columns: minmax(7rem, auto) 1fr; gap: 0.35rem 1rem; }
+  dt { color: var(--color-mine); }
+  dd { min-width: 0; overflow-wrap: anywhere; }
+  .notes { white-space: pre-line; }
+  .liaison { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 2.75rem; }
+  .choix { margin-top: 0.4rem; margin-right: 0.4rem; }
+  .barre {
+    position: sticky; bottom: calc(3.5rem + env(safe-area-inset-bottom)); z-index: 5; display: grid; gap: 0.7rem;
+    padding: 0.8rem 1rem; background: var(--color-reliure); border: 1px solid var(--color-tranche); border-radius: 10px;
+    box-shadow: 0 -6px 18px rgb(0 0 0 / 0.35);
+  }
+  .apercu { max-height: 45dvh; overflow-y: auto; }
+  .boutons { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; }
+  @media (min-width: 900px) { .barre { bottom: 1rem; } }
+</style>
