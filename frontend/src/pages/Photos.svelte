@@ -49,34 +49,38 @@
   const vignette = (l, c) => mode === 'hd' ? `/api/portraits/apercu/${l.pid}/${c.asset}` : `/api/affiches/proposition/${l.pid}/${c.asset}`
   const grande = (l, c) => mode === 'hd' ? `/api/portraits/apercu/${l.pid}/${c.asset}` : `/api/affiches/proposition/${l.pid}/${c.asset}?grand=true`
 
-  // Recherche des propositions (photos HD, affiches) lancée d'ici, sur PC comme sur iPhone
+  // Recherche de tout (photos HD, affiches, logos) en une fois, avec la progression de chaque étape
   let tache = $state(null)
-  const recherche_en_cours = $derived(['lecture', 'ecriture'].includes(tache?.etat))
-  async function suivre() {
-    tache = (await api.get('/api/icloud')).tache
-    if (['lecture', 'ecriture'].includes(tache?.etat)) setTimeout(suivre, 1000)
-    else {
+  let menuRecherche = $state(false)
+  let version = $state(0)               // recharge l'onglet Logos après une recherche
+  const OPERATIONS = ['photos', 'portraits', 'affiches', 'logos']
+  const enCours = $derived(['lecture', 'ecriture'].includes(tache?.etat) && OPERATIONS.includes(tache?.operation))
+  const avancement = $derived(tache?.total ? Math.round((100 * tache.fait) / tache.total) : null)
+  async function suivre(annoncerFin = false) {
+    try {
+      tache = (await api.get('/api/icloud')).tache
+    } catch {
+      return
+    }
+    if (['lecture', 'ecriture'].includes(tache?.etat)) {
+      if (OPERATIONS.includes(tache?.operation)) setTimeout(() => suivre(true), 1000)
+    } else if (annoncerFin) {
       if (tache?.message) annoncer(tache.message, tache.etat === 'erreur')
       await charger()
+      version += 1
     }
   }
-  async function lancerRecherche() {
+  suivre()   // une recherche lancée avant d'ouvrir la page : sa progression s'affiche
+  async function rechercher(mode) {
+    menuRecherche = false
     try {
-      await api.post(mode === 'hd' ? '/api/portraits/recherche' : '/api/affiches/preparation')
-      await suivre()
+      await api.post('/api/photos/recherche', { mode })
+      await suivre(true)
     } catch (e) {
       annoncer(e.message, true)
     }
   }
-  async function basculerGroupeAffiche(g) {
-    const groupes = affiches.groupes.includes(g) ? affiches.groupes.filter((x) => x !== g) : [...affiches.groupes, g]
-    try {
-      affiches = await api.post('/api/affiches/groupes', { groupes })
-    } catch (e) {
-      annoncer(e.message, true)
-    }
-  }
-  const derniereRecherche = $derived(mode === 'hd' ? portraits?.journal?.[0]?.le : affiches?.journal?.[0]?.le)
+  const derniereRecherche = $derived(affiches?.journal?.[0]?.le ?? portraits?.journal?.[0]?.le)
 
   async function choisir() {
     const { ligne, cand } = vue
@@ -185,7 +189,44 @@
   const enregistrer = (l) => preparer([{ ...l, affiche: affiches.lignes.find((x) => x.pid === l.pid)?.affiche }], `l'affiche de ${l.nom}`)
 </script>
 
-<h1 class="titre text-2xl mb-3">Photos</h1>
+<div class="flex items-center gap-2 mb-3">
+  <h1 class="titre text-2xl flex-1">Photos</h1>
+  <div class="relative">
+    <button class="w-11 h-11 rounded-full border border-couture text-onglet grid place-items-center disabled:opacity-50"
+      aria-label="Chercher les photos, affiches et logos" aria-expanded={menuRecherche} disabled={enCours}
+      onclick={() => (menuRecherche = !menuRecherche)}>
+      <svg viewBox="0 0 24 24" class="w-5 h-5 {enCours ? 'animate-spin' : ''}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 12a8 8 0 1 1-2.34-5.66" /><path d="M20 4v5h-5" /></svg>
+    </button>
+    {#if menuRecherche}
+      <button class="fixed inset-0 z-30 cursor-default" aria-label="Fermer" onclick={() => (menuRecherche = false)}></button>
+      <div class="absolute right-0 top-12 z-40 w-72 rounded-2xl border border-tranche bg-reliure shadow-2xl p-2 text-sm" role="menu">
+        <p class="px-2 pt-1 pb-2 text-xs text-mine">Photos HD, affiches et logos de tous les contacts.
+          Tes choix ne sont jamais changés.{derniereRecherche ? ` Dernière recherche le ${dateCourte(derniereRecherche)}.` : ''}</p>
+        <button role="menuitem" class="w-full text-left rounded-xl px-3 py-2 min-h-12 hover:bg-couture" onclick={() => rechercher('manquants')}>
+          <span class="block text-papier">Chercher les manquants</span>
+          <span class="block text-xs text-mine">Contacts sans proposition, sites jamais lus</span></button>
+        <button role="menuitem" class="w-full text-left rounded-xl px-3 py-2 min-h-12 hover:bg-couture" onclick={() => rechercher('tout')}>
+          <span class="block text-papier">Tout régénérer</span>
+          <span class="block text-xs text-mine">Toutes les photos réexaminées, tous les sites relus (long)</span></button>
+      </div>
+    {/if}
+  </div>
+</div>
+
+{#if enCours}
+  <div class="rounded-2xl border border-onglet/50 bg-reliure p-3 mb-3 text-sm" role="status" aria-live="polite">
+    <div class="flex items-baseline gap-2 mb-2">
+      <span class="flex-1 text-papier">{tache.etape ? `${tache.etape.nom} · étape ${tache.etape.n} sur ${tache.etape.total}` : 'Recherche en cours'}</span>
+      {#if avancement != null}<span class="text-mine tabular-nums">{tache.fait} / {tache.total}</span>{/if}
+    </div>
+    <div class="h-2 rounded-full bg-couture overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={avancement ?? undefined}>
+      <div class="h-full bg-onglet transition-[width] duration-500 {avancement == null ? 'w-1/3 animate-pulse' : ''}"
+        style={avancement != null ? `width: ${avancement}%` : undefined}></div>
+    </div>
+    <p class="text-xs text-mine mt-2 truncate">{tache.message}</p>
+  </div>
+{/if}
 
 <div class="grid grid-cols-3 p-1 rounded-xl bg-reliure border border-couture text-sm mb-3" role="tablist" aria-label="Type de photo">
   {#each [['hd', 'Photo'], ['affiche', 'Affiche'], ['logo', 'Logos']] as [v, t]}
@@ -195,7 +236,7 @@
 </div>
 
 {#if mode === 'logo'}
-  <Logos />
+  {#key version}<Logos />{/key}
 {:else}
 <input class="w-full h-11 !rounded-xl !px-4 text-base mb-2" type="search" placeholder="Filtrer par nom" bind:value={recherche}
   aria-label="Filtrer par nom" autocomplete="off" />
@@ -246,27 +287,6 @@
 {#if (mode === 'hd' && !portraits) || (mode === 'affiche' && !affiches)}
   <p class="text-mine">Chargement…</p>
 {:else}
-  <details class="rounded-2xl border border-couture bg-reliure px-3 mb-3 text-sm" open={mode === 'affiche' && !affiches.groupes.length}>
-    <summary class="min-h-11 flex items-center gap-2 cursor-pointer text-papier">
-      <span class="flex-1">{mode === 'hd' ? 'Chercher de nouvelles photos dans Immich' : 'Groupes et recherche des affiches'}</span>
-      <span class="text-xs text-mine">{derniereRecherche ? `dernière le ${dateCourte(derniereRecherche)}` : 'jamais lancée'}</span>
-    </summary>
-    <div class="pb-3">
-      {#if mode === 'affiche'}
-        <p class="text-xs text-mine mb-2">Contacts concernés : ceux des groupes cochés, liés à Immich.</p>
-        <div class="flex flex-wrap gap-1.5 mb-3" role="group" aria-label="Groupes des affiches">
-          {#each ref.groupes as g}
-            <button class="pastille" aria-pressed={affiches.groupes.includes(g)} onclick={() => basculerGroupeAffiche(g)}>{g}</button>
-          {/each}
-        </div>
-      {:else}
-        <p class="text-xs text-mine mb-2">Pour chaque contact lié à Immich : le visage entier le plus grand, le plus net et le plus de face. Refait seul une fois par mois.</p>
-      {/if}
-      <button class="w-full min-h-11 rounded-xl border border-onglet text-onglet disabled:opacity-50"
-        disabled={recherche_en_cours || (mode === 'affiche' && !affiches.groupes.length)} onclick={lancerRecherche}>
-        {recherche_en_cours ? (tache?.message ?? 'Recherche…') : mode === 'hd' ? 'Chercher les photos HD' : 'Chercher les affiches'}</button>
-    </div>
-  </details>
   <ul class="space-y-3">
     {#each lignes as l (l.pid)}
       <li class="rounded-2xl border border-couture bg-reliure p-3">
@@ -298,8 +318,7 @@
     {:else}
       <li class="text-sm text-mine py-6 text-center">
         {#if (mode === 'hd' ? portraits.lignes : affiches.lignes).length === 0}
-          {mode === 'affiche' && !affiches.groupes.length ? 'Coche au moins un groupe ci-dessus, puis lance la recherche.'
-            : 'Aucun contact lié à Immich ici : les liaisons se font dans À traiter (ou seules la nuit), puis la recherche ci-dessus.'}
+          Aucun contact lié à Immich ici : les liaisons se font dans À traiter (ou seules la nuit), puis la recherche avec le bouton ↻ en haut.
         {:else if filtre === 'a_choisir'}Rien à choisir : tout est fait. Le filtre « Tous » montre chaque contact.
         {:else}Aucun contact dans ce filtre.{/if}
       </li>

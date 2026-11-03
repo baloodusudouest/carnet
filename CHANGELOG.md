@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 1.3.1 — 3 novembre 2026
+- Photos : bouton ↻ en haut de la page, « Chercher les manquants » ou « Tout régénérer », qui enchaîne photos HD, affiches et logos pour tous les contacts, avec une barre de progression par étape (aussi visible si la recherche a été lancée ailleurs). Tes choix ne sont jamais changés.
+- Affiches pour tous les contacts liés à Immich : plus de choix par groupe (la nuit aussi). Les logos gardent leurs groupes.
+
 ## 1.3.0 — 3 novembre 2026
 
 ### Lot 1 · Filet de sécurité
