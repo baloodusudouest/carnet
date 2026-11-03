@@ -82,7 +82,33 @@ def test_contacts_recherche_et_tranche(page):
     page.fill("input[type=search]", "fabre")
     assert page.locator(".ligne").count() == 1
     page.fill("input[type=search]", "")
-    assert page.locator(".tranche button").count() >= 5
+    if page.viewport_size["width"] > 500:
+        assert page.locator(".tranche button").count() >= 5        # PC : onglets de la tranche
+    else:
+        assert page.locator(".index button").count() == 27         # iPhone : index fin A à Z et #
+
+
+def test_tri_par_prenom_ou_par_nom(page):
+    page.click("nav.onglets >> text=Contacts")
+    page.wait_for_selector(".ligne")
+    page.get_by_role("button", name="Prénom", exact=True).click()
+    assert page.locator(".ligne .nom").first.inner_text().startswith("Agnès")
+    page.get_by_role("button", name="Nom", exact=True).click()
+    assert page.locator(".lettre").first.inner_text() == "A"
+    assert page.locator(".ligne .nom").first.inner_text().startswith("Manon ANDRE")
+    page.reload()
+    page.wait_for_selector(".ligne")
+    assert page.get_by_role("button", name="Nom", exact=True).get_attribute("aria-pressed") == "true"   # choix gardé
+    page.get_by_role("button", name="Prénom", exact=True).click()
+
+
+def test_pc_liste_et_fiche_cote_a_cote(page):
+    if page.viewport_size["width"] < 900:
+        pytest.skip("PC seulement")
+    page.click("nav.onglets >> text=Contacts")
+    page.click(".ligne:has-text('Paul MARTIN')")
+    page.wait_for_selector(".volet-fiche h1:has-text('Paul MARTIN')")
+    assert page.locator(".volet-liste .ligne").count() > 5
 
 
 def test_fiche_apercu_puis_ecrire_et_annuler(page):

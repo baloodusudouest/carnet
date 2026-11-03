@@ -8,7 +8,7 @@
   import Point from '../components/Point.svelte'
   import PhotosFiche from '../components/PhotosFiche.svelte'
 
-  let { uid } = $props()
+  let { uid, panneau = false } = $props()   // panneau : à droite de la liste, sur PC
   const e = encodeURIComponent(uid)
   let donnees = $state(null)
   let brouillon = $state(null)    // fiche en cours de modification
@@ -56,7 +56,7 @@
 </script>
 
 <section class="page">
-  <a class="retour discret" href="#/contacts">Contacts</a>
+  {#if !panneau}<a class="retour discret" href="#/contacts">Contacts</a>{/if}
   {#if !donnees}
     <p class="discret">Chargement…</p>
   {:else}
