@@ -180,7 +180,12 @@ def carte(c: Carnet, uid: str, fiche: dict, photo: tuple[bytes, str] | None, tex
         champs = ({d["champ"] for d in F.differences(avant or {}, fiche)} | (forcer or set())) - {"groupes"}
         if image:
             champs.add("photo")
-        return synchro.assembler_partiel(nouvelle, texte_distant, champs)
+        # Site dont seul le type a changé (LinkedIn, Facebook…) : sa ligne est réécrite
+        from .normalisation import cle_site
+        types_avant = {cle_site(x): x.get("type") for x in (avant or {}).get("sites", [])}
+        retypes = {cle_site(x) for x in fiche.get("sites", [])
+                   if cle_site(x) in types_avant and types_avant[cle_site(x)] != x.get("type")}
+        return synchro.assembler_partiel(nouvelle, texte_distant, champs, retypes)
     texte = assembler(photo)
     if len(texte.encode()) > TAILLE_MAX and photo:
         texte = assembler(images.alleger(photo, 50_000))

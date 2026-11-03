@@ -41,7 +41,7 @@
   async function lancer(nom, chemin, corps, message) {
     attente = nom
     try {
-      const r = await api.post(chemin, corps)
+      const r = chemin ? await api.post(chemin, corps) : await api.envoyer(corps)
       if (message) dire(typeof message === 'function' ? message(r) : message)
       await rafraichirAccueil()
       setTimeout(charger, 1500)
@@ -95,9 +95,7 @@
   async function importerInstagram(ev) {
     const fichier = ev.target.files?.[0]
     if (!fichier) return
-    const fd = new FormData()
-    fd.append('fichier', fichier)
-    await lancer('instagram', '/api/import', fd, (r) => `Instagram : ${r.lues} compte(s) lu(s), ${r.proposees} rattachement(s) proposé(s). L'archive n'est pas gardée.`)
+    await lancer('instagram', null, fichier, (r) => `Instagram : ${r.lues} compte(s) lu(s), ${r.proposees} rattachement(s) proposé(s). L'archive n'est pas gardée.`)
     ev.target.value = ''
   }
   // Analyse globale ; la remise à zéro des validations se confirme deux fois (bouton, puis mot à taper)

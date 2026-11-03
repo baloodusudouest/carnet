@@ -181,7 +181,9 @@ def test_ajouter_puis_delier_un_profil_facebook(page):
     page.fill("input[aria-label='Profil Facebook']", "https://www.facebook.com/francois.muller.demo")
     page.get_by_role("button", name="Ajouter", exact=True).click()
     page.wait_for_selector(".reseaux >> text=Facebook")
-    page.locator(".reseaux li", has_text="Facebook").get_by_role("button", name="Délier").click()
+    page.locator(".reseaux li.liaison", has_text="Facebook").get_by_role("button", name="Délier").click()
+    assert "francois.muller.demo" in page.locator(".confirmer").inner_text()     # l'adresse retirée est montrée
+    page.get_by_role("button", name="Délier Facebook").click()
     page.wait_for_selector(".reseaux li:has-text('Facebook')", state="detached")
 
 

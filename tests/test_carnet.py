@@ -543,7 +543,7 @@ def test_import_vcf_cree_apres_validation(c, services):
     with TestClient(main.app) as client:
         client.post("/api/connexion", json={"mot_de_passe": "secret"})
         vcf = carte_simple("IMP-1", "Zoé Durand", "TEL;type=CELL:06 55 44 33 22\r\n")
-        r = client.post("/api/import", files={"fichier": ("x.vcf", vcf.encode(), "text/vcard")}).json()
+        r = client.post("/api/import?nom=x.vcf", content=vcf.encode()).json()
         assert r["a_traiter"] == 1
         [p] = points(c, "import")
         assert services["icloud"].ecritures == []
@@ -644,7 +644,7 @@ def test_page_restee_ouverte_n_ecrase_pas_l_iphone(c, services):
     f["courriels"] = []                       # la page ouverte avant n'a pas le courriel
     f["fonction"] = "Vigneron"
     with pytest.raises(ErreurCarnet, match="depuis que tu l'as ouverte"):
-        actions.valider(c, "DDDD-4444", f, etag_vu=vu)
+        actions.valider(c, "DDDD-4444", f, etag_vu=vu, regler_revue=True)
     assert "paul@ici.fr" in ic.texte("DDDD-4444")
     assert points(c, "iphone_modifiee") and points(c, "conflit")
 
@@ -947,3 +947,135 @@ def test_purge_des_personnes_jamais_rattachees(c):
     reseaux.enregistrer(c, "instagram", [{"ext_id": "x", "nom": "x", "pseudo": "x"}])
     c.base.executer("UPDATE personnes_externes SET vu_le = ?", ((maintenant() - timedelta(days=91)).isoformat(),))
     assert reseaux.purger(c) == 1
+
+
+# ------------------------------------------------------------ 2.1 : corrections après relecture
+
+def _carte_riche(ic, uid="DDDD-4444"):
+    """Carte avec des profils que carnet ne doit pas abîmer (paramètres, étiquette perso, Flickr)."""
+    texte = ic.texte(uid).replace("END:VCARD", "X-SOCIALPROFILE;type=twitter;x-user=jdupont;x-userid=123:http://twitter.com/jdupont\r\n"
+                                                 "item9.URL:https://blog.exemple.fr\r\nitem9.X-ABLabel:Blog perso\r\n"
+                                                 "X-SOCIALPROFILE;type=flickr:http://www.flickr.com/photos/jd\r\n"
+                                                 "URL;type=WORK:https://www.facebook.com/boulangerie.martin\r\nEND:VCARD")
+    ic.modifier_sur_iphone(uid, texte)
+    return texte
+
+
+def _relire_et_garder(c):
+    with c.ecriture():
+        icloud.relire(c)
+    for p in points(c, "iphone_modifiee"):
+        actions.repondre(c, p["id"], "garder")
+
+
+def test_profil_reseau_ne_touche_pas_au_reste_de_la_carte(c, services):
+    ic = services["icloud"]
+    _carte_riche(ic)
+    _relire_et_garder(c)
+    reseaux.ajouter_profil(c, "DDDD-4444", "instagram", "@paul.martin")
+    texte = ic.texte("DDDD-4444").replace("\r\n ", "")          # lignes repliées (vCard)
+    for ligne in ("X-SOCIALPROFILE;type=twitter;x-user=jdupont;x-userid=123:http://twitter.com/jdupont",
+                  "X-ABLabel:Blog perso", "X-SOCIALPROFILE;type=flickr:http://www.flickr.com/photos/jd",
+                  "facebook.com/boulangerie.martin"):
+        assert ligne in texte, ligne
+    assert "instagram.com/paul.martin" in texte
+    reseaux.delier(c, "DDDD-4444", "instagram")
+    texte = ic.texte("DDDD-4444").replace("\r\n ", "")
+    assert "instagram.com" not in texte and "x-user=jdupont" in texte and "Blog perso" in texte
+
+
+def test_delier_facebook_ne_retire_que_le_profil_ecrit(c, services):
+    ic = services["icloud"]
+    _carte_riche(ic)
+    _relire_et_garder(c)
+    reseaux.ajouter_profil(c, "DDDD-4444", "facebook", "facebook.com/paul.martin.47")
+    reseaux.delier(c, "DDDD-4444", "facebook")
+    texte = ic.texte("DDDD-4444")
+    assert "paul.martin.47" not in texte and "facebook.com/boulangerie.martin" in texte
+    with pytest.raises(ErreurCarnet):
+        reseaux.delier(c, "DDDD-4444", "site")                  # services autorisés seulement
+    with pytest.raises(ErreurCarnet):
+        reseaux.ajouter_profil(c, "DDDD-4444", "instagram", "https://www.facebook.com/paul")
+
+
+def test_ecriture_reseau_garde_le_point_iphone(c, services):
+    ic = services["icloud"]
+    ic.modifier_sur_iphone("DDDD-4444", ic.texte("DDDD-4444").replace("Paul", "Pol"))
+    with c.ecriture():
+        icloud.relire(c)
+    assert points(c, "iphone_modifiee")
+    reseaux.ajouter_profil(c, "DDDD-4444", "facebook", "facebook.com/paul.martin.47")
+    reseaux.lier(c, "DDDD-4444", "telegram", "9", "paulm")
+    actions.repondre_lot(c, [], "lier")
+    assert points(c, "iphone_modifiee")                         # le point iPhone est toujours là
+    assert actions.en_revue(c, "DDDD-4444")
+    # Une modification faite par toi dans l'éditeur, depuis la version affichée, règle le point
+    f = c.fiche("DDDD-4444")
+    f["fonction"] = "Vigneron"
+    actions.valider(c, "DDDD-4444", f, etag_vu=actions._etag(c, "DDDD-4444"), regler_revue=True)
+    assert not points(c, "iphone_modifiee")
+
+
+def test_instagram_archives_abimees(c):
+    import io as io_
+    import zipfile
+    with pytest.raises(ErreurCarnet, match="illisible"):
+        reseaux.lire_instagram(b"PK\x03\x04pas un zip", "x.zip")
+    with pytest.raises(ErreurCarnet):
+        reseaux.lire_instagram(json.dumps(["x", 3, None, {"string_list_data": "x"}]).encode(), "x.json")
+    tampon = io_.BytesIO()
+    with zipfile.ZipFile(tampon, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("followers_1.json", b" " * (reseaux.TAILLE_MAX_FICHIER + 10))
+    with pytest.raises(ErreurCarnet, match="trop gros"):
+        reseaux.lire_instagram(tampon.getvalue(), "x.zip")
+
+
+def test_purge_et_remplacement_effacent_les_propositions(c):
+    from datetime import timedelta
+    from app.temps import maintenant
+    reseaux.enregistrer(c, "instagram", [{"ext_id": "paulmartin", "nom": "", "pseudo": "paulmartin"},
+                                         {"ext_id": "clairemartin", "nom": "", "pseudo": "clairemartin"}])
+    reseaux.proposer(c)
+    assert len(points(c, "reseau")) == 2
+    reseaux.enregistrer(c, "instagram", [{"ext_id": "paulmartin", "nom": "", "pseudo": "paulmartin"}])
+    assert [p["donnees"]["pseudo"] for p in points(c, "reseau")] == ["paulmartin"]   # remplacée
+    c.base.executer("UPDATE personnes_externes SET vu_le = ?", ((maintenant() - timedelta(days=91)).isoformat(),))
+    assert reseaux.purger(c) == 1
+    assert not points(c, "reseau")
+
+
+def test_telegram_deconnecte_meme_si_la_lecture_echoue(c):
+    class Casse(FauxTelegram):
+        async def __call__(self, requete):
+            class U:
+                id = 1
+                bot = deleted = False
+                @property
+                def phone(self):
+                    raise RuntimeError("panne")
+            class R:
+                users = [U()]
+            return R()
+    faux = Casse()
+    c.transports["telegram"] = lambda: faux
+    telegram.demander_code(c, "06 11 22 33 44")
+    with pytest.raises(RuntimeError):
+        telegram.importer(c, "12345")
+    assert faux.sorti and not telegram.etat(c)["code_demande"]
+
+
+def test_validation_refusee_si_la_fiche_a_change(c):
+    with pytest.raises(ErreurCarnet, match="changé"):
+        completude.valider(c, "DDDD-4444", "ancien-etag")
+    assert completude.valider(c, "DDDD-4444", actions._etag(c, "DDDD-4444"))["statut"] == "valide"
+
+
+def test_type_de_site_change_dans_l_editeur(c, services):
+    f = c.fiche("DDDD-4444")
+    f["sites"] = list(f.get("sites", [])) + [{"valeur": "https://exemple.fr/paul", "type": "site"}]
+    actions.valider(c, "DDDD-4444", f, etag_vu=actions._etag(c, "DDDD-4444"), regler_revue=True)
+    f = c.fiche("DDDD-4444")
+    f["sites"] = [dict(x, type="linkedin") if "exemple.fr" in x["valeur"] else x for x in f["sites"]]
+    actions.valider(c, "DDDD-4444", f, etag_vu=actions._etag(c, "DDDD-4444"), regler_revue=True)
+    texte = services["icloud"].texte("DDDD-4444")
+    assert texte.count("exemple.fr/paul") == 1 and "linkedin" in texte.lower()
