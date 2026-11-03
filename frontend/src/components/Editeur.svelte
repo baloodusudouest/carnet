@@ -33,7 +33,7 @@
     {#each simples as [cle, nom]}
       <label class:large={cle === 'societe' || cle === 'fonction'}>
         <span class="discret">{nom}</span>
-        <input bind:value={fiche[cle]} placeholder={cle === 'anniversaire' ? '15/03/1985 ou 15 mars' : ''}
+        <input bind:value={fiche[cle]} placeholder={cle === 'anniversaire' ? '15/03/1985, ou 15/03/1900 sans année' : ''}
                autocomplete="off" autocapitalize={cle === 'prenom' || cle === 'nom' ? 'words' : 'sentences'} />
       </label>
     {/each}

@@ -20,7 +20,22 @@
   async function charger() {
     try { donnees = await api.get(`/api/contacts/${e}`) } catch (err) { erreur(err) }
   }
-  function modifier() { brouillon = JSON.parse(JSON.stringify(donnees.fiche)); apercu = null }
+  // Dates : saisies en JJ/MM/AAAA ; une année inconnue s'écrit 1900 (iCloud ne reçoit que le jour et le mois)
+  const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+  function dateSaisie(v) {
+    if (!v) return ''
+    if (v.startsWith('--')) return `${v.slice(5, 7)}/${v.slice(2, 4)}/1900`
+    return v.length === 10 ? `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}` : v
+  }
+  function dateLecture(v) {
+    if (v.startsWith('--')) return `${Number(v.slice(5, 7))} ${MOIS[Number(v.slice(2, 4)) - 1]}`
+    return dateSaisie(v)
+  }
+  function modifier() {
+    brouillon = JSON.parse(JSON.stringify(donnees.fiche))
+    brouillon.anniversaire = dateSaisie(brouillon.anniversaire)
+    apercu = null
+  }
   async function verifier() {
     attente = true
     try { apercu = await api.post(`/api/contacts/${e}/apercu`, { fiche: brouillon }) } catch (err) { erreur(err) } finally { attente = false }
@@ -113,7 +128,7 @@
           {#each f.courriels as c}<a class="bouton" href={'mailto:' + c.valeur}>{c.valeur}</a>{/each}
         </div>
         <dl>
-          {#if f.anniversaire}<dt>Anniversaire</dt><dd>{f.anniversaire.startsWith('--') ? f.anniversaire.slice(2).split('-').reverse().join('/') : f.anniversaire.split('-').reverse().join('/')}</dd>{/if}
+          {#if f.anniversaire}<dt>Anniversaire</dt><dd>{dateLecture(f.anniversaire)}</dd>{/if}
           {#if f.surnom}<dt>Surnom</dt><dd>{f.surnom}</dd>{/if}
           {#each f.adresses as a}<dt>Adresse {a.type}</dt><dd>{[a.rue, `${a.cp} ${a.ville}`.trim(), a.pays].filter(Boolean).join(', ')}</dd>{/each}
           {#each f.noms_associes as n}<dt>{n.type}</dt><dd>{n.valeur}</dd>{/each}

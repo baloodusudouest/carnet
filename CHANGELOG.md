@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.0.3 — 3 novembre 2026
+- **État** : une grille de six sections avec icône (iCloud et la nuit, Sauvegardes, Copies, LinkedIn, Services, Journal), chacune avec un résumé d'une ligne et une pastille rouge en cas de problème ; un toucher affiche la section, un seul à la fois.
+- **Dates sans année** : une année 1900 veut dire « année inconnue ». Saisie en 14/03/1900, la date part dans iCloud sans année (jour et mois, comme sur l'iPhone) ; la fiche l'affiche « 14 mars ». Une carte iCloud déjà enregistrée en 1900 est proposée en « Mise en forme » pour être réécrite sans année. Home Assistant ne calcule plus d'âge pour ces dates.
+
 ## 2.0.2 — 3 novembre 2026
 - Fiche : un stylo en haut à droite ouvre la modification des informations (à la place du bouton « Modifier » en bas du bloc).
 

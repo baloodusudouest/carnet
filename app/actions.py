@@ -99,7 +99,7 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
                 c.oublier()
             return res
     if motif == "forme" and action == "appliquer":
-        champs = {"nom": {"prenom", "nom"}, "telephone": {"telephones"}}
+        champs = {"nom": {"prenom", "nom"}, "telephone": {"telephones"}, "anniversaire": {"anniversaire"}}
         forcer = set().union(*(champs.get(e["champ"], set()) for e in d["ecarts"]))
         res = valider(c, uid, c.fiche(uid), origine="À traiter", motif="mise en forme", etag_vu=_etag(c, uid), forcer=forcer)
         traiter.ignorer(c, motif, cle)

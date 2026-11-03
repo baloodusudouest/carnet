@@ -10,6 +10,25 @@
   let filtreSauvegarde = $state('')
   let adresseLinkedin = $state('')
   let rattache = $state({})
+  let section = $state(null)
+
+  const court = (iso) => iso ? new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'jamais'
+  // Une tuile par section : icône, résumé d'une ligne, pastille rouge en cas de problème
+  const SECTIONS = [
+    { cle: 'icloud', nom: 'iCloud et la nuit', icone: '<path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.1 9.5 4.3 4.3 0 0 0 7 18z"/>',
+      resume: (e) => `Nuit : ${court(e.nuit?.le)}`, alerte: (e) => !!e.nuit?.erreur },
+    { cle: 'sauvegardes', nom: 'Sauvegardes', icone: '<path d="M4 7h16v12H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M10 12h4"/>',
+      resume: (e) => `${e.sauvegardes.length} copie(s)`, alerte: () => false },
+    { cle: 'copies', nom: 'Copies', icone: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+      resume: (e) => `Synology : ${e.synology ? court(e.synology.le) : 'jamais'}`, alerte: (e) => !!e.synology?.erreur },
+    { cle: 'linkedin', nom: 'LinkedIn', icone: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 11v5M8 8v.01M12 16v-5M12 13a2 2 0 0 1 4 0v3"/>',
+      resume: (e) => `${e.linkedin.sans_contact.length} sans fiche`, alerte: () => false },
+    { cle: 'services', nom: 'Services', icone: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
+      resume: (e) => `${Object.entries(e.services).filter(([k, v]) => k !== 'nuit' && v).length} sur 6 configurés`,
+      alerte: (e) => !!e.reprise?.erreur },
+    { cle: 'journal', nom: 'Journal', icone: '<path d="M6 4h12v16H6z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+      resume: (e) => `${e.journal.length} lignes`, alerte: () => false },
+  ]
 
   const date = (iso) => iso ? new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : 'jamais'
   async function charger() { try { e = await api.get('/api/etat') } catch (err) { erreur(err) } }
@@ -60,6 +79,19 @@
   {#if !e}
     <p class="discret">Chargement…</p>
   {:else}
+    <nav class="tuiles" aria-label="Sections">
+      {#each SECTIONS as s}
+        <button class="tuile" aria-pressed={section === s.cle} onclick={() => (section = section === s.cle ? null : s.cle)}>
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html s.icone}</svg>
+          <span class="nom-tuile">{s.nom}</span>
+          <span class="resume">{s.resume(e)}</span>
+          {#if s.alerte(e)}<span class="alerte-point" aria-label="Problème à voir"></span>{/if}
+        </button>
+      {/each}
+    </nav>
+    {#if !section}<p class="discret">Choisis une section pour l'afficher.</p>{/if}
+    {#if section === 'icloud'}
     <div class="feuille bloc">
       <h2 class="titre">iCloud et la nuit</h2>
       <dl>
@@ -79,7 +111,9 @@
         {/if}
       </div>
     </div>
+    {/if}
 
+    {#if section === 'sauvegardes'}
     <div class="feuille bloc">
       <h2 class="titre">Sauvegardes d'iCloud</h2>
       <p class="discret">Une copie complète avant la première écriture de chaque jour et chaque nuit. Gardées 30 jours, puis une par mois pendant un an.</p>
@@ -107,7 +141,9 @@
         {/if}
       {/if}
     </div>
+    {/if}
 
+    {#if section === 'copies'}
     <div class="feuille bloc">
       <h2 class="titre">Copies</h2>
       <dl>
@@ -124,7 +160,9 @@
         {#if e.services.kit}<button class="bouton" disabled={!!attente} onclick={() => lancer('kit', '/api/kit', {}, (r) => `${r.nb} contact(s) envoyé(s) au kit.`)}>Envoyer au kit</button>{/if}
       </div>
     </div>
+    {/if}
 
+    {#if section === 'linkedin'}
     <div class="feuille bloc">
       <h2 class="titre">LinkedIn</h2>
       <p class="discret">Importe tes relations par l'API de portabilité, ou dépose Connections.csv avec « Importer » dans Contacts. Seuls les changements remontent.</p>
@@ -156,7 +194,9 @@
         </ul>
       {/if}
     </div>
+    {/if}
 
+    {#if section === 'services'}
     <div class="feuille bloc">
       <h2 class="titre">Services</h2>
       <ul class="services">
@@ -170,19 +210,32 @@
       {/if}
       <button class="bouton" disabled={!!attente} onclick={() => lancer('liens', '/api/liens/rafraichir', {}, 'Lecture d\'Immich et de Treemich lancée.')}>Relire Immich et Treemich</button>
     </div>
+    {/if}
 
+    {#if section === 'journal'}
     <div class="feuille bloc">
       <h2 class="titre">Journal</h2>
       <ol class="journal">
         {#each e.journal as j}<li><span class="discret">{date(j.le)}</span> {j.message}</li>{/each}
       </ol>
     </div>
+    {/if}
 
     <p class="pied discret">carnet {e.version} <button class="bouton" onclick={deconnecter}>Se déconnecter</button></p>
   {/if}
 </section>
 
 <style>
+  .tuiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.6rem; }
+  .tuile {
+    position: relative; display: grid; gap: 0.2rem; justify-items: start; text-align: left; padding: 0.9rem;
+    border: 1px solid var(--color-couture); border-radius: 10px; background: var(--color-reliure); min-height: 6.5rem;
+  }
+  .tuile svg { color: var(--color-onglet); margin-bottom: 0.2rem; }
+  .tuile[aria-pressed='true'] { border-color: var(--color-onglet); background: color-mix(in srgb, var(--color-onglet) 10%, var(--color-reliure)); }
+  .nom-tuile { font-family: var(--font-livre); font-weight: 600; font-size: 1.05rem; }
+  .resume { color: var(--color-mine); font-size: 0.82rem; }
+  .alerte-point { position: absolute; top: 0.7rem; right: 0.7rem; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--color-alerte); }
   .page { max-width: 46rem; display: grid; gap: 1rem; }
   h1 { font-size: 1.9rem; }
   h2 { font-size: 1.2rem; margin-bottom: 0.6rem; }
