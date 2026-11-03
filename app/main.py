@@ -865,6 +865,27 @@ def regler_synchro(corps: ReglageSynchro):
     return carnet().regler_synchro(corps.actif, corps.reel)
 
 
+class Decision(BaseModel):
+    valider: list[str] = []
+    revoir: list[str] = []
+
+
+@app.get("/api/synchro/attente")
+def attente():
+    """Changements qui partiraient dans iCloud maintenant, à valider ou à revoir un par un."""
+    return carnet().attente()
+
+
+@app.post("/api/synchro/attente/actualiser")
+def actualiser_attente():
+    return carnet().actualiser_attente()
+
+
+@app.post("/api/synchro/attente/decision")
+def decider(corps: Decision):
+    return carnet().decider(corps.valider, corps.revoir)
+
+
 @app.post("/api/synchro/maintenant")
 def synchroniser():
     return carnet().synchroniser()

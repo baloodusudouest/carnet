@@ -96,7 +96,7 @@
     if (s.synchro && !s.synchro.ok) res.push(s.synchro.alerte ? 'La synchro iCloud de cette nuit n\'a rien écrit (plafond ou veille en erreur).' : 'La synchro iCloud de cette nuit est en erreur.')
     if (s.veille && !s.veille.ok) res.push(`Veille de l'iPhone en erreur : ${s.veille.erreur}`)
     if (s.sauvegarde && !s.sauvegarde.ok) res.push(`Sauvegarde de nuit en erreur : ${s.sauvegarde.erreur}`)
-    if (s.synchro?.suppressions_en_attente) res.push(`${pluriel(s.synchro.suppressions_en_attente, 'suppression attend', 'suppressions attendent')} ton accord dans iCloud.`)
+    if (s.synchro?.suppressions_en_attente) res.push(`${pluriel(s.synchro.suppressions_en_attente, 'suppression iCloud attend', 'suppressions iCloud attendent')} ton accord : un toucher pour les voir et décider.`)
     return res
   })
   const tache = $derived(b?.tache)
@@ -141,7 +141,7 @@
   {#if soucis.length}
     <a href="#/etat" class="block rounded-2xl border border-alerte/60 bg-[#2a1b1b] p-4 mt-3 mb-4">
       {#each soucis as t}<p class="text-sm text-papier">{t}</p>{/each}
-      <p class="text-sm text-onglet mt-1 underline underline-offset-2">Voir l'état</p>
+      <p class="text-sm text-onglet mt-1 underline underline-offset-2">Voir et décider</p>
     </a>
   {/if}
 

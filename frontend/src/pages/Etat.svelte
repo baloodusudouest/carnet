@@ -5,6 +5,7 @@
   import { api } from '../lib/api.js'
   import { annoncer, bilan, chargerBilan, ecran, choisirVue } from '../lib/etat.svelte.js'
   import { dateCourte, pluriel } from '../lib/cles.js'
+  import Attente from '../components/Attente.svelte'
 
   let { deconnecter } = $props()
   let donnees = $state(null)
@@ -85,6 +86,8 @@
   <h1 class="titre text-2xl mb-1">État</h1>
   <p class="text-sm text-mine mb-5">Synchro avec iCloud, veille de l'iPhone et sauvegardes, chaque nuit.</p>
 
+  <Attente />
+
   {#if !donnees}
     <div class="h-40 rounded-2xl bg-reliure animate-pulse" aria-hidden="true"></div>
   {:else}
@@ -113,7 +116,7 @@
           {/if}
           {#if derniere.suppressions_en_attente}
             <p class="text-sm text-mine mt-1">{pluriel(derniere.suppressions_en_attente, 'suppression attend', 'suppressions attendent')} ton accord (jamais faites la nuit).
-              <a class="text-onglet underline underline-offset-2" href="#/icloud">Voir et confirmer</a></p>
+              à décider dans « Changements pour iCloud » ci-dessus.</p>
           {/if}
         </div>
       {:else}

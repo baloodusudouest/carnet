@@ -2285,3 +2285,40 @@ def test_icloud_coupe_circuit_et_etag_relu(client, monkeypatch):
     assert "absentes" in v["erreur"] and _personne(c, "Claire")["statut"] == "verifie"
     c.post("/api/icloud/veille?forcer=true")
     assert _attendre(c)["veille"]["journal"][0]["erreur"] is None
+
+
+def test_changements_en_attente_valider_ou_revoir(client, monkeypatch):
+    """Une seule liste des changements pour iCloud : modification champ par champ ; « Valider »
+    écrit tout de suite, « Revoir » renvoie la fiche en Révision sans rien écrire."""
+    from app.main import etat
+    from tests.faux_icloud import FauxICloud
+    c = client
+    _connecter(c)
+    _importer(c, "icloud.vcf", "icloud")
+    serveur = FauxICloud((DONNEES / "icloud.vcf").read_text())
+    cn = etat["carnet"]
+    monkeypatch.setattr(cn, "transport_icloud", serveur.transport())
+    monkeypatch.setattr(cn, "cfg", cn.cfg.__class__(**{**cn.cfg.__dict__, "icloud_user": "moi@icloud.com",
+                                                        "icloud_password": "abcd-efgh-ijkl-mnop"}))
+    pids = {}
+    for debut in ("Claire", "Jean-Pierre"):
+        p = _personne(c, debut)
+        pids[debut] = p["id"]
+        f = c.get(f"/api/personnes/{p['id']}").json()["fiche"]
+        f["societe"] = "Nouvelle société"
+        c.put(f"/api/personnes/{p['id']}", json={"fiche": f, "valider": True})
+    assert c.get("/api/synchro/attente").json()["plan"] is None
+    c.post("/api/synchro/attente/actualiser")
+    _attendre(c)
+    lignes = c.get("/api/synchro/attente").json()["plan"]["lignes"]
+    modifs = {l["nom"]: l for l in lignes if l["action"] == "modifier"}
+    assert {"champ": "societe", "avant": "", "apres": "Nouvelle société"} in modifs["Jean-Pierre DUBOIS"]["ecarts"]
+    r = c.post("/api/synchro/attente/decision", json={"valider": [modifs["Claire MARTIN"]["id"]],
+                                                       "revoir": [modifs["Jean-Pierre DUBOIS"]["id"]]}).json()
+    assert r == {"revues": 1, "ecrites": 1}
+    _attendre(c)
+    assert "Nouvelle société" in serveur.texte("AAAA-1111")
+    assert "Nouvelle société" not in serveur.texte("BBBB-2222")
+    assert _personne(c, "Jean-Pierre")["statut"] == "a_reviser"
+    restantes = c.get("/api/synchro/attente").json()["plan"]["lignes"]
+    assert modifs["Claire MARTIN"]["id"] not in [l["id"] for l in restantes]

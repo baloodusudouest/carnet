@@ -1361,6 +1361,9 @@ class Carnet:
                 inchange = (s.get("etag") == distante.etag and s.get("empreinte_carnet") == base["empreinte_carnet"]) \
                     or synchro.empreinte(texte) == synchro.empreinte(distante.texte)
                 if not inchange:
+                    # Ce qui change dans iCloud, champ par champ (affiché dans État)
+                    action["ecarts"] = [{"champ": e["champ"], "avant": e["iphone"], "apres": e["carnet"]}
+                                        for e in self._ecarts(fiche, distante.texte)][:8] or [{"champ": "forme", "avant": "", "apres": ""}]
                     actions.append(action)
             else:
                 action = {**base, "action": "creer", "href": dav.href_nouveau(uid), "etag": None,
@@ -1659,7 +1662,8 @@ class Carnet:
 
     def synchro(self) -> dict:
         journal = self.base.etat("synchro_journal", [])
-        return {"reglage": self.reglage_synchro(), "journal": journal[:30],
+        veille = (self.base.etat("veille_journal", []) or [None])[0]
+        return {"reglage": self.reglage_synchro(), "journal": journal[:30], "veille": veille,
                 "configure": bool(self.cfg.icloud_user and self.cfg.icloud_password),
                 "tache": self.etat_tache()}
 
@@ -1713,6 +1717,20 @@ class Carnet:
             n_groupes = sum(1 for a in ecrire if a["cible"] == "groupe")
             entree["prevus"] = {"crees": n_crees, "modifies": n_modif, "groupes": n_groupes,
                                 "noms": [a["nom"] for a in ecrire if a["cible"] == "contact"][:40]}
+            # Le détail, pour tout voir sur une seule page : qui est créé, qui change et quoi,
+            # quels groupes, et ce qui attend ton accord
+            entree["details"] = {
+                "crees": [{"pid": a["pid"], "nom": a["nom"], "motif": a.get("motif")} for a in ecrire
+                          if a["cible"] == "contact" and a["action"] == "creer"][:200],
+                "modifies": [{"pid": a["pid"], "nom": a["nom"], "ecarts": a.get("ecarts", [])} for a in ecrire
+                             if a["cible"] == "contact" and a["action"] == "modifier"][:200],
+                "groupes": [{"nom": a["nom"], "action": a["action"], "ajoutes": a.get("ajoutes", 0), "retires": a.get("retires", 0)}
+                            for a in ecrire if a["cible"] == "groupe"],
+                "suppressions": [{"uid": a.get("uid") or a["href"], "cible": a["cible"], "nom": a["nom"],
+                                  "motif": a.get("motif"), "pid": a.get("pid")} for a in suppressions],
+                "en_revision": [{"pid": p, "nom": c.nom or "(sans nom)", "motif": m} for c, p, m in plan.get("conflits", [])]
+                               + [{"pid": x["pid"], "nom": x["nom"], "motif": "supprimée de l'iPhone"} for x in plan.get("supprimes_iphone", [])],
+            }
             verifies = len(self._verifiees())
             max_c = max(self.SYNCHRO_CREATIONS[0], int(verifies * self.SYNCHRO_CREATIONS[1]))
             max_m = max(self.SYNCHRO_MODIFICATIONS[0], int(verifies * self.SYNCHRO_MODIFICATIONS[1]))
@@ -1742,6 +1760,71 @@ class Carnet:
             entree.update(mode="bloque", erreur=str(exc))
             self._tache.update(etat="erreur", message=f"Synchro : {exc}")
         return noter()
+
+    # ---------------------------------------------------------------- changements en attente (État)
+
+    @staticmethod
+    def _id_action(a: dict) -> str:
+        return f"{a['cible']}:{a['action']}:{a.get('uid') or a['href']}"
+
+    def attente(self) -> dict:
+        """Tout ce qui partirait dans iCloud maintenant, sur une seule liste (d'après la dernière
+        lecture d'iCloud, valable 30 minutes) : créations, modifications champ par champ, groupes,
+        suppressions. Chaque ligne se valide (écrite tout de suite) ou se revoit (Révision)."""
+        plan = self._plan
+        if plan and time.monotonic() - plan["instant"] > self.PLAN_VALIDE:
+            plan = self._plan = None
+        if not plan:
+            return {"plan": None, "configure": bool(self.cfg.icloud_user and self.cfg.icloud_password),
+                    "tache": self.etat_tache()}
+        lignes = []
+        for a in plan["actions"]:
+            lignes.append({"id": self._id_action(a), "cible": a["cible"], "action": a["action"], "nom": a["nom"],
+                           "pid": a.get("pid"), "motif": a.get("motif"), "ecarts": a.get("ecarts", []),
+                           "ajoutes": a.get("ajoutes"), "retires": a.get("retires")})
+        ordre = {"modifier": 0, "creer": 1, "supprimer": 2}
+        lignes.sort(key=lambda l: (l["cible"] != "contact", ordre[l["action"]], l["nom"].lower()))
+        reste = int(self.PLAN_VALIDE - (time.monotonic() - plan["instant"]))
+        return {"plan": {"le": plan["resume"]["le"], "valable_encore": max(0, reste), "lignes": lignes,
+                         "conflits": plan["resume"].get("conflits", []), "supprimes_iphone": plan["resume"].get("supprimes_iphone", [])},
+                "configure": True, "tache": self.etat_tache()}
+
+    def actualiser_attente(self) -> dict:
+        """Relit iCloud pour une liste à jour (comme une simulation : rien n'est écrit)."""
+        if not (self.cfg.icloud_user and self.cfg.icloud_password):
+            raise ErreurCarnet("Renseigne d'abord CARNET_ICLOUD_USER et CARNET_ICLOUD_PASSWORD dans la stack.")
+        return self._lancer("simulation", self._simuler)
+
+    def decider(self, valider: list[str], revoir: list[str]) -> dict:
+        """« Revoir » : le contact repasse en Révision et rien n'est écrit pour lui. « Valider » :
+        ces lignes sont écrites dans iCloud maintenant (sauvegarde d'iCloud faite avant)."""
+        plan = self._plan
+        if not plan or time.monotonic() - plan["instant"] > self.PLAN_VALIDE:
+            raise ErreurCarnet("La liste a plus de 30 minutes : actualise-la avant de valider.")
+        par_id = {self._id_action(a): a for a in plan["actions"]}
+        revoir = [par_id[i] for i in revoir or [] if i in par_id]
+        valider = [par_id[i] for i in valider or [] if i in par_id and par_id[i] not in revoir]
+        if not revoir and not valider:
+            raise ErreurCarnet("Rien de choisi (ou la liste a changé : actualise-la).")
+        if revoir:
+            quand = _iso(maintenant())
+            with self.base.transaction() as cx:
+                for a in revoir:
+                    if a.get("pid"):
+                        cx.execute("UPDATE personnes SET statut = 'a_reviser', a_revoir = ?, modifie_le = ? WHERE id = ?",
+                                   ("à revoir avant la synchro iCloud", quand, a["pid"]))
+        enleves = {id(a) for a in revoir + valider}
+        restantes = [a for a in plan["actions"] if id(a) not in enleves]
+        if not valider:
+            self._plan = {**plan, "actions": restantes}
+            return {"revues": len(revoir), "ecrites": 0}
+
+        def travail():
+            self._ecrire({**plan, "actions": valider, "inconnus": []}, essai=False)
+            # Les autres lignes restent à décider (mêmes ETag, toujours valables)
+            self._plan = {**plan, "actions": restantes}
+        self._lancer("ecriture", travail)
+        return {"revues": len(revoir), "ecrites": len(valider)}
 
     def _resume_synchro(self) -> dict | None:
         """Dernière synchro, pour Home Assistant (compteurs seulement)."""
