@@ -113,7 +113,7 @@ def test_pc_liste_et_fiche_cote_a_cote(page):
 
 def test_fiche_apercu_puis_ecrire_et_annuler(page):
     page.goto(page.url.split("#")[0] + "#/contacts/DDDD-4444")
-    page.click("text=Modifier")
+    page.get_by_role("button", name="Modifier les informations").click()
     page.locator("label:has-text('Fonction') input").fill("Vigneron")
     page.click("text=Voir les changements")
     assert "Vigneron" in page.locator(".apercu").inner_text()
@@ -127,7 +127,7 @@ def test_cibles_tactiles_et_champs(page):
     if page.viewport_size["width"] > 500:
         pytest.skip("contrôle tactile : iPhone seulement")
     page.goto(page.url.split("#")[0] + "#/contacts/DDDD-4444")
-    page.click("text=Modifier")
+    page.get_by_role("button", name="Modifier les informations").click()
     tailles = page.eval_on_selector_all("button.bouton, a.bouton, .onglet", "els => els.map(e => e.getBoundingClientRect().height)")
     assert min(tailles) >= 43.5
     polices = page.eval_on_selector_all("input, select, textarea", "els => els.map(e => parseFloat(getComputedStyle(e).fontSize))")

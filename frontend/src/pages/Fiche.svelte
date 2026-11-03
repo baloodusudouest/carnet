@@ -67,6 +67,15 @@
         {#if f.societe || f.fonction}<p class="discret">{[f.fonction, f.societe].filter(Boolean).join(', ')}</p>{/if}
         {#if f.groupes.length}<p class="groupes">{#each f.groupes as g}<span class="pastille">{g}</span>{/each}</p>{/if}
       </div>
+      {#if !brouillon}
+        <!-- Stylo : modifier les informations de la fiche -->
+        <button class="stylo" onclick={modifier} aria-label="Modifier les informations" title="Modifier">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M16.9 3.6a2.1 2.1 0 0 1 3 3L8.4 18.1 4 19.5l1.4-4.4z" /><path d="M14.8 5.7l3 3" />
+          </svg>
+        </button>
+      {/if}
     </header>
 
     {#if donnees.a_traiter.length}
@@ -111,7 +120,6 @@
           {#each f.sites as s}<dt>{s.type}</dt><dd><a href={s.valeur} target="_blank" rel="noreferrer">{s.valeur}</a></dd>{/each}
           {#if f.notes}<dt>Notes</dt><dd class="notes">{f.notes}</dd>{/if}
         </dl>
-        <button class="bouton bouton-principal" onclick={modifier}>Modifier</button>
       </div>
 
       <div class="feuille bloc">
@@ -156,6 +164,12 @@
   .page { max-width: 46rem; display: grid; gap: 1rem; }
   .retour { justify-self: start; min-height: 2.75rem; display: inline-flex; align-items: center; }
   .entete { display: flex; gap: 1rem; align-items: center; }
+  .entete > div { flex: 1; min-width: 0; }
+  .stylo {
+    flex: none; align-self: flex-start; display: grid; place-items: center; width: 2.75rem; height: 2.75rem;
+    border-radius: 50%; border: 1px solid var(--color-tranche); color: var(--color-onglet);
+  }
+  .stylo:hover { border-color: var(--color-onglet); background: color-mix(in srgb, var(--color-onglet) 10%, transparent); }
   h1 { font-size: 1.9rem; line-height: 1.15; }
   h2 { font-size: 1.2rem; margin-bottom: 0.6rem; }
   .groupes { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem; }
