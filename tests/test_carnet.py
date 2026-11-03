@@ -798,3 +798,152 @@ def test_carte_icloud_en_1900_proposee_sans_annee(c, services):
     assert p["donnees"]["ecarts"][0]["apres"] == "20 mai (sans année)"
     actions.repondre(c, p["id"], "appliquer")
     assert "1604-05-20" in ic.texte("DDDD-4444") and "1900" not in ic.texte("DDDD-4444")
+
+
+# ================================================================ carnet 2.1 : audit, réseaux
+
+from app import completude, reseaux, telegram
+
+
+def test_completude_et_validation(c, services):
+    r = completude.resume(c)
+    assert set(r["BBBB-2222"]["manques"]) == {"annee", "adresse"}          # date sans année = manquante
+    assert r["CCCC-3333"]["manques"] == ["annee", "adresse"]
+    assert completude.compteurs(c)["annee"] >= 2
+    completude.valider(c, "BBBB-2222")
+    assert completude.resume(c)["BBBB-2222"]["statut"] == "valide"
+    assert completude.resume(c)["BBBB-2222"]["score"] == 4
+    # Une écriture de carnet sur un champ non audité garde la validation
+    f = c.fiche("BBBB-2222")
+    f["notes"] = "note"
+    actions.valider(c, "BBBB-2222", f, etag_vu=actions._etag(c, "BBBB-2222"))
+    assert completude.resume(c)["BBBB-2222"]["statut"] == "valide"
+    # Une écriture de carnet sur un champ audité la garde aussi (la fiche était à jour)
+    f = c.fiche("BBBB-2222")
+    f["adresses"] = [{"rue": "1 rue Neuve", "cp": "47000", "ville": "Agen", "pays": "", "region": "", "type": "domicile"}]
+    actions.valider(c, "BBBB-2222", f, etag_vu=actions._etag(c, "BBBB-2222"))
+    assert completude.resume(c)["BBBB-2222"]["statut"] == "valide"
+    # Modifiée sur l'iPhone : à revoir
+    ic = services["icloud"]
+    ic.modifier_sur_iphone("BBBB-2222", ic.texte("BBBB-2222").replace("+33 5 53 11 22 33", "+33 5 53 99 99 99"))
+    with c.ecriture():
+        icloud.relire(c)
+    assert completude.resume(c)["BBBB-2222"]["statut"] == "a_revoir"
+    assert completude.compteurs(c)["a_revoir"] == 1
+    completude.valider(c, "BBBB-2222")
+    completude.analyse_globale(c, remettre_a_zero=True)
+    assert completude.resume(c)["BBBB-2222"]["statut"] is None
+
+
+def test_plateformes_depuis_la_carte_et_les_liaisons(c, services):
+    ic = services["icloud"]
+    ic.modifier_sur_iphone("DDDD-4444", ic.texte("DDDD-4444").replace("X-PERSO:garder\r\n",
+                           "X-PERSO:garder\r\nIMPP;X-SERVICE-TYPE=WhatsApp:x-apple:+33698765432\r\n"))
+    with c.ecriture():
+        icloud.relire(c)
+    liaisons.lier(c, "DDDD-4444", "immich", "im-paul")
+    assert completude.resume(c)["DDDD-4444"]["plateformes"] == ["icloud", "immich", "whatsapp"]
+
+
+def test_profils_ajoutes_et_delies(c, services):
+    ic = services["icloud"]
+    with pytest.raises(ErreurCarnet, match="facebook.com"):
+        reseaux.ajouter_profil(c, "DDDD-4444", "facebook", "Paul Martin")
+    reseaux.ajouter_profil(c, "DDDD-4444", "facebook", "https://www.facebook.com/paul.martin.47")
+    reseaux.ajouter_profil(c, "DDDD-4444", "whatsapp", "06 98 76 54 32")
+    texte = ic.texte("DDDD-4444")
+    assert "facebook.com/paul.martin.47" in texte and "wa.me/33698765432" in texte
+    assert {"facebook", "whatsapp"} <= set(completude.resume(c)["DDDD-4444"]["plateformes"])
+    reseaux.delier(c, "DDDD-4444", "facebook")
+    assert "facebook.com" not in ic.texte("DDDD-4444") and "wa.me" in ic.texte("DDDD-4444")
+    assert "X-PERSO:garder" in ic.texte("DDDD-4444")
+
+
+class FauxTelegram:
+    """Client Telethon simulé : code, éventuelle double authentification, contacts."""
+    def __init__(self, mot_de_passe=False):
+        self.mdp = mot_de_passe
+        self.sorti = False
+
+    async def connect(self):
+        pass
+
+    async def send_code_request(self, tel):
+        class R:
+            phone_code_hash = "h"
+        return R()
+
+    async def sign_in(self, phone=None, code=None, phone_code_hash=None, password=None):
+        if self.mdp and password is None:
+            from telethon.errors import SessionPasswordNeededError
+            raise SessionPasswordNeededError(request=None)
+
+    async def __call__(self, requete):
+        class U:
+            def __init__(self, i, p, n, tel, pseudo):
+                self.id, self.first_name, self.last_name, self.phone, self.username = i, p, n, tel, pseudo
+                self.bot = self.deleted = False
+        class R:
+            users = [U(1, "Paul", "Martin", "33698765432", "paulm"), U(2, "Inconnu", "Total", "33600000000", None),
+                     U(3, "Claire", "Martin", "33611112222", "clairem")]
+        return R()
+
+    async def is_user_authorized(self):
+        return True
+
+    async def log_out(self):
+        self.sorti = True
+
+    async def disconnect(self):
+        pass
+
+
+def test_telegram_import_manuel_et_session_fermee(c, services):
+    faux = FauxTelegram(mot_de_passe=True)
+    c.transports["telegram"] = lambda: faux
+    with pytest.raises(ErreurCarnet):
+        telegram.importer(c, "12345")                        # pas de code demandé
+    telegram.demander_code(c, "06 11 22 33 44")
+    r = telegram.importer(c, "12345")
+    assert r["mot_de_passe"] and not faux.sorti             # double authentification demandée
+    r = telegram.importer(c, "12345", "secret")
+    assert r["lues"] == 3 and faux.sorti and not telegram.etat(c)["code_demande"]
+    props = {p["donnees"]["ext_id"]: p for p in points(c, "reseau")}
+    assert props["1"]["uid"] == "DDDD-4444" and props["1"]["donnees"]["raison"] == "même numéro"
+    assert props["3"]["uid"] == "AAAA-1111" and props["3"]["donnees"]["telephone"] == "+33611112222"
+    assert "2" not in props
+    actions.repondre(c, props["3"]["id"], "lier_numero")
+    texte = services["icloud"].texte("AAAA-1111")
+    assert "t.me/clairem" in texte and "+33 6 11 11 22 22" in texte
+    actions.repondre(c, props["1"]["id"], "pas_lui")
+    telegram.demander_code(c, "06 11 22 33 44")
+    telegram.importer(c, "1", "secret")                     # réimport : « Pas lui » reste refusé
+    assert not points(c, "reseau")
+
+
+def test_instagram_export_zip(c, services):
+    import io as io_
+    import zipfile
+    tampon = io_.BytesIO()
+    with zipfile.ZipFile(tampon, "w") as z:
+        z.writestr("connections/followers_and_following/following.json", json.dumps({"relationships_following": [
+            {"title": "paulmartin", "string_list_data": [{"href": "https://www.instagram.com/paulmartin", "timestamp": 1}]},
+            {"title": "une_marque", "string_list_data": [{"href": "https://www.instagram.com/une_marque"}]}]}))
+        z.writestr("connections/followers_and_following/followers_1.json", json.dumps([
+            {"string_list_data": [{"value": "claire.martin", "href": "https://www.instagram.com/claire.martin"}]}]))
+        z.writestr("your_instagram_activity/messages/inbox/x/message_1.json", "{}")
+    r = reseaux.importer_instagram(c, tampon.getvalue(), "instagram.zip")
+    assert r["lues"] == 3
+    props = {p["donnees"]["pseudo"]: p for p in points(c, "reseau")}
+    assert set(props) == {"paulmartin", "claire.martin"}
+    actions.repondre_lot(c, [p["id"] for p in props.values()], "lier")
+    assert "instagram.com/paulmartin" in services["icloud"].texte("DDDD-4444")
+    assert not c.base.un("SELECT 1 FROM personnes_externes WHERE nom LIKE '%message%'")
+
+
+def test_purge_des_personnes_jamais_rattachees(c):
+    from datetime import timedelta
+    from app.temps import maintenant
+    reseaux.enregistrer(c, "instagram", [{"ext_id": "x", "nom": "x", "pseudo": "x"}])
+    c.base.executer("UPDATE personnes_externes SET vu_le = ?", ((maintenant() - timedelta(days=91)).isoformat(),))
+    assert reseaux.purger(c) == 1

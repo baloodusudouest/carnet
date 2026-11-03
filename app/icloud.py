@@ -260,9 +260,13 @@ def _etag_sur(c: Carnet, dav, ligne) -> str:
 
 
 def _enregistrer(c: Carnet, uid: str, href: str, etag: str, texte: str, groupes: list[str]) -> dict:
-    """La base suit iCloud aussitôt la carte écrite (avant de toucher aux groupes)."""
+    """La base suit iCloud aussitôt la carte écrite (avant de toucher aux groupes). Une fiche
+    validée et à jour le reste : l'empreinte de validation suit l'écriture de carnet."""
+    from . import completude
     fiche, a_photo = F.lire(texte, groupes, c.cfg.region)
+    ancienne = c.base.un("SELECT fiche FROM fiches WHERE uid = ?", (uid,))
     with c.base.transaction() as cx:
+        completude.suivre_ecriture(cx, uid, json.loads(ancienne["fiche"]) if ancienne else None, fiche)
         cx.execute("INSERT INTO fiches(uid, href, etag, texte, fiche, photo, lu_le) VALUES (?,?,?,?,?,?,?) "
                    "ON CONFLICT(uid) DO UPDATE SET href=excluded.href, etag=excluded.etag, texte=excluded.texte, "
                    "fiche=excluded.fiche, photo=excluded.photo, lu_le=excluded.lu_le",

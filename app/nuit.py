@@ -68,6 +68,8 @@ def passer(c: Carnet, origine: str = "nuit") -> dict:
                 except ErreurCarnet as exc:
                     bilan["details"].append(f"Kit : {exc}")
             icloud.purger(c)
+            from . import reseaux
+            reseaux.purger(c)
         except Exception as exc:  # noqa: BLE001
             if not bilan["erreur"]:
                 bilan["erreur"] = str(exc)

@@ -1,12 +1,14 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  import { aller, apresEcriture, erreur, dire, etat } from '../lib/etat.svelte.js'
+  import { aller, apresEcriture, erreur, dire, etat, rafraichirContacts } from '../lib/etat.svelte.js'
   import Avatar from '../components/Avatar.svelte'
   import Changements from '../components/Changements.svelte'
   import Editeur from '../components/Editeur.svelte'
   import Point from '../components/Point.svelte'
   import PhotosFiche from '../components/PhotosFiche.svelte'
+  import Plateformes from '../components/Plateformes.svelte'
+  import { PLATEFORMES, RESEAUX } from '../lib/plateformes.js'
 
   let { uid, panneau = false } = $props()   // panneau : à droite de la liste, sur PC
   const e = encodeURIComponent(uid)
@@ -60,6 +62,23 @@
     catch (err) { erreur(err) }
   }
 
+  // Complétude et réseaux
+  let reseau = $state('')        // réseau en cours d'ajout
+  let profil = $state('')        // adresse, pseudo ou numéro
+  async function poster(chemin, corps, messageOk) {
+    attente = true
+    try {
+      const res = await api.post(`/api/contacts/${e}/${chemin}`, corps)
+      if (res?.jeton) await apresEcriture(res, messageOk)
+      else { dire(messageOk); await rafraichirContacts() }
+      reseau = profil = ''
+      await charger()
+    } catch (err) { erreur(err) } finally { attente = false }
+  }
+  const ajouterProfil = () => poster('profil', { service: reseau, valeur: profil }, `Profil ${PLATEFORMES[reseau].nom} ajouté.`)
+  const delierReseau = (s) => poster('delier-reseau', { service: s }, `${PLATEFORMES[s].nom} délié : plus proposé pour cette fiche.`)
+  const AIDE = { facebook: 'facebook.com/…', instagram: 'Pseudo ou instagram.com/…', telegram: 'Pseudo ou t.me/…' }
+
   const SERVICE = { immich: 'Immich', treemich: 'Treemich' }
   const candidatsReunir = $derived.by(() => {
     const q = reunir.trim().toLowerCase()
@@ -67,6 +86,8 @@
     return (etat.contacts || []).filter((c) => c.uid !== uid && c.nom.toLowerCase().includes(q)).slice(0, 6)
   })
   const f = $derived(donnees?.fiche)
+  const comp = $derived(donnees?.completude || {})
+  const liees = $derived(comp.plateformes || [])
   onMount(charger)
 </script>
 
@@ -137,6 +158,68 @@
         </dl>
       </div>
 
+      <div class="feuille bloc completude">
+        <div class="ligne-titre">
+          <h2 class="titre">Complétude</h2>
+          {#if comp.statut === 'valide'}<span class="etat valide">Fiche validée</span>
+          {:else if comp.statut === 'a_revoir'}<span class="etat revoir">Modifiée depuis la validation</span>{/if}
+        </div>
+        {#if comp.manques?.length}
+          <ul class="manques">{#each comp.manques as m}<li class="pastille">{donnees.criteres[m]}</li>{/each}</ul>
+        {:else}
+          <p class="discret">Rien ne manque : année, adresse, téléphone et moyen de contact sont là.</p>
+        {/if}
+        <div class="boutons-gauche">
+          {#if comp.statut === 'valide'}
+            <button class="bouton" disabled={attente} onclick={() => poster('devalider', {}, 'Validation retirée.')}>Retirer la validation</button>
+          {:else}
+            <button class="bouton bouton-principal" disabled={attente} onclick={() => poster('valider', {}, 'Fiche validée.')}>
+              {comp.statut === 'a_revoir' ? 'Revalider' : 'Valider la fiche'}</button>
+            {#if comp.statut === 'a_revoir'}
+              <button class="bouton" disabled={attente} onclick={() => poster('devalider', {}, 'Validation retirée.')}>Retirer la validation</button>
+            {/if}
+          {/if}
+        </div>
+        {#if comp.statut !== 'valide' && comp.manques?.length}
+          <p class="discret petit">Valider dit que la fiche est complète telle quelle : elle sort des filtres « Sans … ».</p>
+        {/if}
+      </div>
+
+      <div class="feuille bloc">
+        <h2 class="titre">Plateformes</h2>
+        <Plateformes liste={liees} toutes taille="grand" />
+        <ul class="reseaux">
+          {#each RESEAUX.filter((r) => liees.includes(r)) as r}
+            <li class="liaison"><span>{PLATEFORMES[r].nom}</span>
+              <button class="bouton" disabled={attente} onclick={() => delierReseau(r)}>Délier</button></li>
+          {/each}
+        </ul>
+        {#if RESEAUX.some((r) => !liees.includes(r))}
+          <div class="ajout">
+            <select bind:value={reseau} aria-label="Réseau à ajouter" onchange={() => (profil = reseau === 'whatsapp' ? (f.telephones[0]?.valeur || '') : '')}>
+              <option value="">Ajouter un profil…</option>
+              {#each RESEAUX.filter((r) => !liees.includes(r)) as r}<option value={r}>{PLATEFORMES[r].nom}</option>{/each}
+            </select>
+            {#if reseau === 'whatsapp'}
+              {#if f.telephones.length}
+                <select bind:value={profil} aria-label="Numéro WhatsApp">
+                  {#each f.telephones as t}<option value={t.valeur}>{t.affichage || t.valeur}</option>{/each}
+                </select>
+              {:else}
+                <p class="discret">Ajoute d'abord un numéro à la fiche.</p>
+              {/if}
+            {:else if reseau}
+              <input type="text" bind:value={profil} placeholder={AIDE[reseau]} aria-label={'Profil ' + PLATEFORMES[reseau].nom}
+                     autocapitalize="off" autocomplete="off" spellcheck="false" />
+            {/if}
+            {#if reseau}
+              <button class="bouton bouton-principal" disabled={attente || !profil.trim()} onclick={ajouterProfil}>Ajouter</button>
+            {/if}
+          </div>
+          {#if reseau}<p class="discret petit">Le profil est écrit dans la fiche iCloud (champ site), visible sur l'iPhone.</p>{/if}
+        {/if}
+      </div>
+
       <div class="feuille bloc">
         <h2 class="titre">Liaisons</h2>
         {#each Object.entries(donnees.liaisons) as [service, l]}
@@ -199,6 +282,19 @@
   dd { min-width: 0; overflow-wrap: anywhere; }
   .notes { white-space: pre-line; }
   .liaison { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 2.75rem; }
+  .ligne-titre { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+  .completude { display: grid; gap: 0.7rem; }
+  .completude h2 { margin-bottom: 0; }
+  .etat { font-size: 0.85rem; font-weight: 600; }
+  .etat.valide { color: var(--color-valide); }
+  .etat.revoir { color: var(--color-alerte); }
+  .manques { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+  .manques .pastille { min-height: 1.8rem; font-size: 0.82rem; }
+  .boutons-gauche { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .petit { font-size: 0.82rem; }
+  .reseaux { margin-top: 0.4rem; }
+  .ajout { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; align-items: center; }
+  .ajout select, .ajout input { flex: 1 1 12rem; width: auto; min-height: 2.75rem; }
   .choix { margin-top: 0.4rem; margin-right: 0.4rem; }
   .barre {
     position: sticky; bottom: calc(3.5rem + env(safe-area-inset-bottom)); z-index: 5; display: grid; gap: 0.7rem;
