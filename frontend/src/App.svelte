@@ -39,6 +39,8 @@
 {#if etat.connecte === false}
   <Connexion onconnecte={demarrer} />
 {:else if etat.connecte}
+  <!-- iPhone : bande opaque sous l'heure et la batterie, rien ne défile dessous -->
+  <div class="haut-securise" aria-hidden="true"></div>
   <div class="cadre">
     <nav class="onglets" aria-label="Sections">
       <span class="marque titre">carnet</span>
@@ -55,7 +57,9 @@
       {#if etat.accueil?.tache?.etat === 'en_cours'}
         <p class="tache" role="status">{etat.accueil.tache.message}</p>
       {/if}
-      {#if etat.route.page === 'contacts' && etat.route.args[0]}
+      {#if etat.route.page === 'contacts' && etat.large}
+        <Contacts selection={etat.route.args[0] || null} />
+      {:else if etat.route.page === 'contacts' && etat.route.args[0]}
         {#key etat.route.args[0]}<Fiche uid={etat.route.args[0]} />{/key}
       {:else if etat.route.page === 'contacts'}
         <Contacts />
@@ -81,7 +85,12 @@
 
 <style>
   .cadre { min-height: 100dvh; }
-  .contenu { padding: 1rem 1rem calc(5.5rem + env(safe-area-inset-bottom)); max-width: 72rem; margin: 0 auto; }
+  .contenu {
+    padding: calc(0.75rem + env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) calc(5.5rem + env(safe-area-inset-bottom))
+             max(1rem, env(safe-area-inset-left));
+    max-width: 72rem; margin: 0 auto;
+  }
+  .haut-securise { position: fixed; z-index: 25; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: var(--color-cuir); }
   .onglets {
     position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; display: flex;
     background: var(--color-reliure); border-top: 1px solid var(--color-couture);
@@ -119,7 +128,7 @@
     .onglet { flex: none; justify-content: space-between; padding: 0 0.75rem; min-height: 2.75rem; border-radius: 8px; }
     .onglet[aria-current='page'] { background: color-mix(in srgb, var(--color-onglet) 10%, transparent); }
     .onglet[aria-current='page']::before { top: 25%; bottom: 25%; left: 0; right: auto; width: 3px; height: auto; border-radius: 0 3px 3px 0; }
-    .contenu { margin-left: 13rem; padding: 1.75rem 2.5rem 3rem; }
+    .contenu { margin-left: 13rem; padding: 1.75rem 2.5rem 3rem; max-width: none; }
     .message { bottom: 1.5rem; left: 14rem; }
   }
 </style>

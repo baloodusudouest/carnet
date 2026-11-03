@@ -2,20 +2,39 @@
 // cours), liste des contacts gardée en mémoire et message bref avec « Annuler ».
 import { api } from './api.js'
 
+function lireTri() {
+  try { return localStorage.getItem('carnet-tri') === 'nom' ? 'nom' : 'prenom' } catch { return 'prenom' }
+}
+
+const LARGE = matchMedia('(min-width: 900px)')
+
 export const etat = $state({
   route: lireRoute(),
   accueil: null,
   contacts: null,
   message: null,       // { texte, erreur, jeton }
   connecte: null,
+  large: LARGE.matches, // PC : liste et fiche côte à côte
+  tri: lireTri(),       // « prenom » ou « nom », gardé sur cet appareil
 })
+LARGE.addEventListener('change', (e) => { etat.large = e.matches })
+
+export function choisirTri(tri) {
+  etat.tri = tri
+  try { localStorage.setItem('carnet-tri', tri) } catch { /* navigation privée : choix non gardé */ }
+}
 
 function lireRoute() {
   const morceaux = (location.hash.replace(/^#\/?/, '') || 'a-traiter').split('/').map(decodeURIComponent)
   return { page: morceaux[0], args: morceaux.slice(1) }
 }
 
-window.addEventListener('hashchange', () => { etat.route = lireRoute(); window.scrollTo(0, 0) })
+window.addEventListener('hashchange', () => {
+  const avant = etat.route.page
+  etat.route = lireRoute()
+  // Sur PC, ouvrir une fiche garde la liste à sa place
+  if (!(etat.large && avant === etat.route.page)) window.scrollTo(0, 0)
+})
 window.addEventListener('carnet:deconnecte', () => { etat.connecte = false })
 
 export function aller(...morceaux) {

@@ -9,7 +9,7 @@ Accès en réseau local et par Tailscale uniquement, jamais exposé sur Internet
 | Onglet | Rôle |
 |---|---|
 | **À traiter** | Tout ce qui attend une décision : fiche modifiée, créée ou supprimée sur l'iPhone, conflit d'écriture, doublon, mise en forme (« Prénom NOM », numéros), émoji sans son groupe, liaison à confirmer, date de naissance à trancher, nom à reporter dans Immich ou Treemich, liens familiaux, changement LinkedIn, fiche importée. Un point écarté n'est plus reproposé. |
-| **Contacts** | Liste avec recherche (nom, société, numéro), groupes et index des lettres. La fiche : appeler, écrire, modifier (aperçu des changements avant d'écrire, « Annuler » 10 s), liaisons, photo et affiche depuis Immich, logo de la société, réunion avec une autre fiche. Import d'un .vcf ou du Connections.csv de LinkedIn. |
+| **Contacts** | Liste avec recherche (nom, société, numéro), tri par prénom ou par nom (gardé sur l'appareil), menu des groupes et index des lettres (fin sur iPhone, à parcourir du pouce ; tranche de carnet sur PC, où la fiche s'ouvre à côté de la liste). La fiche : appeler, écrire, modifier (aperçu des changements avant d'écrire, « Annuler » 10 s), liaisons, photo et affiche depuis Immich, logo de la société, réunion avec une autre fiche. Import d'un .vcf ou du Connections.csv de LinkedIn. |
 | **État** | Lecture d'iCloud et nuit, sauvegardes et restauration, Synology Contacts, kit d'urgence, LinkedIn (API), services configurés, journal. |
 
 ## Les règles qui protègent tes contacts
