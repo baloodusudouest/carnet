@@ -4,6 +4,7 @@
   import { dire, erreur, etat as global, rafraichirAccueil, rafraichirContacts } from '../lib/etat.svelte.js'
   import BoutonAnneau from '../components/BoutonAnneau.svelte'
   import Voyant from '../components/Voyant.svelte'
+  import ListeNonLies from '../components/ListeNonLies.svelte'
   import { absents, logoReseau } from '../lib/logos.svelte.js'
   import { appel, de, envoyer, occupe, resumeImport, tache, telecharger } from '../lib/suivi.svelte.js'
 
@@ -13,7 +14,6 @@
   let choisies = $state([])
   let filtreSauvegarde = $state('')
   let adresseLinkedin = $state('')
-  let rattache = $state({})
   let section = $state(null)
 
   const court = (iso) => iso ? new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'jamais'
@@ -119,6 +119,18 @@
     await lancer('linkedin', '/api/linkedin/code', { adresse: adresseLinkedin },
       (r) => `LinkedIn : ${r.rattachees} relations reconnues, ${r.proposees} changement(s) à traiter.`)
     adresseLinkedin = ''
+  }
+  // Bilan des réseaux : un clic amène à la partie du réseau
+  function allerReseau(s) {
+    const cible = document.getElementById(`reseau-${s}`)
+    cible?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
+    cible?.classList.add('repere'); setTimeout(() => cible?.classList.remove('repere'), 1600)
+  }
+  async function rattacherReseau(service, x, uid) {
+    try {
+      const r = await api.post(`/api/reseaux/${service}/rattacher`, { ext_id: x.ext_id, uid })
+      dire(`${x.nom} rattaché.`, { jeton: r?.jeton || null }); charger(); rafraichirContacts()
+    } catch (err) { erreur(err); throw err }
   }
   async function linkedinRattacher(url, uid) {
     try { await api.post('/api/linkedin/rattacher', { url, uid }); dire(uid ? 'Relation rattachée.' : 'Relation détachée.'); charger() }
@@ -280,13 +292,14 @@
       <h2 class="titre">Réseaux</h2>
       <dl>
         {#each Object.entries(e.reseaux) as [s, r]}
-          <dt class="reseau">{#if !absents[s]}<img class="logo-reseau" src={logoReseau(s)} alt="" onerror={() => (absents[s] = true)} />{/if}{NOMS_RESEAUX[s]}</dt>
+          <dt><button class="reseau" onclick={() => allerReseau(s)} title={'Aller à ' + NOMS_RESEAUX[s]}>
+            {#if !absents[s]}<img class="logo-reseau" src={logoReseau(s)} alt="" onerror={() => (absents[s] = true)} />{/if}{NOMS_RESEAUX[s]}</button></dt>
           <dd>{r.liees} fiche(s) liée(s){#if r.lues}, {r.lues} personne(s) lue(s){/if}{#if r.importe_le}{" "}<span class="discret">(import du {date(r.importe_le)})</span>{/if}</dd>
         {/each}
       </dl>
       <p class="discret">Chaque rapprochement arrive dans « À traiter » (Réseaux) : rien n'est lié sans toi. Les personnes lues mais jamais liées sont effacées au bout de 90 jours.</p>
 
-      <h3 class="titre-reseau">{#if !absents.linkedin}<img class="logo-reseau" src={logoReseau('linkedin')} alt="" onerror={() => (absents.linkedin = true)} />{/if}LinkedIn</h3>
+      <h3 class="titre-reseau" id="reseau-linkedin">{#if !absents.linkedin}<img class="logo-reseau" src={logoReseau('linkedin')} alt="" onerror={() => (absents.linkedin = true)} />{/if}LinkedIn</h3>
       <p class="discret">Tes relations par l'API de portabilité, ou le fichier Connections.csv de l'export LinkedIn. Seuls les changements de poste ou de société remontent dans « À traiter ».</p>
       <BoutonAnneau icone="envoyer" libelle="Déposer Connections.csv" enCours="Envoi du fichier…" {...de('linkedin_csv')}
                     fichier=".csv,text/csv" disabled={bloque} onfichier={(f) => importerFichier('linkedin_csv', f)} />
@@ -299,26 +312,11 @@
           <span class="rangee"><input bind:value={adresseLinkedin} placeholder="https://localhost/carnet-linkedin?code=…" />
             <button class="bouton" disabled={!adresseLinkedin || !!attente} onclick={linkedinCode}>Importer</button></span></label>
       {/if}
-      {#if e.linkedin.sans_contact.length}
-        <h4>Relations sans fiche ({e.linkedin.sans_contact.length})</h4>
-        <ul class="relations">
-          {#each e.linkedin.sans_contact.slice(0, 50) as r (r.url)}
-            <li>
-              <span>{r.nom} <span class="discret">{[r.fonction, r.societe].filter(Boolean).join(', ')}</span></span>
-              <span class="rangee">
-                <select bind:value={rattache[r.url]} aria-label="Fiche à rattacher">
-                  <option value="">Rattacher à…</option>
-                  {#each (global.contacts || []) as c (c.uid)}<option value={c.uid}>{c.nom}</option>{/each}
-                </select>
-                <button class="bouton" disabled={!rattache[r.url]} onclick={() => linkedinRattacher(r.url, rattache[r.url])}>Rattacher</button>
-                <button class="bouton" onclick={() => linkedinRattacher(r.url, null)}>Détacher</button>
-              </span>
-            </li>
-          {/each}
-        </ul>
-      {/if}
+      <ListeNonLies titre="Relations sans fiche" items={e.linkedin.sans_contact} cle={(r) => r.url}
+                    detail={(r) => [r.fonction, r.societe].filter(Boolean).join(', ')}
+                    rattacher={(r, uid) => linkedinRattacher(r.url, uid)} detacher={(r) => linkedinRattacher(r.url, null)} />
 
-      <h3 class="titre-reseau">{#if !absents.telegram}<img class="logo-reseau" src={logoReseau('telegram')} alt="" onerror={() => (absents.telegram = true)} />{/if}Telegram</h3>
+      <h3 class="titre-reseau" id="reseau-telegram">{#if !absents.telegram}<img class="logo-reseau" src={logoReseau('telegram')} alt="" onerror={() => (absents.telegram = true)} />{/if}Telegram</h3>
       {#if !e.telegram.configure}
         <p class="discret">Ajoute CARNET_TELEGRAM_API_ID et CARNET_TELEGRAM_API_HASH dans la stack (my.telegram.org, « API development tools »).</p>
       {:else if tg.etape === 'telephone'}
@@ -332,23 +330,34 @@
       {/if}
       {#if e.telegram.configure}<p class="discret">Import ponctuel : carnet lit tes contacts Telegram puis se déconnecte. La session n'est ni gardée ni sauvegardée.</p>{/if}
 
-      <h3 class="titre-reseau">{#if !absents.facebook}<img class="logo-reseau" src={logoReseau('facebook')} alt="" onerror={() => (absents.facebook = true)} />{/if}Facebook</h3>
+      <ListeNonLies titre="Importés de Telegram sans fiche" charger={() => api.get('/api/reseaux/telegram/non-lies')}
+                    detail={(x) => [x.pseudo && x.pseudo !== x.nom && '@' + x.pseudo, x.telephone].filter(Boolean).join(', ')}
+                    rattacher={(x, uid) => rattacherReseau('telegram', x, uid)} />
+
+      <h3 class="titre-reseau" id="reseau-facebook">{#if !absents.facebook}<img class="logo-reseau" src={logoReseau('facebook')} alt="" onerror={() => (absents.facebook = true)} />{/if}Facebook</h3>
       <p class="discret">Compte Meta › Vos informations et autorisations › Exporter vos informations : choisis seulement Contacts › <strong>Ami(e)s</strong> (et Followers si tu veux), format <strong>JSON</strong>. Dépose le .zip tel quel, ou seulement <strong>your_friends.json</strong> si tu l'as décompressé (les autres fichiers sont des suggestions ou des demandes, ils ne sont pas lus). Facebook ne donne que les noms : un ami est proposé quand son nom désigne une seule fiche. « Lier » pose la pastille Facebook ; pour écrire le lien du profil dans iCloud, colle son adresse sur la fiche.</p>
       <BoutonAnneau icone="envoyer" libelle="Déposer l'export Facebook" enCours="Envoi de l'archive…" {...de('facebook')}
                     fichier=".zip,.json,application/zip,application/json" disabled={bloque}
                     onfichier={(f) => importerFichier('facebook', f)} />
 
-      <h3 class="titre-reseau">{#if !absents.instagram}<img class="logo-reseau" src={logoReseau('instagram')} alt="" onerror={() => (absents.instagram = true)} />{/if}Instagram</h3>
+      <ListeNonLies titre="Importés de Facebook sans fiche" charger={() => api.get('/api/reseaux/facebook/non-lies')}
+                    detail={(x) => [x.pseudo && x.pseudo !== x.nom && '@' + x.pseudo, x.telephone].filter(Boolean).join(', ')}
+                    rattacher={(x, uid) => rattacherReseau('facebook', x, uid)} />
+
+      <h3 class="titre-reseau" id="reseau-instagram">{#if !absents.instagram}<img class="logo-reseau" src={logoReseau('instagram')} alt="" onerror={() => (absents.instagram = true)} />{/if}Instagram</h3>
       <p class="discret">Dans Instagram : Paramètres, Espace Comptes, Télécharger tes informations, format JSON, « Abonnés et abonnements ». Seuls les pseudos sont lus.</p>
       <BoutonAnneau icone="envoyer" libelle="Déposer l'export Instagram" enCours="Envoi de l'archive…" {...de('instagram')}
                     fichier=".zip,.json,application/zip,application/json" disabled={bloque}
                     onfichier={(f) => importerFichier('instagram', f)} />
       <p class="discret">Les archives sont lues en mémoire puis oubliées : rien n'est gardé sur le NAS.</p>
+      <ListeNonLies titre="Importés d'Instagram sans fiche" charger={() => api.get('/api/reseaux/instagram/non-lies')}
+                    detail={(x) => [x.pseudo && x.pseudo !== x.nom && '@' + x.pseudo, x.telephone].filter(Boolean).join(', ')}
+                    rattacher={(x, uid) => rattacherReseau('instagram', x, uid)} />
 
-      <h3 class="titre-reseau">{#if !absents.x}<img class="logo-reseau" src={logoReseau('x')} alt="" onerror={() => (absents.x = true)} />{/if}X (Twitter)</h3>
+      <h3 class="titre-reseau" id="reseau-x">{#if !absents.x}<img class="logo-reseau" src={logoReseau('x')} alt="" onerror={() => (absents.x = true)} />{/if}X (Twitter)</h3>
       <p class="discret">L'archive de X ne donne que des numéros de compte, sans pseudo ni nom : rien à rapprocher. Sur la fiche, colle le pseudo (@…) ou l'adresse x.com dans Plateformes ; les profils Twitter déjà présents sur tes cartes iCloud sont reconnus.</p>
 
-      <h3 class="titre-reseau">{#if !absents.whatsapp}<img class="logo-reseau" src={logoReseau('whatsapp')} alt="" onerror={() => (absents.whatsapp = true)} />{/if}WhatsApp</h3>
+      <h3 class="titre-reseau" id="reseau-whatsapp">{#if !absents.whatsapp}<img class="logo-reseau" src={logoReseau('whatsapp')} alt="" onerror={() => (absents.whatsapp = true)} />{/if}WhatsApp</h3>
       <p class="discret">Pas d'export des contacts : sur la fiche, choisis le numéro WhatsApp (section Plateformes).</p>
     </div>
     {/if}
@@ -438,12 +447,14 @@
   .logo-reseau { width: 1.35rem; height: 1.35rem; border-radius: 5px; background: #f4efe7; object-fit: contain;
     box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25); flex: none; }
   .titre-reseau { display: flex; align-items: center; gap: 0.5rem; }
-  dt.reseau { display: flex; align-items: center; gap: 0.45rem; }
+  button.reseau { display: flex; align-items: center; gap: 0.45rem; color: var(--color-mine); text-align: left; min-height: 1.8rem; }
+  button.reseau:hover { color: var(--color-papier); text-decoration: underline; text-underline-offset: 3px; }
+  .titre-reseau { scroll-margin-top: calc(1rem + env(safe-area-inset-top)); border-radius: 6px; transition: background-color 0.6s ease; }
+  :global(.titre-reseau.repere) { background: color-mix(in srgb, var(--color-onglet) 18%, transparent); }
   .page { max-width: 46rem; display: grid; gap: 1rem; }
   h1 { font-size: 1.9rem; }
   h2 { font-size: 1.2rem; margin-bottom: 0.6rem; }
   h3 { font-weight: 600; margin: 0.9rem 0 0.4rem; }
-  h4 { font-weight: 600; margin: 0.6rem 0 0.3rem; font-size: 0.95rem; }
   .bloc { padding: 1rem; display: grid; gap: 0.6rem; }
   dl { display: grid; grid-template-columns: minmax(8rem, auto) 1fr; gap: 0.3rem 1rem; }
   dt { color: var(--color-mine); }
@@ -454,9 +465,6 @@
   .colle { display: grid; gap: 0.3rem; }
   .rangee { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; }
   .rangee input { flex: 1; min-width: 12rem; }
-  .rangee select { width: auto; max-width: 12rem; }
-  .relations { display: grid; gap: 0.5rem; }
-  .relations li { display: grid; gap: 0.3rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--color-couture); }
   .services { display: grid; gap: 0.3rem; }
   .services li { display: flex; align-items: center; gap: 0.5rem; }
   .services li { align-items: flex-start; min-height: 1.8rem; }

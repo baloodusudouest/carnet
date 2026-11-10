@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 2.6.0 — 10 novembre 2026 — réseaux : navigation et importés sans fiche
+- **Bilan des réseaux cliquable** : un clic sur LinkedIn, Telegram, Instagram, Facebook, X ou WhatsApp amène à sa partie, brièvement surlignée.
+- **Listes repliables** (Développer / Réduire, fermées par défaut) :
+  - LinkedIn : relations sans fiche ;
+  - Telegram, Facebook, Instagram : personnes importées liées à aucune fiche, avec le repère « proposé dans À traiter » quand une proposition est ouverte.
+- Chaque liste a un filtre (nom, société, pseudo) et s'affiche par 30. « Rattacher… » ouvre une recherche de fiche pré-remplie avec le nom de famille, au lieu d'un menu de toutes les fiches sur chaque ligne (plus léger avec 500 relations).
+
 ## 2.5.0 — 10 novembre 2026 — copie Synology suivie, X (Twitter)
 - **Copie vers Synology Contacts** (« Copier maintenant » et « Forcer la copie ») : tâche de fond avec bouton à anneau. L'anneau suit la lecture de Synology puis chaque fiche copiée (« 120 / 519 »), passe au vert avec le bilan ou au rouge avec la raison (coupe-circuit des 5 % compris). « Forcer la copie » est un bouton à anneau rouge. Le bandeau d'État et la tuile Copies montrent la roue pendant la copie.
 - **X (Twitter)** rejoint les réseaux : pseudo (@…) ou adresse x.com/twitter.com collé sur la fiche (écrit dans la carte iCloud), pastille et logo, « Délier ». Les profils Twitter déjà présents sur les cartes sont reconnus. L'archive de X ne donne que des numéros de compte : pas d'import.

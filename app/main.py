@@ -608,6 +608,16 @@ def linkedin_reessayer():
     return linkedin.api(carnet(), "")
 
 
+@app.get("/api/reseaux/{service}/non-lies")
+def reseau_non_lies(service: str):
+    return reseaux.non_lies(carnet(), service)
+
+
+@app.post("/api/reseaux/{service}/rattacher")
+def reseau_rattacher(service: str, corps: dict = Body(...)):
+    return reseaux.rattacher(carnet(), service, str(corps.get("ext_id", "")), str(corps.get("uid", "")))
+
+
 @app.post("/api/linkedin/rattacher")
 def linkedin_rattacher(corps: dict = Body(...)):
     linkedin.rattacher(carnet(), str(corps.get("url")), corps.get("uid") or None)

@@ -1285,3 +1285,17 @@ def test_profil_x_twitter(c, services):
     # Un profil Twitter déjà sur la carte (ajouté sur l'iPhone) est reconnu
     f = c.fiche("CCCC-3333")
     assert "x" in completude.plateformes(c, "CCCC-3333", {**f, "sites": [{"valeur": "http://twitter.com/claire", "type": "site"}]})
+
+
+def test_personnes_importees_non_liees_et_rattachement(c, services):
+    reseaux.enregistrer(c, "telegram", [{"ext_id": "t1", "nom": "Quelqu'un D'autre", "telephone": "+33611112222", "pseudo": "qda"},
+                                        {"ext_id": "t2", "nom": "Encore Un", "telephone": "", "pseudo": ""}])
+    liste = reseaux.non_lies(c, "telegram")
+    assert [p["ext_id"] for p in liste] == ["t2", "t1"]                # tri par nom
+    reseaux.rattacher(c, "telegram", "t1", "DDDD-4444")
+    assert [p["ext_id"] for p in reseaux.non_lies(c, "telegram")] == ["t2"]
+    assert "t.me/qda" in services["icloud"].texte("DDDD-4444")
+    with pytest.raises(ErreurCarnet):
+        reseaux.rattacher(c, "telegram", "absent", "DDDD-4444")
+    with pytest.raises(ErreurCarnet):
+        reseaux.non_lies(c, "site")

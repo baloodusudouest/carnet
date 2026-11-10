@@ -261,3 +261,23 @@ def test_glisser_deposer_un_export_instagram(page):
     cible.dispatch_event("drop", {"dataTransfer": poignee})
     page.wait_for_selector("label.bouton-anneau[data-etat='succes']")
     assert "Instagram : 1 compte(s) lu(s)" in page.locator(".message").inner_text()
+
+
+def test_reseaux_aller_a_la_partie_et_rattacher_un_importe(page):
+    page.click("nav.onglets a[aria-label='État']")
+    page.locator(".tuile", has_text="Réseaux").click()
+    page.locator("button.reseau", has_text="Telegram").click()
+    page.wait_for_timeout(700)
+    assert page.locator("#reseau-telegram").is_visible()
+    liste = page.locator(".non-lies", has_text="Importés de Telegram sans fiche")
+    liste.get_by_role("button", name=re.compile("Importés de Telegram")).click()
+    page.wait_for_selector(".non-lies ul, .non-lies p")
+    ligne = liste.locator("li", has_text="Hugo B.")
+    if not ligne.count():
+        pytest.skip("déjà rattaché par l'autre format")
+    assert "proposé dans À traiter" not in ligne.inner_text()       # nom abrégé : aucune proposition
+    ligne.get_by_role("button", name="Rattacher…").click()
+    liste.locator("input[aria-label='Fiche à rattacher']").fill("Bonnet")
+    liste.get_by_role("button", name="Hugo BONNET").click()
+    page.wait_for_selector(".message >> text=rattaché")
+    page.wait_for_selector(".non-lies li:has-text('Hugo B.')", state="detached")

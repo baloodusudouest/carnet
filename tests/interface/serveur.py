@@ -39,7 +39,8 @@ def preparer(dossier: Path) -> tuple[Carnet, FauxICloud]:
         icloud.relire(c, "démo")
     liaisons.donnees(c)
     # Réseaux : un contact Telegram au même numéro qu'Agnès, deux comptes Instagram au pseudo prénom+nom
-    reseaux.enregistrer(c, "telegram", [{"ext_id": "tg-1", "nom": "Agnès R.", "telephone": "+33610203040", "pseudo": "agnes"}])
+    reseaux.enregistrer(c, "telegram", [{"ext_id": "tg-1", "nom": "Agnès R.", "telephone": "+33610203040", "pseudo": "agnes"},
+                                        {"ext_id": "tg-2", "nom": "Hugo B.", "telephone": "", "pseudo": "hugob"}])
     reseaux.enregistrer(c, "instagram", [{"ext_id": "brunolefevre", "nom": "", "pseudo": "brunolefevre"},
                                          {"ext_id": "camille.garnier", "nom": "", "pseudo": "camille.garnier"}])
     reseaux.proposer(c)

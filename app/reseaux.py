@@ -278,6 +278,34 @@ def bilan(c: Carnet) -> dict:
     return res
 
 
+def non_lies(c: Carnet, service: str) -> list[dict]:
+    """Personnes importées d'un réseau qui ne sont liées à aucune fiche (gardées 90 jours au plus)."""
+    _verifier_service(service)
+    lies = {l["ext_id"] for l in c.base.tous("SELECT ext_id FROM liaisons WHERE service = ?", (service,))}
+    proposes = {l["cle"].split("|", 1)[1] for l in c.base.tous("SELECT cle FROM a_traiter WHERE motif = 'reseau' AND cle LIKE ?",
+                                                                (f"{service}|%",))}
+    res = []
+    for l in c.base.tous("SELECT ext_id, nom, donnees, vu_le FROM personnes_externes WHERE service = ? ORDER BY nom COLLATE NOCASE",
+                         (service,)):
+        if l["ext_id"] in lies:
+            continue
+        d = json.loads(l["donnees"])
+        res.append({"ext_id": l["ext_id"], "nom": l["nom"], "pseudo": d.get("pseudo") or "",
+                    "telephone": d.get("telephone") or "", "propose": l["ext_id"] in proposes})
+    return res
+
+
+def rattacher(c: Carnet, service: str, ext_id: str, uid: str) -> dict:
+    """Rattachement à la main d'une personne importée à une fiche (comme « Lier » dans À traiter)."""
+    _verifier_service(service)
+    l = c.base.un("SELECT donnees FROM personnes_externes WHERE service = ? AND ext_id = ?", (service, ext_id))
+    if not l:
+        raise ErreurCarnet("Personne introuvable (déjà purgée ?) : relance l'import.")
+    d = json.loads(l["donnees"])
+    c.base.executer("DELETE FROM refus WHERE uid = ? AND service = ? AND ext_id = ?", (uid, service, ext_id))
+    return lier(c, uid, service, ext_id, d.get("pseudo") or "", d.get("telephone") or "")
+
+
 # ------------------------------------------------------------ logos des plateformes
 
 def adresse_logo(c: Carnet, service: str) -> str | None:
