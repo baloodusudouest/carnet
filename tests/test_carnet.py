@@ -1188,3 +1188,16 @@ def test_fichiers_facebook_qui_ne_sont_pas_des_amis(c):
             reseaux.lire_facebook(suggestions, nom)
     assert reseaux.source_export(_export_facebook("Paul Martin"), "your_friends.json") == "facebook"
     assert [p["nom"] for p in reseaux.lire_facebook(_export_facebook("Paul Martin"), "your_friends.json")] == ["Paul Martin"]
+
+
+def test_instagram_carnet_d_adresses_synchronise(c):
+    import io as io_
+    import zipfile
+    synchro = json.dumps({"contacts_contact_info": [{"string_map_data": {"First Name": {"value": "A"}}}]}).encode()
+    with pytest.raises(ErreurCarnet, match="synced_contacts"):
+        reseaux.lire_instagram(synchro, "synced_contacts.json")
+    tampon = io_.BytesIO()
+    with zipfile.ZipFile(tampon, "w") as z:
+        z.writestr("connections/contacts/synced_contacts.json", synchro)
+    with pytest.raises(ErreurCarnet, match="Abonnés et abonnements"):
+        reseaux.lire_instagram(tampon.getvalue(), "instagram.zip")

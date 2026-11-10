@@ -438,10 +438,19 @@ def _lire_borne(z: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
     return brut
 
 
+INSTAGRAM_CONTACTS = ("Ce fichier est ton carnet d'adresses synchronisé par Instagram (synced_contacts.json), sans aucun "
+                      "pseudo. Redemande l'export : Relations › « Abonnés et abonnements », format JSON, puis dépose "
+                      "followers_1.json et following.json (ou le .zip).")
+
+
 def lire_instagram(contenu: bytes, nom_fichier: str) -> list[dict]:
     """Abonnements et abonnés d'un export Instagram (.zip ou .json). Seuls les pseudos sont lus ;
     le reste de l'archive (messages…) n'est jamais ouvert ni gardé."""
     fichiers: list[bytes] = []
+    if (nom_fichier.lower().rsplit("/", 1)[-1].startswith("synced_contacts") or b'"contacts_contact_info"' in contenu[:2000]
+            or (contenu[:2] == b"PK" and any(n.endswith("synced_contacts.json") for n in _noms_zip(contenu))
+                and not any(re.search(r"followers(_\d+)?\.(json|html)$|following\.(json|html)$", n) for n in _noms_zip(contenu)))):
+        raise ErreurCarnet(INSTAGRAM_CONTACTS)
     if nom_fichier.lower().endswith(".zip") or contenu[:2] == b"PK":
         try:
             with zipfile.ZipFile(io.BytesIO(contenu)) as z:

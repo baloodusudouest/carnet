@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.3.2 — 10 novembre 2026
+- Instagram : un export « Contacts » (synced_contacts.json, ton carnet d'adresses synchronisé, sans pseudo) est reconnu et explique quel export demander à la place (« Abonnés et abonnements », JSON).
+
 ## 2.3.1 — 10 novembre 2026 — glisser-déposer et exports reconnus
 - **Glisser-déposer** (PC) : sur « Déposer l'export Facebook », « Déposer l'export Instagram » et « Importer ». Dès qu'un fichier est tiré au-dessus de carnet, les cibles s'entourent de pointillés dorés. Un fichier lâché à côté n'ouvre plus le fichier dans le navigateur.
 - Chaque bouton annonce son réseau : un export déposé sur « Instagram » est lu comme Instagram même si son contenu n'est pas reconnu d'emblée (corrige « Fichier non reconnu »).
