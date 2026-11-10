@@ -1101,3 +1101,46 @@ def test_export_vcf_et_telechargement_de_sauvegarde(c):
         assert client.get("/api/sauvegardes/..%2Fcarnet2.db/fichier").status_code in (400, 404)
         assert client.get("/api/sauvegardes/icloud-absente.vcf/fichier").status_code == 400
     main.ETAT.clear()
+
+
+# ------------------------------------------------------------ Facebook (export « Ami(e)s »)
+
+def _export_facebook(*noms) -> bytes:
+    # Format réel : UTF-8 écrit octet par octet (« Ã© ») ; seuls le nom et la date sont donnés
+    amis = [{"name": n.encode("utf-8").decode("latin-1"), "timestamp": 1500000000 + i} for i, n in enumerate(noms)]
+    return json.dumps({"friends_v2": amis}).encode()
+
+
+def test_import_facebook_par_le_nom(c, services):
+    import io as io_
+    import zipfile
+    tampon = io_.BytesIO()
+    with zipfile.ZipFile(tampon, "w") as z:
+        z.writestr("connections/friends/your_friends.json", _export_facebook("MARTIN Paul", "Inconnu Total", "Paul Martin"))
+        z.writestr("messages/inbox/x/message_1.json", b'{"secret": "jamais lu"}')
+    assert reseaux.source_export(tampon.getvalue(), "export.zip") == "facebook"
+    r = reseaux.importer_facebook(c, tampon.getvalue(), "export.zip")
+    assert r["lues"] == 3
+    p = [x for x in points(c, "reseau") if x["donnees"]["service"] == "facebook"]
+    assert len(p) == 1 and p[0]["uid"] == "DDDD-4444"            # une seule proposition par fiche et par réseau
+    avant = services["icloud"].texte("DDDD-4444")
+    actions.repondre(c, p[0]["id"], "lier")
+    assert services["icloud"].texte("DDDD-4444") == avant          # rien d'écrit : pas d'adresse de profil
+    assert "facebook" in completude.plateformes(c, "DDDD-4444", c.fiche("DDDD-4444"), avant)
+    reseaux.delier(c, "DDDD-4444", "facebook")                    # liaison seule : retirée sans écriture
+    assert "facebook" not in completude.plateformes(c, "DDDD-4444", c.fiche("DDDD-4444"), avant)
+
+
+def test_accents_et_aiguillage_des_exports(c):
+    import io as io_
+    import zipfile
+    personnes = reseaux.lire_facebook(_export_facebook("Élodie Chevalier"), "your_friends.json")
+    assert personnes[0]["nom"] == "Élodie Chevalier"
+    assert reseaux.source_export(_export_facebook("A B"), "your_friends.json") == "facebook"
+    insta = io_.BytesIO()
+    with zipfile.ZipFile(insta, "w") as z:
+        z.writestr("connections/followers_and_following/followers_1.json", b'[{"string_list_data": [{"value": "paulm"}]}]')
+    assert reseaux.source_export(insta.getvalue(), "instagram.zip") == "instagram"
+    assert reseaux.source_export(b"BEGIN:VCARD", "x.vcf") is None
+    with pytest.raises(ErreurCarnet, match="Ami"):
+        reseaux.lire_facebook(b'{"autre": []}', "x.json")

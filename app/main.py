@@ -527,7 +527,10 @@ async def importer(request: Request, nom: str = ""):
     fichier_nom = nom.rsplit("/", 1)[-1][:120] or "fichier"
     nom = fichier_nom.lower()
     # Export Instagram : archive .zip ou JSON d'abonnements ; l'archive n'est jamais gardée
-    if nom.endswith(".zip") or brut[:2] == b"PK" or (nom.endswith(".json") and b"string_list_data" in brut[:200000]):
+    source = reseaux.source_export(brut, nom)
+    if source == "facebook":
+        return reseaux.importer_facebook(c, brut, nom)
+    if source == "instagram":
         return reseaux.importer_instagram(c, brut, nom)
     contenu = brut.decode("utf-8-sig", errors="replace")
     if "First Name" in contenu[:4000] and ("Connected On" in contenu or "linkedin" in contenu.lower()):

@@ -292,14 +292,21 @@
       {/if}
       {#if e.telegram.configure}<p class="discret">Import ponctuel : carnet lit tes contacts Telegram puis se déconnecte. La session n'est ni gardée ni sauvegardée.</p>{/if}
 
+      <h3>Facebook</h3>
+      <p class="discret">Compte Meta › Vos informations et autorisations › Exporter vos informations : choisis seulement Contacts › <strong>Ami(e)s</strong> (et Followers si tu veux), format <strong>JSON</strong>. Facebook ne donne que les noms : un ami est proposé quand son nom désigne une seule fiche. « Lier » pose la pastille Facebook ; pour écrire le lien du profil dans iCloud, colle son adresse sur la fiche.</p>
+      <BoutonAnneau icone="envoyer" libelle="Déposer l'export Facebook" enCours="Envoi de l'archive…" {...de('facebook')}
+                    fichier=".zip,.json,application/zip,application/json" disabled={bloque}
+                    onfichier={(f) => importerFichier('facebook', f)} />
+
       <h3>Instagram</h3>
-      <p class="discret">Dans Instagram : Paramètres, Espace Comptes, Télécharger tes informations, format JSON, « Abonnés et abonnements ». Dépose l'archive .zip ici : seuls les pseudos sont lus, l'archive n'est pas gardée.</p>
+      <p class="discret">Dans Instagram : Paramètres, Espace Comptes, Télécharger tes informations, format JSON, « Abonnés et abonnements ». Seuls les pseudos sont lus.</p>
       <BoutonAnneau icone="envoyer" libelle="Déposer l'export Instagram" enCours="Envoi de l'archive…" {...de('instagram')}
                     fichier=".zip,.json,application/zip,application/json" disabled={bloque}
                     onfichier={(f) => importerFichier('instagram', f)} />
+      <p class="discret">Les archives sont lues en mémoire puis oubliées : rien n'est gardé sur le NAS.</p>
 
-      <h3>Facebook et WhatsApp</h3>
-      <p class="discret">Pas d'import possible : sur la fiche, colle l'adresse du profil Facebook ou choisis le numéro WhatsApp (section Plateformes).</p>
+      <h3>WhatsApp</h3>
+      <p class="discret">Pas d'export des contacts : sur la fiche, choisis le numéro WhatsApp (section Plateformes).</p>
     </div>
     {/if}
 

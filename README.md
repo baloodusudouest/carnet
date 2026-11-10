@@ -22,7 +22,7 @@ Quatre critères : **sans année de naissance**, **sans adresse**, **sans télé
 |---|---|---|
 | Telegram | État › Réseaux : numéro, code reçu dans Telegram, mot de passe de double vérification si besoin (`CARNET_TELEGRAM_API_ID` / `_HASH`) | Nom, numéro et pseudo des contacts. La session Telegram n'existe qu'en mémoire : carnet se déconnecte après l'import, rien n'est écrit sur disque ni sauvegardé. |
 | Instagram | Export « Abonnés et abonnements » (JSON) déposé dans État › Réseaux ou Contacts › Importer | Les pseudos seulement ; l'archive n'est pas gardée. |
-| Facebook | Adresse du profil collée sur la fiche | Le lien, dans la carte iCloud. |
+| Facebook | Export « Ami(e)s » en JSON (Compte Meta › Exporter vos informations › Contacts) déposé dans État › Réseaux ; ou adresse du profil collée sur la fiche | Les noms des amis (l'export n'a ni lien ni numéro) : « Lier » pose la pastille sans écrire dans iCloud. Le lien collé sur la fiche va dans la carte iCloud. |
 | WhatsApp | Numéro choisi sur la fiche (ou profil WhatsApp déjà présent sur la carte) | Le lien wa.me, dans la carte iCloud. |
 
 Chaque rapprochement (même numéro, pseudo formé du prénom et du nom, même nom unique) arrive dans « À traiter › Réseaux », 150 au plus par import. Lier écrit le profil dans la carte iCloud ; « Pas lui » et « Délier » empêchent de le reproposer. Les personnes lues mais jamais liées sont effacées au bout de 90 jours.

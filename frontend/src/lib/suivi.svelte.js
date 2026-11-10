@@ -121,6 +121,8 @@ export function envoyer(cle, fichier) {
 export function resumeImport(r) {
   return r.source === 'linkedin'
     ? `LinkedIn : ${r.rattachees} relations reconnues, ${r.proposees} changement(s) à traiter.`
+    : r.source === 'facebook'
+      ? `Facebook : ${r.lues} ami(s) lu(s), ${r.proposees} rattachement(s) proposé(s) dans « À traiter ». L'archive n'est pas gardée.`
     : r.source === 'instagram'
       ? `Instagram : ${r.lues} compte(s) lu(s), ${r.proposees} rattachement(s) proposé(s). L'archive n'est pas gardée.`
       : `${r.lues} fiche(s) lue(s), ${r.a_traiter} à vérifier dans « À traiter ».`

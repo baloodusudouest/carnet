@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.3.0 — 10 novembre 2026 — import des amis Facebook
+- **Export Facebook** (Compte Meta › Exporter vos informations › Contacts › Ami(e)s, format JSON) déposé dans État › Réseaux ou Contacts › Importer, en .zip ou your_friends.json. Seuls les fichiers d'amis et de followers sont ouverts ; l'archive est lue en mémoire puis oubliée.
+- Facebook ne donne que les noms (pas de lien de profil ni de numéro). Les accents mal encodés de l'export (« Ã© ») sont réparés. Un ami est proposé dans « À traiter › Réseaux » quand son nom désigne une seule fiche, même avec les mots dans un autre ordre.
+- « Lier » pose la pastille Facebook sans rien écrire dans iCloud ; pour écrire le lien du profil, colle son adresse sur la fiche. « Délier » retire la pastille.
+- Une seule proposition ouverte par fiche et par réseau (tous réseaux).
+
 ## 2.2.0 — 10 novembre 2026 — barre pilule et boutons à anneau
 - **iPhone** : la barre d'onglets devient une pilule sombre qui flotte en bas. Les onglets montrent leur icône seule ; l'onglet ouvert s'élargit en pastille claire avec son nom. Le nombre de points à traiter reste sur l'icône.
 - **PC** : le rail de gauche reste, avec la même pastille claire pour l'onglet ouvert et des icônes.

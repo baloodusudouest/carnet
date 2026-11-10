@@ -104,6 +104,10 @@ def _compact(texte: str) -> str:
     return re.sub(r"[^a-z0-9]", "", cle_texte(texte))
 
 
+def _jetons(nom: str) -> str:
+    return " ".join(sorted(cle_texte(nom).split()))
+
+
 def proposer(c: Carnet) -> int:
     """Propositions de rattachement pour les personnes lues (au plus 150 nouvelles par passage).
     Très sûr : même numéro. Sûr : nom identique et unique (Instagram : pseudo = prénom+nom collés)."""
@@ -114,14 +118,19 @@ def proposer(c: Carnet) -> int:
     par_tel: dict[str, list[str]] = {}
     par_nom: dict[str, list[str]] = {}
     par_compact: dict[str, list[str]] = {}
+    par_jetons: dict[str, list[str]] = {}
     for uid, f in fiches.items():
         for t in f.get("telephones", []):
             if t.get("valide"):
                 par_tel.setdefault(t["valeur"].split(";")[0], []).append(uid)
         n = nom_affiche(f)
         par_nom.setdefault(cle_texte(n), []).append(uid)
+        par_jetons.setdefault(_jetons(n), []).append(uid)
         par_compact.setdefault(_compact(f"{f.get('prenom', '')}{f.get('nom', '')}"), []).append(uid)
-    deja = {l["cle"] for l in c.base.tous("SELECT cle FROM a_traiter WHERE motif = 'reseau'")}
+    points = c.base.tous("SELECT cle, uid FROM a_traiter WHERE motif = 'reseau'")
+    deja = {l["cle"] for l in points}
+    # Une seule proposition ouverte par fiche et par réseau
+    proposes = {(l["uid"], l["cle"].split("|", 1)[0]) for l in points}
     nouvelles = 0
     with c.base.transaction() as cx:
         for l in cx.execute("SELECT * FROM personnes_externes ORDER BY service, nom").fetchall():
@@ -143,16 +152,22 @@ def proposer(c: Carnet) -> int:
                 trouves = set(par_nom.get(cle_texte(l["nom"]), []))
                 if len(trouves) == 1 and cle_texte(l["nom"]):
                     uid, raison = trouves.pop(), "même nom"
+                elif not trouves and " " in l["nom"].strip():
+                    # « Dupont Jean » ou « Jean Dupont » : mêmes mots, dans un autre ordre
+                    trouves = set(par_jetons.get(_jetons(l["nom"]), []))
+                    if len(trouves) == 1:
+                        uid, raison = trouves.pop(), "même nom (mots dans un autre ordre)"
             if not uid or (uid, service, ext_id) in refus or liaisons.get(uid, {}).get(service):
                 continue
             cle = f"{service}|{ext_id}"
-            if cle in deja:
+            if cle in deja or (uid, service) in proposes:
                 continue
             ajout_tel = tel if tel and tel not in {t["valeur"] for t in fiches[uid].get("telephones", [])} else ""
             if traiter.ajouter(cx, "reseau", uid, cle, {"service": service, "ext_id": ext_id, "nom": l["nom"],
                                                          "pseudo": d.get("pseudo") or "", "telephone": ajout_tel,
                                                          "raison": raison}):
                 nouvelles += 1
+                proposes.add((uid, service))
     c.oublier()
     return nouvelles
 
@@ -285,6 +300,97 @@ def ajouter_profil(c: Carnet, uid: str, service: str, valeur: str, etag_vu: str 
                           etag_vu=etag_vu or actions._etag(c, uid))
     _noter_profil(c, uid, service, url)
     return res
+
+
+# ------------------------------------------------------------ type d'export déposé
+
+def _noms_zip(contenu: bytes) -> list[str]:
+    try:
+        with zipfile.ZipFile(io.BytesIO(contenu)) as z:
+            return [i.filename.lower() for i in z.infolist()][:20000]
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, OSError, EOFError):
+        return []
+
+
+def source_export(contenu: bytes, nom_fichier: str) -> str | None:
+    """« facebook », « instagram » ou None (vcf, csv…) d'après le contenu déposé."""
+    zip_ = nom_fichier.endswith(".zip") or contenu[:2] == b"PK"
+    if zip_:
+        noms = [n.rsplit("/", 1)[-1] for n in _noms_zip(contenu)]
+        if any(re.fullmatch(SIGNES_FACEBOOK, n) for n in noms):
+            return "facebook"
+        return "instagram"
+    if nom_fichier.endswith(".json"):
+        debut = contenu[:200000]
+        if b"string_list_data" in debut:
+            return "instagram"
+        if re.search(rb'"(friends|followers|received_requests|sent_requests)(_v\d+)?"', debut) or b'"name"' in debut:
+            return "facebook"
+    return None
+
+
+# ------------------------------------------------------------ Facebook (export « Ami(e)s »)
+
+# Fichiers lus dans l'archive : amis, followers. Les messages, photos… ne sont jamais ouverts.
+FICHIERS_FACEBOOK = r"(your_friends|friends|people_who_followed_you|who_you've_followed|followers)(_\d+)?\.json"
+# Fichiers propres à Facebook (Instagram a aussi des followers_N.json)
+SIGNES_FACEBOOK = r"(your_friends|friends|people_who_followed_you|who_you've_followed)(_\d+)?\.json"
+LISTES_FACEBOOK = re.compile(r"(friends|followers|following)(_v\d+)?")
+
+
+def lire_facebook(contenu: bytes, nom_fichier: str) -> list[dict]:
+    """Ami(e)s et followers d'un export Facebook (.zip ou .json). L'export ne donne que le nom
+    (ni identifiant, ni lien de profil, ni numéro) : l'identifiant gardé est le nom normalisé."""
+    fichiers: list[bytes] = []
+    if nom_fichier.lower().endswith(".zip") or contenu[:2] == b"PK":
+        try:
+            with zipfile.ZipFile(io.BytesIO(contenu)) as z:
+                retenus = [i for i in z.infolist() if not i.is_dir()
+                           and re.fullmatch(FICHIERS_FACEBOOK, i.filename.lower().rsplit("/", 1)[-1])]
+                if len(retenus) > FICHIERS_MAX:
+                    raise ErreurCarnet("Archive Facebook invalide : trop de fichiers.")
+                fichiers = [_lire_borne(z, i) for i in retenus]
+        except (zipfile.BadZipFile, zipfile.LargeZipFile, NotImplementedError, EOFError, RuntimeError, OSError):
+            raise ErreurCarnet("Archive .zip illisible : télécharge à nouveau l'export Facebook.")
+    else:
+        fichiers.append(contenu)
+    personnes: dict[str, dict] = {}
+
+    def entrees(d):
+        if isinstance(d, list):
+            return d
+        if isinstance(d, dict):
+            for k, v in d.items():
+                if LISTES_FACEBOOK.fullmatch(str(k)) and isinstance(v, list):
+                    return v
+        return []
+
+    for brut in fichiers:
+        try:
+            d = json.loads(brut.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+            continue
+        for e in entrees(d):
+            if not isinstance(e, dict) or not isinstance(e.get("name"), str):
+                continue
+            nom = " ".join(_reparer(e["name"]).split())[:120]
+            cle = cle_texte(nom)
+            if cle:
+                personnes[cle] = {"ext_id": "nom:" + cle, "nom": nom, "pseudo": ""}
+    if not personnes:
+        raise ErreurCarnet("Aucun ami trouvé : dans « Télécharger tes informations », choisis Contacts › Ami(e)s, "
+                           "format JSON, puis dépose le .zip ou le fichier your_friends.json.")
+    return list(personnes.values())
+
+
+def importer_facebook(c: Carnet, contenu: bytes, nom_fichier: str) -> dict:
+    personnes = lire_facebook(contenu, nom_fichier)
+    enregistrer(c, "facebook", personnes)
+    purger(c)
+    n = proposer(c)
+    c.base.noter("reseaux", f"Facebook : {len(personnes)} personne(s) lue(s), {n} rattachement(s) proposé(s) ; "
+                            "archive non gardée")
+    return {"source": "facebook", "lues": len(personnes), "proposees": n}
 
 
 # ------------------------------------------------------------ Instagram (export)
