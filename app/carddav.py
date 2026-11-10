@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from urllib.parse import urljoin, urlsplit
 
 import logging
+import time
 
 import httpx
 
@@ -23,6 +24,7 @@ PAQUET = 100
 
 
 class ErreurICloud(Exception):
+    passagere = False        # vraie pour un raté du serveur (500, 503…) : la lecture est réessayée
     """Erreur à afficher telle quelle."""
 
 
@@ -63,9 +65,35 @@ class CardDAV:
 
     # ------------------------------------------------------------ bas niveau
 
+    # Lectures réessayées quand le serveur a un raté passager (iCloud répond parfois 500 ou 503
+    # quelques minutes) ; les écritures ne sont jamais rejouées (l'ETag tranchera au prochain essai)
+    LECTURES = {"PROPFIND", "REPORT", "GET"}
+    PAUSES = (2, 6, 15)
+
     def _requete(self, methode: str, url: str, **kw) -> httpx.Response:
+        pauses = list(self.PAUSES) if methode in self.LECTURES else []
+        while True:
+            try:
+                r = self._une_requete(methode, url, **kw)
+            except ErreurICloud as exc:
+                if not pauses or not getattr(exc, "passagere", False):
+                    raise
+                pause = pauses.pop(0)
+                log.info("%s %s %s : nouvel essai dans %s s", self.service, methode, urlsplit(url).path, pause)
+                time.sleep(pause)
+                continue
+            return r
+
+    def _une_requete(self, methode: str, url: str, **kw) -> httpx.Response:
         try:
             r = self.client.request(methode, url, **kw)
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError) as exc:
+            erreur = ErreurICloud(f"{self.service} injoignable ({exc.__class__.__name__}).")
+            erreur.passagere = "CERTIFICATE" not in str(exc).upper()
+            if not erreur.passagere:
+                erreur = ErreurICloud(f"{self.service} : certificat HTTPS refusé (adresse IP ou certificat auto-signé). "
+                                      "En réseau local, mets CARNET_SYNOLOGY_VERIFIER_TLS=non.")
+            raise erreur from exc
         except httpx.HTTPError as exc:
             if "CERTIFICATE" in str(exc).upper():
                 raise ErreurICloud(f"{self.service} : certificat HTTPS refusé (adresse IP ou certificat auto-signé). "
@@ -82,8 +110,12 @@ class CardDAV:
             # Le motif donné par iCloud (souvent un XML court) est gardé pour le diagnostic
             motif = " ".join(r.text.split())[:300] if r.text else ""
             log.warning("%s %s %s → %s %s", self.service, methode, urlsplit(url).path, r.status_code, motif)
-            raise ErreurICloud(f"{self.service} a répondu {r.status_code} à {methode} {urlsplit(url).path}"
-                               + (f" ({motif})" if motif else "") + ".")
+            erreur = ErreurICloud(f"{self.service} a répondu {r.status_code} à {methode} {urlsplit(url).path}"
+                                  + (f" ({motif})" if motif else "")
+                                  + (" : panne passagère du serveur, réessaie dans quelques minutes" if r.status_code >= 500 else "")
+                                  + ".")
+            erreur.passagere = r.status_code in (429, 500, 502, 503, 504)
+            raise erreur
         return r
 
     def _propfind(self, url: str, props: str, profondeur: int) -> list[tuple[str, ET.Element]]:

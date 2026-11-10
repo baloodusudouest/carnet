@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.6.2 — 10 novembre 2026
+- **Ratés passagers d'iCloud** (et de Synology) : une lecture qui reçoit 429, 500, 502, 503 ou 504, ou dont la connexion coupe, est réessayée seule après 2, 6 puis 15 secondes avant d'abandonner. Les écritures ne sont jamais rejouées. Le message final précise « panne passagère du serveur, réessaie dans quelques minutes ».
+
 ## 2.6.1 — 10 novembre 2026
 - **Dates sans année et Immich** : une fiche qui n'a qu'un jour et un mois (« --01-01 ») ne crée plus de point « Date de naissance à trancher » quand aucune date complète n'existe ailleurs. « Écrire partout » n'envoie jamais une date sans année à Immich ni à Treemich (ils exigent l'année ; Immich répondait « 500 ») : elle reste sur la fiche seulement.
 - Les dates proposées s'affichent en clair (« 1er janvier », « 14 mars 1985 ») avec la mention « sans année : fiche seulement ».

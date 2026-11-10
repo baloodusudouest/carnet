@@ -1312,3 +1312,27 @@ def test_date_sans_annee_jamais_envoyee_a_immich(c, services):
     d["immich"][0]["naissance"] = "1983-01-01"
     assert [x for x in liaisons.dates(c, d) if x["uid"] == "DDDD-4444"]          # l'année est connue dans Immich
     assert liaisons.ecrire_partout(c, "DDDD-4444", "--01-01") == []              # rien envoyé à Immich
+
+
+def test_lecture_carddav_reessayee_apres_un_rate_du_serveur(c, monkeypatch):
+    from app import carddav
+    monkeypatch.setattr(carddav.CardDAV, "PAUSES", (0, 0, 0))
+    appels = []
+
+    def repondre(requete):
+        appels.append(requete.method)
+        if len(appels) <= 2:
+            return httpx.Response(500, text="Internal Server Error")
+        return httpx.Response(207, text='<?xml version="1.0"?><d:multistatus xmlns:d="DAV:"></d:multistatus>')
+    client = carddav.CardDAV("https://contacts.icloud.com", "a", "b", transport=httpx.MockTransport(repondre))
+    assert client._requete("PROPFIND", "https://contacts.icloud.com/").status_code == 207 and len(appels) == 3
+    appels.clear()
+    toujours = carddav.CardDAV("https://contacts.icloud.com", "a", "b",
+                                     transport=httpx.MockTransport(lambda r: (appels.append(1), httpx.Response(503))[1]))
+    with pytest.raises(carddav.ErreurICloud, match="passagère"):
+        toujours._requete("PROPFIND", "https://contacts.icloud.com/")
+    assert len(appels) == 4                                                   # 1 + 3 nouveaux essais
+    appels.clear()
+    with pytest.raises(carddav.ErreurICloud):
+        toujours._requete("PUT", "https://contacts.icloud.com/x.vcf", content=b"")
+    assert len(appels) == 1                                                   # écriture jamais rejouée
