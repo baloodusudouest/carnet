@@ -24,7 +24,7 @@ from .temps import iso, maintenant
 
 PLAFOND_PROPOSITIONS = 150
 CONSERVATION_JOURS = 90
-SERVICES = {"telegram": "Telegram", "instagram": "Instagram", "facebook": "Facebook", "whatsapp": "WhatsApp"}
+SERVICES = {"telegram": "Telegram", "instagram": "Instagram", "facebook": "Facebook", "x": "X (Twitter)", "whatsapp": "WhatsApp"}
 
 
 def url_profil(service: str, valeur: str) -> str:
@@ -35,6 +35,8 @@ def url_profil(service: str, valeur: str) -> str:
         return f"https://www.instagram.com/{v}"
     if service == "whatsapp":
         return f"https://wa.me/{re.sub(r'[^0-9]', '', v)}"
+    if service == "x":
+        return f"https://x.com/{v}"
     return v
 
 
@@ -263,9 +265,16 @@ def bilan(c: Carnet) -> dict:
     lues = {l["service"]: l["n"] for l in c.base.tous("SELECT service, COUNT(*) AS n FROM personnes_externes GROUP BY service")}
     liees = {l["service"]: l["n"] for l in c.base.tous("SELECT service, COUNT(*) AS n FROM liaisons GROUP BY service")}
     dernier = c.base.lire("reseaux_imports") or {}
-    res = {s: {"lues": lues.get(s, 0), "liees": liees.get(s, 0), "importe_le": dernier.get(s)} for s in SERVICES}
-    lk = c.base.un("SELECT COUNT(*) AS n, SUM(uid IS NOT NULL) AS liees, MAX(le) AS le FROM linkedin")
-    res = {"linkedin": {"lues": lk["n"] or 0, "liees": lk["liees"] or 0, "importe_le": lk["le"]}, **res}
+    # Fiches qui portent la plateforme : liaison, profil collé sur la fiche ou déjà sur la carte iCloud
+    from . import completude
+    portees: dict[str, int] = {}
+    for r in completude.resume(c).values():
+        for p in r["plateformes"]:
+            portees[p] = portees.get(p, 0) + 1
+    res = {s: {"lues": lues.get(s, 0), "liees": max(liees.get(s, 0), portees.get(s, 0)), "importe_le": dernier.get(s)}
+           for s in SERVICES}
+    lk = c.base.un("SELECT COUNT(*) AS n, MAX(le) AS le FROM linkedin")
+    res = {"linkedin": {"lues": lk["n"] or 0, "liees": portees.get("linkedin", 0), "importe_le": lk["le"]}, **res}
     return res
 
 
@@ -274,7 +283,7 @@ def bilan(c: Carnet) -> dict:
 def adresse_logo(c: Carnet, service: str) -> str | None:
     """Site officiel dont carnet reprend l'icône (Immich et Treemich : ton propre serveur)."""
     return {"icloud": "www.icloud.com", "linkedin": "www.linkedin.com", "facebook": "www.facebook.com",
-            "instagram": "www.instagram.com", "whatsapp": "www.whatsapp.com", "telegram": "telegram.org",
+            "instagram": "www.instagram.com", "whatsapp": "www.whatsapp.com", "telegram": "telegram.org", "x": "x.com",
             "immich": c.cfg.immich_url, "treemich": c.cfg.treemich_url}.get(service)
 
 
@@ -312,13 +321,14 @@ def _logo(c: Carnet, service: str, adresse: str) -> bytes | None:
     return png
 
 
-PSEUDO = {"instagram": re.compile(r"[A-Za-z0-9._]{1,30}"), "telegram": re.compile(r"[A-Za-z][A-Za-z0-9_]{3,31}")}
-DOMAINE = {"instagram": r"instagram\.com", "telegram": r"t\.me|telegram\.me"}
+PSEUDO = {"instagram": re.compile(r"[A-Za-z0-9._]{1,30}"), "telegram": re.compile(r"[A-Za-z][A-Za-z0-9_]{3,31}"),
+          "x": re.compile(r"[A-Za-z0-9_]{1,15}")}
+DOMAINE = {"instagram": r"instagram\.com", "telegram": r"t\.me|telegram\.me", "x": r"x\.com|twitter\.com|mobile\.twitter\.com"}
 
 
 def ajouter_profil(c: Carnet, uid: str, service: str, valeur: str, etag_vu: str | None = None) -> dict:
-    """Profil collé ou coché sur la fiche : Facebook (adresse du profil), Instagram et Telegram
-    (adresse ou pseudo), WhatsApp (numéro choisi parmi ceux de la fiche)."""
+    """Profil collé ou coché sur la fiche : Facebook (adresse du profil), Instagram, Telegram et
+    X (adresse ou pseudo), WhatsApp (numéro choisi parmi ceux de la fiche)."""
     from . import actions
     _verifier_service(service)
     f = c.fiche(uid)

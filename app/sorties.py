@@ -60,15 +60,18 @@ def envoyer_kit(c: Carnet) -> dict:
 
 # ================================================================ Synology Contacts (miroir d'iCloud)
 
-def copier_synology(c: Carnet, forcer: bool = False) -> dict:
+def copier_synology(c: Carnet, forcer: bool = False, avancer=None) -> dict:
     """Synology Contacts à l'identique d'iCloud (cartes et groupes). Arrêt sans rien écrire si plus
     de 5 % des fiches déjà copiées changeraient d'un coup — sauf la première fois après la 1.3,
-    dont la copie portait des identifiants « carnet-… » : elle est remplacée entièrement."""
+    dont la copie portait des identifiants « carnet-… » : elle est remplacée entièrement.
+    avancer(progression 0…1, message) : suivi de la copie (bouton à anneau)."""
+    avancer = avancer or (lambda *_: None)
     if not c.cfg.synology_url:
         return {"desactivee": True}
     dav = c.synology()
     bilan = {"le": iso(maintenant()), "crees": 0, "modifies": 0, "supprimes": 0, "erreurs": [], "ok": True}
     try:
+        avancer(0.02, "Lecture de Synology Contacts…")
         distantes = {x.uid: x for x in (synchro.analyser(b.href, b.etag, b.texte) for b in dav.lister())}
         voulues = {l["uid"]: l["texte"] for l in c.base.tous("SELECT uid, texte FROM fiches")}
         voulues.update({l["uid"]: l["texte"] for l in c.base.tous("SELECT uid, texte FROM groupes")})
@@ -87,7 +90,11 @@ def copier_synology(c: Carnet, forcer: bool = False) -> dict:
         if distantes and not (forcer or ancienne_copie) and touches > max(5, SEUIL_SYNOLOGY * len(distantes)):
             raise ErreurCarnet(f"Copie Synology bloquée : {touches} fiches sur {len(distantes)} changeraient d'un coup "
                                "(plus de 5 %). Vérifie, puis « Forcer la copie » si c'est voulu.")
-        for action, uid, texte, etag, href in actions:
+        total = len(actions)
+        avancer(0.08, f"{total} fiche(s) à copier…" if total else "Déjà à jour.")
+        for n, (action, uid, texte, etag, href) in enumerate(actions, 1):
+            if n % 5 == 0 or n == total:
+                avancer(0.08 + 0.92 * n / total, f"{n} / {total} fiche(s) copiée(s)")
             try:
                 if action == "supprimer":
                     dav.supprimer(href, etag)

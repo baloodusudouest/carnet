@@ -19,7 +19,7 @@ from .temps import iso, maintenant
 
 CRITERES = {"annee": "Sans année de naissance", "adresse": "Sans adresse", "telephone": "Sans téléphone",
             "contact": "Sans moyen de contact"}
-PLATEFORMES = ["icloud", "immich", "treemich", "linkedin", "facebook", "instagram", "whatsapp", "telegram"]
+PLATEFORMES = ["icloud", "immich", "treemich", "linkedin", "facebook", "instagram", "x", "whatsapp", "telegram"]
 _WHATSAPP = re.compile(r"whatsapp|wa\.me", re.I)
 _TELEGRAM = re.compile(r"telegram|t\.me/", re.I)
 
@@ -93,13 +93,15 @@ def plateformes(c: Carnet, uid: str, fiche: dict, texte: str | None = None) -> l
     """Plateformes reliées à la fiche (iCloud toujours)."""
     res = {"icloud"}
     lien = c.liaisons().get(uid, {})
-    for s in ("immich", "treemich", "telegram", "instagram", "whatsapp", "facebook"):
+    for s in ("immich", "treemich", "telegram", "instagram", "whatsapp", "facebook", "x"):
         if lien.get(s):
             res.add(s)
     for s in fiche.get("sites", []):
         t, v = s.get("type", ""), s.get("valeur", "")
-        if t in ("linkedin", "facebook", "instagram", "whatsapp", "telegram"):
+        if t in ("linkedin", "facebook", "instagram", "whatsapp", "telegram", "x"):
             res.add(t)
+        elif re.search(r"(^|//|\.)(twitter|x)\.com/", v, re.I):
+            res.add("x")
         elif "linkedin.com" in v:
             res.add("linkedin")
         elif "facebook.com" in v or "messenger.com" in v:

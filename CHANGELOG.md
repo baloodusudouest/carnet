@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.5.0 — 10 novembre 2026 — copie Synology suivie, X (Twitter)
+- **Copie vers Synology Contacts** (« Copier maintenant » et « Forcer la copie ») : tâche de fond avec bouton à anneau. L'anneau suit la lecture de Synology puis chaque fiche copiée (« 120 / 519 »), passe au vert avec le bilan ou au rouge avec la raison (coupe-circuit des 5 % compris). « Forcer la copie » est un bouton à anneau rouge. Le bandeau d'État et la tuile Copies montrent la roue pendant la copie.
+- **X (Twitter)** rejoint les réseaux : pseudo (@…) ou adresse x.com/twitter.com collé sur la fiche (écrit dans la carte iCloud), pastille et logo, « Délier ». Les profils Twitter déjà présents sur les cartes sont reconnus. L'archive de X ne donne que des numéros de compte : pas d'import.
+- Bilan des réseaux : compte toutes les fiches qui portent la plateforme (liaison, profil collé ou déjà sur la carte).
+
 ## 2.4.0 — 10 novembre 2026 — voyants, logos des réseaux, LinkedIn dans Réseaux
 - **Voyants** :
   - en haut d'État, un bandeau : roue qui tourne et nom de l'opération en cours (lecture d'iCloud, nuit, analyse globale, Immich et Treemich) ; sinon « Tout fonctionne » avec une coche ; sinon une croix et les sections à voir ;

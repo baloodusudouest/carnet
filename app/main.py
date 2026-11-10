@@ -528,9 +528,22 @@ def restaurer(nom: str, corps: dict = Body(...)):
 
 @app.post("/api/synology")
 def synology(corps: dict = Body(default={})):
+    """Copie lancée à part ; son avancement (fiche par fiche) se lit dans /api/accueil (tache)."""
     c = carnet()
-    with c.ecriture(attendre=10):   # jamais en même temps que la copie de nuit
-        return sorties.copier_synology(c, forcer=bool(corps.get("forcer")))
+    forcer = bool(corps.get("forcer"))
+
+    def avancer(progression, message):
+        if c.tache.get("nom") == "synology":
+            c.tache = {**c.tache, "progression": round(progression, 3), "message": message}
+
+    def travail():
+        with c.ecriture(attendre=10):   # jamais en même temps que la copie de nuit
+            b = sorties.copier_synology(c, forcer=forcer, avancer=avancer)
+        if b.get("erreur") or b.get("desactivee"):
+            raise ErreurCarnet(b.get("erreur") or "Synology Contacts n'est pas configuré.")
+        return {"message": f"Synology Contacts à jour : {b['crees']} créée(s), {b['modifies']} mise(s) à jour, "
+                           f"{b['supprimes']} retirée(s)" + (f", {len(b['erreurs'])} refusée(s)" if b["erreurs"] else "") + "."}
+    return _fond("synology", travail)
 
 
 @app.post("/api/kit")

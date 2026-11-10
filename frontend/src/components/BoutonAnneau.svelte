@@ -8,7 +8,7 @@
 
   let {
     etat = 'repos', progression = null, icone = 'telecharger', libelle, enCours = null,
-    detail = '', principal = false, compact = false, disabled = false, onclick, fichier = null, onfichier,
+    detail = '', principal = false, compact = false, danger = false, disabled = false, onclick, fichier = null, onfichier,
   } = $props()
 
   const R = 17
@@ -83,7 +83,7 @@
            onchange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onfichier?.(f) }} />
   </label>
 {:else}
-  <button type="button" class="bouton-anneau" class:principal class:compact data-etat={etat}
+  <button type="button" class="bouton-anneau" class:principal class:compact class:danger data-etat={etat}
           disabled={disabled || etat === 'en_cours'} aria-busy={etat === 'en_cours'} {onclick}>
     {@render contenu()}
   </button>
@@ -110,6 +110,10 @@
   .survol .rail { stroke: var(--or); }
   @media (pointer: coarse) { .astuce { display: none; } }
   .lacher { margin-left: auto; padding-left: 0.75rem; font-size: 0.82rem; color: var(--or); font-weight: 600; white-space: nowrap; }
+  /* Action à risque (copie forcée…) : bord et texte rouges au repos */
+  .danger[data-etat='repos'] { border-color: color-mix(in srgb, var(--color-alerte) 60%, transparent); color: var(--color-alerte); }
+  .danger[data-etat='repos'] .dessin { color: var(--color-alerte); }
+  .danger[data-etat='en_cours'] { border-color: color-mix(in srgb, var(--color-alerte) 45%, transparent); }
   .principal { border-color: color-mix(in srgb, var(--or) 55%, transparent); }
 
   .anneau { flex: none; width: 2.5rem; height: 2.5rem; display: grid; }

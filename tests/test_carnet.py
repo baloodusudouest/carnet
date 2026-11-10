@@ -1234,3 +1234,54 @@ def test_sante_des_services_et_linkedin_dans_le_bilan(c):
     assert s["icloud"]["etat"] == "ok" and s["synology"] == {"etat": "erreur", "message": "Synology injoignable"}
     assert s["telegram"]["etat"] == "off"
     assert "linkedin" in reseaux.bilan(c) and list(reseaux.bilan(c))[0] == "linkedin"
+
+
+def test_copie_synology_forcee_avec_avancement(c, services):
+    import time
+    from fastapi.testclient import TestClient
+    from app import main
+    syno = services["synology"]
+    sorties.copier_synology(c)
+    for i in range(30):
+        syno.modifier_sur_iphone(f"Z-{i}", carte_simple(f"Z-{i}", f"Etrange Numero{i}"))
+    vues = []
+    b = sorties.copier_synology(c, forcer=True, avancer=lambda p, m: vues.append((p, m)))
+    assert b["supprimes"] == 30 and vues[0][1] == "Lecture de Synology Contacts…"
+    assert [p for p, _ in vues] == sorted(p for p, _ in vues) and vues[-1][0] == 1.0 and "30 / 30" in vues[-1][1]
+    # Par l'API : tâche de fond, son bilan se lit dans /api/accueil
+    for i in range(30):
+        syno.modifier_sur_iphone(f"Y-{i}", carte_simple(f"Y-{i}", f"Autre Numero{i}"))
+    main.ETAT["carnet"] = c
+    with TestClient(main.app) as client:
+        client.post("/api/connexion", json={"mot_de_passe": "secret"})
+        assert client.post("/api/synology", json={}).json() == {"lance": True}
+        for _ in range(100):
+            t = client.get("/api/accueil").json()["tache"]
+            if t["etat"] != "en_cours":
+                break
+            time.sleep(0.05)
+        assert t["nom"] == "synology" and t["etat"] == "erreur" and "bloquée" in t["message"]   # coupe-circuit
+        client.post("/api/synology", json={"forcer": True})
+        for _ in range(100):
+            t = client.get("/api/accueil").json()["tache"]
+            if t["etat"] != "en_cours":
+                break
+            time.sleep(0.05)
+        assert t["etat"] == "termine" and "30 retirée(s)" in t["message"]
+    main.ETAT.clear()
+
+
+def test_profil_x_twitter(c, services):
+    ic = services["icloud"]
+    with pytest.raises(ErreurCarnet, match="X"):
+        reseaux.ajouter_profil(c, "DDDD-4444", "x", "https://www.instagram.com/paul")
+    reseaux.ajouter_profil(c, "DDDD-4444", "x", "https://twitter.com/paulmartin47?lang=fr")
+    texte = ic.texte("DDDD-4444").replace("\r\n ", "")
+    assert "X-SOCIALPROFILE;type=twitter:https://x.com/paulmartin47" in texte
+    assert "x" in completude.plateformes(c, "DDDD-4444", c.fiche("DDDD-4444"), texte)
+    assert reseaux.bilan(c)["x"]["liees"] == 1
+    reseaux.delier(c, "DDDD-4444", "x")
+    assert "x.com" not in ic.texte("DDDD-4444")
+    # Un profil Twitter déjà sur la carte (ajouté sur l'iPhone) est reconnu
+    f = c.fiche("CCCC-3333")
+    assert "x" in completude.plateformes(c, "CCCC-3333", {**f, "sites": [{"valeur": "http://twitter.com/claire", "type": "site"}]})

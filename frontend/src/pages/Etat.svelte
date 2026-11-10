@@ -44,14 +44,14 @@
 
   // Voyants : roue pendant l'opération qui concerne la tuile, coche si tout va bien, croix sinon
   const TACHES = { icloud: ['relecture', 'nuit', 'demarrage'], completude: ['analyse'], services: ['liens'],
-                   reseaux: [], sauvegardes: [], copies: [] }
+                   reseaux: [], sauvegardes: [], copies: ['synology'] }
   const tacheEnCours = $derived(global.accueil?.tache?.etat === 'en_cours' ? global.accueil.tache : null)
   function voyantTuile(s) {
     if (tacheEnCours && (TACHES[s.cle] || []).includes(tacheEnCours.nom)) return 'en_cours'
     return s.alerte(e) ? 'erreur' : 'ok'
   }
   const NOMS_TACHES = { relecture: 'Lecture d\'iCloud', nuit: 'Nuit', analyse: 'Analyse globale', liens: 'Lecture d\'Immich et de Treemich',
-                        demarrage: 'Démarrage' }
+                        demarrage: 'Démarrage', synology: 'Copie vers Synology Contacts' }
   // Bandeau du haut : une opération en cours, sinon tout va bien, sinon ce qui ne va pas
   const SERVICES = [['icloud', 'iCloud'], ['immich', 'Immich'], ['treemich', 'Treemich'], ['synology', 'Synology Contacts'],
                     ['kit', 'Kit d\'urgence'], ['ha', 'Home Assistant'], ['linkedin', 'LinkedIn (API)'], ['telegram', 'Telegram']]
@@ -90,6 +90,12 @@
   }
   async function importerFichier(cle, f) {
     try { dire(resumeImport(await envoyer(cle, f, cle))); rafraichirAccueil(); charger() } catch (err) { erreur(err) }
+  }
+  // Copie vers Synology : tâche de fond, l'anneau suit les fiches copiées
+  async function copierSynology(cle, forcer) {
+    await fond(cle, '/api/synology', forcer ? { forcer: true } : {}, 'synology')
+    const t = global.accueil?.tache
+    if (t?.nom === 'synology') (t.etat === 'erreur' ? erreur(t.message) : dire(t.message))
   }
   const chargerFichier = (cle, url, nom) => telecharger(cle, url, nom).catch(erreur)
 
@@ -143,7 +149,8 @@
     zero = { ouvert: false, mot: '' }
     await fond('analyse', '/api/analyse', corps, 'analyse')
   }
-  const NOMS_RESEAUX = { linkedin: 'LinkedIn', telegram: 'Telegram', instagram: 'Instagram', facebook: 'Facebook', whatsapp: 'WhatsApp' }
+  const NOMS_RESEAUX = { linkedin: 'LinkedIn', telegram: 'Telegram', instagram: 'Instagram', facebook: 'Facebook',
+                         x: 'X (Twitter)', whatsapp: 'WhatsApp' }
 
   async function deconnecter() { await api.post('/api/deconnexion'); global.connecte = false }
 
@@ -254,8 +261,11 @@
       <div class="boutons">
         {#if e.services.synology}
           <BoutonAnneau icone="copier" libelle="Copier maintenant" enCours="Copie vers Synology…" {...de('syno')}
-                        disabled={bloque} onclick={() => action('syno', '/api/synology', {}, 'Synology Contacts à jour.')} />
-          {#if e.synology?.erreur}<button class="bouton bouton-danger" disabled={!!attente} onclick={() => lancer('syno', '/api/synology', { forcer: true }, 'Copie forcée.')}>Forcer la copie</button>{/if}
+                        disabled={bloque} onclick={() => copierSynology('syno', false)} />
+          {#if e.synology?.erreur || de('syno_force').etat !== 'repos'}
+            <BoutonAnneau icone="copier" danger libelle="Forcer la copie" enCours="Copie forcée…" {...de('syno_force')}
+                          disabled={bloque} onclick={() => copierSynology('syno_force', true)} />
+          {/if}
         {/if}
         {#if e.services.kit}
           <BoutonAnneau icone="envoyer" libelle="Envoyer au kit" enCours="Envoi au kit…" {...de('kit')}
@@ -334,6 +344,9 @@
                     fichier=".zip,.json,application/zip,application/json" disabled={bloque}
                     onfichier={(f) => importerFichier('instagram', f)} />
       <p class="discret">Les archives sont lues en mémoire puis oubliées : rien n'est gardé sur le NAS.</p>
+
+      <h3 class="titre-reseau">{#if !absents.x}<img class="logo-reseau" src={logoReseau('x')} alt="" onerror={() => (absents.x = true)} />{/if}X (Twitter)</h3>
+      <p class="discret">L'archive de X ne donne que des numéros de compte, sans pseudo ni nom : rien à rapprocher. Sur la fiche, colle le pseudo (@…) ou l'adresse x.com dans Plateformes ; les profils Twitter déjà présents sur tes cartes iCloud sont reconnus.</p>
 
       <h3 class="titre-reseau">{#if !absents.whatsapp}<img class="logo-reseau" src={logoReseau('whatsapp')} alt="" onerror={() => (absents.whatsapp = true)} />{/if}WhatsApp</h3>
       <p class="discret">Pas d'export des contacts : sur la fiche, choisis le numéro WhatsApp (section Plateformes).</p>

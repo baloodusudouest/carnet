@@ -6,9 +6,10 @@ export const PLATEFORMES = {
   linkedin: { court: 'Li', nom: 'LinkedIn', teinte: '#6fa3d8' },
   facebook: { court: 'Fb', nom: 'Facebook', teinte: '#7f95e0' },
   instagram: { court: 'Ig', nom: 'Instagram', teinte: '#e08fb3' },
+  x: { court: 'X', nom: 'X (Twitter)', teinte: '#d6d0c8' },
   whatsapp: { court: 'Wa', nom: 'WhatsApp', teinte: '#7fcf98' },
   telegram: { court: 'Tg', nom: 'Telegram', teinte: '#76c0e6' },
 }
 export const ORDRE = Object.keys(PLATEFORMES)
 // Réseaux qu'on rattache depuis la fiche
-export const RESEAUX = ['facebook', 'instagram', 'telegram', 'whatsapp']
+export const RESEAUX = ['facebook', 'instagram', 'x', 'telegram', 'whatsapp']

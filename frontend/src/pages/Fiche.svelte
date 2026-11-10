@@ -82,7 +82,8 @@
   const delierReseau = (s) => poster('delier-reseau', { service: s }, `${PLATEFORMES[s].nom} délié : plus proposé pour cette fiche.`)
   // Adresse qui sera retirée de la carte (la confirmation la montre)
   const adresseReseau = (s) => (f?.sites || []).filter((x) => x.type === s).map((x) => x.valeur).join(', ')
-  const AIDE = { facebook: 'facebook.com/…', instagram: 'Pseudo ou instagram.com/…', telegram: 'Pseudo ou t.me/…' }
+  const AIDE = { facebook: 'facebook.com/…', instagram: 'Pseudo ou instagram.com/…', telegram: 'Pseudo ou t.me/…',
+                 x: '@pseudo ou x.com/…' }
 
   const SERVICE = { immich: 'Immich', treemich: 'Treemich' }
   const candidatsReunir = $derived.by(() => {

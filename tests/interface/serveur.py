@@ -53,7 +53,7 @@ def faux_logos():
     import httpx
     from PIL import Image
     teintes = {"facebook": "#7f95e0", "instagram": "#e08fb3", "linkedin": "#6fa3d8", "whatsapp": "#7fcf98",
-               "telegram": "#76c0e6", "icloud": "#8fa9c7"}
+               "telegram": "#76c0e6", "icloud": "#8fa9c7", "x.com": "#d6d0c8"}
 
     def repondre(requete):
         hote = requete.url.host
