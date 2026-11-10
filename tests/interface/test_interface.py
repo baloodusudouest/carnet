@@ -243,3 +243,21 @@ def test_export_vcf_par_le_bouton_a_anneau(page):
     page.wait_for_selector(".bouton-anneau[data-etat='repos']", timeout=6000)
     page.get_by_role("button", name="Exporter tout le carnet (.vcf)").click()
     page.wait_for_selector(".bouton-anneau[data-etat='echec'] >> text=iCloud ne répond pas.")
+
+
+def test_glisser_deposer_un_export_instagram(page):
+    if page.viewport_size["width"] < 900:
+        pytest.skip("glisser-déposer : PC seulement")
+    page.click("nav.onglets a[aria-label='État']")
+    page.locator(".tuile", has_text="Réseaux").click()
+    cible = page.locator("label.bouton-anneau", has_text="Déposer l'export Instagram")
+    assert "ou glisse le fichier ici" in cible.inner_text()
+    contenu = '{"relationships_following": [{"title": "glisse.depot", "string_list_data": [{"value": "glisse.depot"}]}]}'
+    poignee = page.evaluate_handle("""(texte) => {
+        const dt = new DataTransfer(); dt.items.add(new File([texte], 'following.json', { type: 'application/json' })); return dt }""", contenu)
+    page.dispatch_event("body", "dragenter", {"dataTransfer": poignee})
+    cible.dispatch_event("dragover", {"dataTransfer": poignee})
+    page.wait_for_selector("label.bouton-anneau.survol >> text=Lâche le fichier")
+    cible.dispatch_event("drop", {"dataTransfer": poignee})
+    page.wait_for_selector("label.bouton-anneau[data-etat='succes']")
+    assert "Instagram : 1 compte(s) lu(s)" in page.locator(".message").inner_text()

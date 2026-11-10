@@ -17,6 +17,19 @@
   const remplissage = $derived(etat === 'succes' ? 1 : mesure ? Math.max(0.03, Math.min(1, progression)) : 0)
   const pourcent = $derived(mesure ? Math.round(progression * 100) : null)
   const texte = $derived(etat === 'en_cours' ? (enCours || libelle) : libelle)
+  // Glisser-déposer (variante fichier) : la cible s'allume dès qu'un fichier entre dans la fenêtre
+  let glisse = $state(false)        // un fichier est tiré au-dessus de la page
+  let survol = $state(false)        // …et au-dessus de ce bouton
+  let profondeur = 0
+  const actif = $derived(!!fichier && !disabled && etat !== 'en_cours')
+  const avecFichiers = (e) => [...(e.dataTransfer?.types || [])].includes('Files')
+  function deposer(e) {
+    e.preventDefault()
+    survol = glisse = false
+    profondeur = 0
+    const f = e.dataTransfer?.files?.[0]
+    if (f && actif) onfichier?.(f)
+  }
   const annonce = $derived(etat === 'en_cours' ? `${texte}${pourcent !== null ? ` ${pourcent} %` : ''}`
     : etat === 'succes' ? `${libelle} : terminé` : etat === 'echec' ? `${libelle} : échec` : '')
 </script>
@@ -47,14 +60,25 @@
   </span>
   <span class="texte">
     <span class="nom">{texte}</span>
-    {#if detail}<span class="detail">{detail}</span>{/if}
+    {#if detail}<span class="detail">{detail}</span>
+    {:else if fichier && !compact && etat === 'repos'}<span class="detail astuce">ou glisse le fichier ici</span>{/if}
   </span>
 {/snippet}
 
+<svelte:window
+  ondragenter={(e) => { if (fichier && avecFichiers(e)) { profondeur++; glisse = true } }}
+  ondragleave={() => { if (!fichier) return; profondeur = Math.max(0, profondeur - 1); if (!profondeur) glisse = survol = false }}
+  ondrop={() => { profondeur = 0; glisse = survol = false }} />
+
 {#if fichier}
-  <!-- Variante « choisir un fichier » : le libellé ouvre le sélecteur -->
-  <label class="bouton-anneau" class:principal class:compact data-etat={etat} aria-disabled={disabled || etat === 'en_cours'}>
+  <!-- Variante « choisir un fichier » : le libellé ouvre le sélecteur ; on peut aussi y déposer le fichier -->
+  <label class="bouton-anneau" class:principal class:compact class:cible={glisse && actif} class:survol={survol && actif}
+         data-etat={etat} aria-disabled={disabled || etat === 'en_cours'}
+         ondragover={(e) => { if (actif && avecFichiers(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; survol = true } }}
+         ondragleave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) survol = false }}
+         ondrop={deposer}>
     {@render contenu()}
+    {#if glisse && actif}<span class="lacher">{survol ? 'Lâche le fichier' : 'Dépose-le ici'}</span>{/if}
     <input type="file" accept={fichier} hidden disabled={disabled || etat === 'en_cours'}
            onchange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onfichier?.(f) }} />
   </label>
@@ -80,6 +104,12 @@
   .compact { min-height: 2.5rem; gap: 0.5rem; padding: 0.2rem 0.85rem 0.2rem 0.25rem; font-size: 0.92rem; }
   .compact .anneau { width: 2rem; height: 2rem; }
   .compact .detail { display: none; }
+  /* Glisser-déposer : pointillés dorés quand un fichier est tiré, fond teinté au survol */
+  .cible { border-style: dashed; border-color: var(--or); position: relative; }
+  .survol { background: color-mix(in srgb, var(--or) 14%, transparent); }
+  .survol .rail { stroke: var(--or); }
+  @media (pointer: coarse) { .astuce { display: none; } }
+  .lacher { margin-left: auto; padding-left: 0.75rem; font-size: 0.82rem; color: var(--or); font-weight: 600; white-space: nowrap; }
   .principal { border-color: color-mix(in srgb, var(--or) 55%, transparent); }
 
   .anneau { flex: none; width: 2.5rem; height: 2.5rem; display: grid; }

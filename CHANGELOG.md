@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.3.1 — 10 novembre 2026 — glisser-déposer et exports reconnus
+- **Glisser-déposer** (PC) : sur « Déposer l'export Facebook », « Déposer l'export Instagram » et « Importer ». Dès qu'un fichier est tiré au-dessus de carnet, les cibles s'entourent de pointillés dorés. Un fichier lâché à côté n'ouvre plus le fichier dans le navigateur.
+- Chaque bouton annonce son réseau : un export déposé sur « Instagram » est lu comme Instagram même si son contenu n'est pas reconnu d'emblée (corrige « Fichier non reconnu »).
+- Instagram : nouvelles variantes de l'export JSON (« relationships_followers », pseudo dans le lien) et export au format HTML.
+- Facebook : seul your_friends.json (ou le .zip) est lu. Suggestions, demandes d'amis, amis retirés et audiences sont refusés avec un message clair. Un export Facebook en HTML demande à refaire l'export en JSON.
+
 ## 2.3.0 — 10 novembre 2026 — import des amis Facebook
 - **Export Facebook** (Compte Meta › Exporter vos informations › Contacts › Ami(e)s, format JSON) déposé dans État › Réseaux ou Contacts › Importer, en .zip ou your_friends.json. Seuls les fichiers d'amis et de followers sont ouverts ; l'archive est lue en mémoire puis oubliée.
 - Facebook ne donne que les noms (pas de lien de profil ni de numéro). Les accents mal encodés de l'export (« Ã© ») sont réparés. Un ami est proposé dans « À traiter › Réseaux » quand son nom désigne une seule fiche, même avec les mots dans un autre ordre.

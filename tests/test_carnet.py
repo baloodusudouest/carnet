@@ -1144,3 +1144,47 @@ def test_accents_et_aiguillage_des_exports(c):
     assert reseaux.source_export(b"BEGIN:VCARD", "x.vcf") is None
     with pytest.raises(ErreurCarnet, match="Ami"):
         reseaux.lire_facebook(b'{"autre": []}', "x.json")
+
+
+def test_variantes_des_exports_instagram_et_facebook(c):
+    import io as io_
+    import zipfile
+    from fastapi.testclient import TestClient
+    from app import main
+    # JSON récent : liste sous « relationships_followers », pseudo dans « title » ou dans le lien
+    recent = json.dumps({"relationships_followers": [
+        {"title": "paul.martin", "string_list_data": [{"href": "https://www.instagram.com/paul.martin"}]},
+        {"title": "", "string_list_data": [{"href": "https://www.instagram.com/claire_m/"}]}]}).encode()
+    assert {p["pseudo"] for p in reseaux.lire_instagram(recent, "followers_1.json")} == {"paul.martin", "claire_m"}
+    # Export demandé en HTML
+    html = (b'<!DOCTYPE html><html><body><a href="https://www.instagram.com/paul.martin">paul.martin</a>'
+            b'<a href="https://www.instagram.com/accounts/">x</a></body></html>')
+    tampon = io_.BytesIO()
+    with zipfile.ZipFile(tampon, "w") as z:
+        z.writestr("connections/followers_and_following/following.html", html)
+    assert [p["pseudo"] for p in reseaux.lire_instagram(tampon.getvalue(), "instagram.zip")] == ["paul.martin"]
+    assert reseaux.source_export(html, "following.html") == "instagram"
+    fb = io_.BytesIO()
+    with zipfile.ZipFile(fb, "w") as z:
+        z.writestr("connections/friends/your_friends.html", b"<html><body>Paul Martin</body></html>")
+    with pytest.raises(ErreurCarnet, match="format JSON"):
+        reseaux.lire_facebook(fb.getvalue(), "facebook.zip")
+    # Le bouton annonce son réseau : un JSON non reconnu va quand même au bon lecteur
+    main.ETAT["carnet"] = c
+    with TestClient(main.app) as client:
+        client.post("/api/connexion", json={"mot_de_passe": "secret"})
+        r = client.post("/api/import?nom=x.json&source=instagram", content=b'{"autre": 1}')
+        assert r.status_code == 400 and "Instagram" in r.json()["detail"]
+        r = client.post("/api/import?nom=followers_1.json&source=instagram", content=recent)
+        assert r.status_code == 200 and r.json()["source"] == "instagram" and r.json()["lues"] == 2
+    main.ETAT.clear()
+
+
+def test_fichiers_facebook_qui_ne_sont_pas_des_amis(c):
+    suggestions = json.dumps({"people_you_may_know_v2": [{"name": "Inconnu Total"}]}).encode()
+    for nom in ("people_you_may_know.json", "suggested_friends.json", "removed_friends.json", "sent_friend_requests.json"):
+        assert reseaux.source_export(suggestions, nom) == "facebook"
+        with pytest.raises(ErreurCarnet, match="your_friends.json"):
+            reseaux.lire_facebook(suggestions, nom)
+    assert reseaux.source_export(_export_facebook("Paul Martin"), "your_friends.json") == "facebook"
+    assert [p["nom"] for p in reseaux.lire_facebook(_export_facebook("Paul Martin"), "your_friends.json")] == ["Paul Martin"]

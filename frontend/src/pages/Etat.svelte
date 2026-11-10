@@ -69,7 +69,7 @@
     charger()
   }
   async function importerFichier(cle, f) {
-    try { dire(resumeImport(await envoyer(cle, f))); rafraichirAccueil(); charger() } catch (err) { erreur(err) }
+    try { dire(resumeImport(await envoyer(cle, f, cle))); rafraichirAccueil(); charger() } catch (err) { erreur(err) }
   }
   const chargerFichier = (cle, url, nom) => telecharger(cle, url, nom).catch(erreur)
 
@@ -293,7 +293,7 @@
       {#if e.telegram.configure}<p class="discret">Import ponctuel : carnet lit tes contacts Telegram puis se déconnecte. La session n'est ni gardée ni sauvegardée.</p>{/if}
 
       <h3>Facebook</h3>
-      <p class="discret">Compte Meta › Vos informations et autorisations › Exporter vos informations : choisis seulement Contacts › <strong>Ami(e)s</strong> (et Followers si tu veux), format <strong>JSON</strong>. Facebook ne donne que les noms : un ami est proposé quand son nom désigne une seule fiche. « Lier » pose la pastille Facebook ; pour écrire le lien du profil dans iCloud, colle son adresse sur la fiche.</p>
+      <p class="discret">Compte Meta › Vos informations et autorisations › Exporter vos informations : choisis seulement Contacts › <strong>Ami(e)s</strong> (et Followers si tu veux), format <strong>JSON</strong>. Dépose le .zip tel quel, ou seulement <strong>your_friends.json</strong> si tu l'as décompressé (les autres fichiers sont des suggestions ou des demandes, ils ne sont pas lus). Facebook ne donne que les noms : un ami est proposé quand son nom désigne une seule fiche. « Lier » pose la pastille Facebook ; pour écrire le lien du profil dans iCloud, colle son adresse sur la fiche.</p>
       <BoutonAnneau icone="envoyer" libelle="Déposer l'export Facebook" enCours="Envoi de l'archive…" {...de('facebook')}
                     fichier=".zip,.json,application/zip,application/json" disabled={bloque}
                     onfichier={(f) => importerFichier('facebook', f)} />

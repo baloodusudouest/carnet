@@ -512,7 +512,7 @@ IMPORT_MAX = 100 * 1024 * 1024
 
 
 @app.post("/api/import")
-async def importer(request: Request, nom: str = ""):
+async def importer(request: Request, nom: str = "", source: str = ""):
     """Fichier envoyé tel quel dans le corps (pas de formulaire) : lu en mémoire seulement,
     jamais écrit sur le disque, 100 Mo au plus."""
     c = carnet()
@@ -526,8 +526,9 @@ async def importer(request: Request, nom: str = ""):
     del morceaux
     fichier_nom = nom.rsplit("/", 1)[-1][:120] or "fichier"
     nom = fichier_nom.lower()
-    # Export Instagram : archive .zip ou JSON d'abonnements ; l'archive n'est jamais gardée
-    source = reseaux.source_export(brut, nom)
+    # Export Facebook ou Instagram (.zip, .json ou .html) ; l'archive n'est jamais gardée.
+    # Le contenu reconnu l'emporte ; sinon, le réseau annoncé par le bouton utilisé.
+    source = reseaux.source_export(brut, nom) or (source if source in ("facebook", "instagram") else None)
     if source == "facebook":
         return reseaux.importer_facebook(c, brut, nom)
     if source == "instagram":

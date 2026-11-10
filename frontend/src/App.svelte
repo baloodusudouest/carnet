@@ -37,6 +37,9 @@
   })
 </script>
 
+<!-- Un fichier lâché hors d'une zone de dépôt ne doit pas ouvrir le fichier à la place de carnet -->
+<svelte:window ondragover={(e) => e.preventDefault()} ondrop={(e) => e.preventDefault()} />
+
 {#if etat.connecte === false}
   <Connexion onconnecte={demarrer} />
 {:else if etat.connecte}

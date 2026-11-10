@@ -92,11 +92,12 @@ export async function telecharger(cle, url, nomParDefaut) {
 }
 
 // Envoi d'un fichier avec progression (fetch ne donne pas l'avancement de l'envoi)
-export function envoyer(cle, fichier) {
+// source : « facebook » ou « instagram » quand le bouton sait ce qu'il attend (sinon détection)
+export function envoyer(cle, fichier, source = '') {
   poser(cle, 'en_cours', 0)
   return new Promise((ok, ko) => {
     const x = new XMLHttpRequest()
-    x.open('POST', `/api/import?nom=${encodeURIComponent(fichier.name)}`)
+    x.open('POST', `/api/import?nom=${encodeURIComponent(fichier.name)}${source ? `&source=${source}` : ''}`)
     x.setRequestHeader('Content-Type', 'application/octet-stream')
     x.upload.onprogress = (e) => {
       // L'envoi va jusqu'à 90 % ; le reste, c'est la lecture par carnet

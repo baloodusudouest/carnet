@@ -304,6 +304,11 @@ def ajouter_profil(c: Carnet, uid: str, service: str, valeur: str, etag_vu: str 
 
 # ------------------------------------------------------------ type d'export déposé
 
+def _est_html(brut: bytes) -> bool:
+    debut = brut[:2000].lstrip().lower()
+    return debut.startswith(b"<!doctype html") or debut.startswith(b"<html")
+
+
 def _noms_zip(contenu: bytes) -> list[str]:
     try:
         with zipfile.ZipFile(io.BytesIO(contenu)) as z:
@@ -320,6 +325,11 @@ def source_export(contenu: bytes, nom_fichier: str) -> str | None:
         if any(re.fullmatch(SIGNES_FACEBOOK, n) for n in noms):
             return "facebook"
         return "instagram"
+    if nom_fichier.endswith((".html", ".htm")) or _est_html(contenu):
+        return "instagram" if b"instagram.com/" in contenu[:2000000] else "facebook"
+    if re.fullmatch(PAS_DES_AMIS, nom_fichier.rsplit("/", 1)[-1]) or re.fullmatch(FICHIERS_FACEBOOK, nom_fichier.rsplit("/", 1)[-1]) \
+            and not re.fullmatch(r"followers(_\d+)?\.(json|html)", nom_fichier.rsplit("/", 1)[-1]):
+        return "facebook"
     if nom_fichier.endswith(".json"):
         debut = contenu[:200000]
         if b"string_list_data" in debut:
@@ -332,15 +342,23 @@ def source_export(contenu: bytes, nom_fichier: str) -> str | None:
 # ------------------------------------------------------------ Facebook (export « Ami(e)s »)
 
 # Fichiers lus dans l'archive : amis, followers. Les messages, photos… ne sont jamais ouverts.
-FICHIERS_FACEBOOK = r"(your_friends|friends|people_who_followed_you|who_you've_followed|followers)(_\d+)?\.json"
+FICHIERS_FACEBOOK = r"(your_friends|friends|people_who_followed_you|who_you've_followed|followers)(_\d+)?\.(json|html)"
 # Fichiers propres à Facebook (Instagram a aussi des followers_N.json)
-SIGNES_FACEBOOK = r"(your_friends|friends|people_who_followed_you|who_you've_followed)(_\d+)?\.json"
+SIGNES_FACEBOOK = r"(your_friends|friends|people_who_followed_you|who_you've_followed)(_\d+)?\.(json|html)"
 LISTES_FACEBOOK = re.compile(r"(friends|followers|following)(_v\d+)?")
+
+
+# Fichiers de l'export qui ne sont PAS tes amis (inconnus, anciens contacts) : jamais importés
+PAS_DES_AMIS = r"(people_you_may_know|suggested_friends|received_friend_requests|sent_friend_requests|rejected_friend_requests|removed_friends|your_post_audiences)(_\d+)?\.(json|html)"
 
 
 def lire_facebook(contenu: bytes, nom_fichier: str) -> list[dict]:
     """Ami(e)s et followers d'un export Facebook (.zip ou .json). L'export ne donne que le nom
     (ni identifiant, ni lien de profil, ni numéro) : l'identifiant gardé est le nom normalisé."""
+    seul = nom_fichier.lower().rsplit("/", 1)[-1]
+    if re.fullmatch(PAS_DES_AMIS, seul):
+        raise ErreurCarnet(f"{seul} ne contient pas tes amis (suggestions, demandes ou anciens contacts) : "
+                           "dépose your_friends.json.")
     fichiers: list[bytes] = []
     if nom_fichier.lower().endswith(".zip") or contenu[:2] == b"PK":
         try:
@@ -354,6 +372,8 @@ def lire_facebook(contenu: bytes, nom_fichier: str) -> list[dict]:
             raise ErreurCarnet("Archive .zip illisible : télécharge à nouveau l'export Facebook.")
     else:
         fichiers.append(contenu)
+    if fichiers and all(_est_html(b) for b in fichiers):
+        raise ErreurCarnet("Export Facebook au format HTML : redemande-le au format JSON (Contacts › Ami(e)s).")
     personnes: dict[str, dict] = {}
 
     def entrees(d):
@@ -426,7 +446,7 @@ def lire_instagram(contenu: bytes, nom_fichier: str) -> list[dict]:
         try:
             with zipfile.ZipFile(io.BytesIO(contenu)) as z:
                 retenus = [i for i in z.infolist() if not i.is_dir()
-                           and re.fullmatch(r"(following|followers(_\d+)?)\.json", i.filename.rsplit("/", 1)[-1])]
+                           and re.fullmatch(r"(following|followers(_\d+)?)\.(json|html)", i.filename.rsplit("/", 1)[-1])]
                 if len(retenus) > FICHIERS_MAX:
                     raise ErreurCarnet("Archive Instagram invalide : trop de fichiers d'abonnés.")
                 fichiers = [_lire_borne(z, i) for i in retenus]
@@ -442,11 +462,21 @@ def lire_instagram(contenu: bytes, nom_fichier: str) -> list[dict]:
             pseudos[p.lower()] = {"ext_id": p.lower(), "nom": _reparer(p), "pseudo": p}
 
     for brut in fichiers:
+        if _est_html(brut):
+            # Export demandé au format HTML : les pseudos sont dans les liens instagram.com/<pseudo>
+            texte = brut.decode("utf-8", errors="replace")
+            for p in re.findall(r'href="https?://(?:www\.)?instagram\.com/(?:_u/)?([A-Za-z0-9._]{1,30})/?"', texte):
+                if p.lower() not in {"accounts", "explore", "p", "reel", "stories", "direct"}:
+                    ajouter(p)
+            continue
         try:
             d = json.loads(brut.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
             continue
-        entrees = d.get("relationships_following", d) if isinstance(d, dict) else d
+        if isinstance(d, dict):
+            # « relationships_following », « relationships_followers »… selon la version de l'export
+            d = next((v for k, v in d.items() if str(k).startswith("relationships_") and isinstance(v, list)), d)
+        entrees = d
         for e in entrees if isinstance(entrees, list) else []:
             if not isinstance(e, dict):
                 continue
