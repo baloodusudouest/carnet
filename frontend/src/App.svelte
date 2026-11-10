@@ -8,6 +8,7 @@
   import Fiche from './pages/Fiche.svelte'
   import Fusion from './pages/Fusion.svelte'
   import Etat from './pages/Etat.svelte'
+  import { ICONES } from './lib/icones.js'
 
   const onglets = [
     { page: 'a-traiter', nom: 'À traiter' },
@@ -45,10 +46,15 @@
     <nav class="onglets" aria-label="Sections">
       <span class="marque titre">carnet</span>
       {#each onglets as o}
-        <a href={'#/' + o.page} class="onglet" aria-current={actif === o.page ? 'page' : undefined}>
-          <span>{o.nom}</span>
-          {#if o.page === 'a-traiter' && compte}<span class="badge">{compte}</span>{/if}
-          {#if o.page === 'etat' && alerte}<span class="point" aria-label="Problème à voir"></span>{/if}
+        <!-- iPhone : icônes seules, l'onglet actif s'élargit avec son libellé. PC : rail, même pastille. -->
+        <a href={'#/' + o.page} class="onglet" aria-current={actif === o.page ? 'page' : undefined} aria-label={o.nom}>
+          <span class="icone-onglet">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round">{@html ICONES[o.page]}</svg>
+            {#if o.page === 'a-traiter' && compte}<span class="badge">{compte > 99 ? '99+' : compte}</span>{/if}
+            {#if o.page === 'etat' && alerte}<span class="point" aria-label="Problème à voir"></span>{/if}
+          </span>
+          <span class="libelle">{o.nom}</span>
         </a>
       {/each}
     </nav>
@@ -91,43 +97,60 @@
     max-width: 72rem; margin: 0 auto;
   }
   .haut-securise { position: fixed; z-index: 25; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: var(--color-cuir); }
+  /* iPhone : pilule sombre flottante (reliure), l'onglet actif en pastille papier avec son libellé */
   .onglets {
-    position: fixed; z-index: 20; left: 0; right: 0; bottom: 0; display: flex;
-    background: var(--color-reliure); border-top: 1px solid var(--color-couture);
-    padding-bottom: env(safe-area-inset-bottom);
+    position: fixed; z-index: 20; left: 50%; transform: translateX(-50%);
+    bottom: calc(0.6rem + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 0.25rem;
+    padding: 0.35rem; border-radius: 9999px;
+    background: color-mix(in srgb, #15110f 92%, transparent); border: 1px solid var(--color-couture);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.04);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   }
   .marque { display: none; }
   .onglet {
-    flex: 1; display: flex; align-items: center; justify-content: center; gap: 0.4rem;
-    min-height: 3.25rem; color: var(--color-mine); font-weight: 500; position: relative;
+    display: flex; align-items: center; gap: 0.5rem; height: 3rem; padding: 0 1.05rem; border-radius: 9999px;
+    color: var(--color-mine); font-weight: 600; font-size: 0.95rem; white-space: nowrap;
+    transition: background-color 0.28s ease, color 0.28s ease, padding 0.28s ease;
   }
-  .onglet[aria-current='page'] { color: var(--color-papier); }
-  .onglet[aria-current='page']::before {
-    content: ''; position: absolute; top: -1px; left: 25%; right: 25%; height: 3px; border-radius: 0 0 3px 3px;
-    background: var(--color-onglet);
-  }
+  .onglet:focus-visible { outline: 2px solid var(--color-onglet); outline-offset: 2px; }
+  .libelle { max-width: 0; overflow: hidden; opacity: 0; transition: max-width 0.32s ease, opacity 0.2s ease; }
+  .onglet[aria-current='page'] { background: var(--color-papier); color: #241c17; padding: 0 1.15rem 0 0.95rem; }
+  .onglet[aria-current='page'] .libelle { max-width: 7rem; opacity: 1; }
+  .icone-onglet { position: relative; display: grid; place-items: center; }
+  .icone-onglet svg { width: 1.45rem; height: 1.45rem; }
   .badge {
-    min-width: 1.4rem; padding: 0 0.35rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600;
-    background: var(--color-onglet); color: #23190a; text-align: center;
+    position: absolute; top: -0.45rem; left: 0.85rem; min-width: 1.15rem; height: 1.15rem; padding: 0 0.3rem;
+    border-radius: 9999px; font-size: 0.68rem; font-weight: 700; line-height: 1.15rem; text-align: center;
+    background: var(--color-onglet); color: #23190a; box-shadow: 0 0 0 2px #15110f;
   }
-  .point { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--color-alerte); }
+  .onglet[aria-current='page'] .badge { box-shadow: 0 0 0 2px var(--color-papier); }
+  .point { position: absolute; top: -0.15rem; right: -0.2rem; width: 0.55rem; height: 0.55rem; border-radius: 50%;
+    background: var(--color-alerte); box-shadow: 0 0 0 2px #15110f; }
+  @media (prefers-reduced-motion: reduce) { .onglet, .libelle { transition: none; } }
   .tache { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; border-left: 3px solid var(--color-onglet); color: var(--color-mine); }
   .message {
-    position: fixed; z-index: 30; left: 1rem; right: 1rem; bottom: calc(4.25rem + env(safe-area-inset-bottom));
+    position: fixed; z-index: 30; left: 1rem; right: 1rem; bottom: calc(4.9rem + env(safe-area-inset-bottom));
     display: flex; align-items: center; justify-content: space-between; gap: 1rem;
     max-width: 34rem; margin: 0 auto; padding: 0.6rem 0.6rem 0.6rem 1rem; border-radius: 10px;
     background: #2f2723; border: 1px solid var(--color-tranche); box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
   }
   .message.erreur { border-color: var(--color-alerte); }
   @media (min-width: 900px) {
+    /* PC : rail latéral conservé ; l'onglet actif prend la même pastille papier */
     .onglets {
-      top: 0; right: auto; width: 13rem; flex-direction: column; align-items: stretch; gap: 0.15rem;
-      border-top: 0; border-right: 1px solid var(--color-couture); padding: 1.25rem 0.75rem;
+      top: 0; bottom: 0; left: 0; transform: none; width: 13rem; flex-direction: column; align-items: stretch; gap: 0.25rem;
+      padding: 1.25rem 0.75rem; border-radius: 0; border: 0; border-right: 1px solid var(--color-couture);
+      background: var(--color-reliure); box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
     }
     .marque { display: block; font-size: 1.6rem; padding: 0 0.75rem 1.25rem; color: var(--color-papier); }
-    .onglet { flex: none; justify-content: space-between; padding: 0 0.75rem; min-height: 2.75rem; border-radius: 8px; }
-    .onglet[aria-current='page'] { background: color-mix(in srgb, var(--color-onglet) 10%, transparent); }
-    .onglet[aria-current='page']::before { top: 25%; bottom: 25%; left: 0; right: auto; width: 3px; height: auto; border-radius: 0 3px 3px 0; }
+    .onglet { height: 2.75rem; padding: 0 0.85rem; gap: 0.7rem; font-size: 0.95rem; }
+    .onglet[aria-current='page'] { padding: 0 0.85rem; }
+    .libelle, .onglet .libelle { max-width: none; opacity: 1; overflow: visible; }
+    .onglet { position: relative; }
+    .icone-onglet { position: static; }
+    .badge { left: auto; right: 0.75rem; top: 50%; transform: translateY(-50%); box-shadow: none; min-width: 1.4rem; }
+    .point { top: 50%; right: 0.9rem; transform: translateY(-50%); box-shadow: none; }
+    .onglet:hover:not([aria-current='page']) { color: var(--color-papier); background: color-mix(in srgb, var(--color-papier) 5%, transparent); }
     .contenu { margin-left: 13rem; padding: 1.75rem 2.5rem 3rem; max-width: none; }
     .message { bottom: 1.5rem; left: 14rem; }
   }

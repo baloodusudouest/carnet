@@ -32,7 +32,7 @@ def passer(c: Carnet, origine: str = "nuit") -> dict:
     bilan = {"le": iso(maintenant()), "origine": origine, "ecrites": 0, "liaisons": 0, "reportees": 0,
              "erreur": None, "erreur_lecture": None, "alerte": None, "details": []}
     with c.ecriture():
-        c.tache = {"nom": "nuit", "etat": "en_cours", "message": "Lecture d'iCloud…"}
+        c.tache = {"nom": "nuit", "etat": "en_cours", "message": "Lecture d'iCloud…", "progression": 0.05}
         try:
             from . import reseaux
             reseaux.purger(c)     # en premier : faite même si la lecture d'iCloud échoue
@@ -45,7 +45,7 @@ def passer(c: Carnet, origine: str = "nuit") -> dict:
             if lecture.get("reference"):
                 bilan["details"].append("Première lecture : référence enregistrée, rien n'est écrit cette fois.")
             else:
-                c.tache["message"] = "Immich et Treemich…"
+                c.tache.update(message="Immich et Treemich…", progression=0.4)
                 d = liaisons.donnees(c, rafraichir=True)
                 for e in d["erreurs"]:
                     bilan["details"].append(e)
@@ -57,9 +57,9 @@ def passer(c: Carnet, origine: str = "nuit") -> dict:
                         except ErreurCarnet:
                             pass
                     bilan["liaisons"] += 1
-                c.tache["message"] = "Écritures sûres…"
+                c.tache.update(message="Écritures sûres…", progression=0.6)
                 _ecritures_sures(c, d, bilan)
-            c.tache["message"] = "Synology Contacts…"
+            c.tache.update(message="Synology Contacts…", progression=0.85)
             syno = sorties.copier_synology(c)
             if syno.get("erreur"):
                 bilan["details"].append(f"Synology : {syno['erreur']}")

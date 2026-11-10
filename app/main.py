@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
+from .temps import maintenant
 from . import (__version__, actions, completude, icloud, liaisons, linkedin, nuit, photos, reprise, reseaux, sorties,
                telegram, traiter, vcard)
 from .auth import COOKIE, DUREE, Sessions
@@ -468,6 +469,24 @@ def nuit_maintenant():
 @app.get("/api/sauvegardes/{nom}")
 def sauvegarde(nom: str):
     return icloud.contenu_sauvegarde(carnet(), nom)
+
+
+@app.get("/api/sauvegardes/{nom}/fichier")
+def sauvegarde_fichier(nom: str):
+    """La sauvegarde telle quelle (.vcf), pour la garder ailleurs ou l'ouvrir dans Contacts."""
+    chemin = icloud._fichier(carnet(), nom)
+    return FileResponse(chemin, media_type="text/vcard", filename=chemin.name)
+
+
+@app.get("/api/export.vcf")
+def export_vcf():
+    """Toutes les fiches, cartes iCloud telles qu'à la dernière lecture (photos comprises)."""
+    c = carnet()
+    cartes = [l["texte"].strip() for l in c.base.tous("SELECT texte FROM fiches ORDER BY uid") if l["texte"]]
+    corps = ("\r\n".join(cartes) + "\r\n").encode("utf-8")
+    nom = f"carnet-{maintenant().strftime('%Y-%m-%d')}.vcf"
+    c.base.noter("export", f"Export du carnet : {len(cartes)} fiche(s)")
+    return Response(corps, media_type="text/vcard", headers={"Content-Disposition": f'attachment; filename="{nom}"'})
 
 
 @app.post("/api/sauvegardes/{nom}/restaurer")

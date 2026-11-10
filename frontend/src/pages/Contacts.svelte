@@ -3,8 +3,10 @@
   // lettres sur le bord droit, qu'on peut parcourir du pouce. PC : liste à gauche, fiche à droite.
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  import { etat, erreur, rafraichirContacts, dire, choisirTri } from '../lib/etat.svelte.js'
+  import { etat, erreur, rafraichirAccueil, rafraichirContacts, dire, choisirTri } from '../lib/etat.svelte.js'
   import Avatar from '../components/Avatar.svelte'
+  import BoutonAnneau from '../components/BoutonAnneau.svelte'
+  import { de, envoyer, resumeImport } from '../lib/suivi.svelte.js'
   import Jauge from '../components/Jauge.svelte'
   import Plateformes from '../components/Plateformes.svelte'
   import Fiche from './Fiche.svelte'
@@ -15,7 +17,6 @@
   let manque = $state(null)   // filtre de complétude
   let groupes = $state([])
   let menuGroupes = $state(false)
-  let envoi = $state(false)
   let hautEntete = $state(0)
   let liste = $state(null)
 
@@ -70,18 +71,8 @@
     if (el?.dataset?.lettre) sauter(el.dataset.lettre)
   }
 
-  async function importer(e) {
-    const fichier = e.target.files?.[0]
-    if (!fichier) return
-    envoi = true
-    try {
-      const r = await api.envoyer(fichier)
-      dire(r.source === 'linkedin'
-        ? `LinkedIn : ${r.rattachees} relations reconnues, ${r.proposees} changement(s) à traiter.`
-        : r.source === 'instagram'
-          ? `Instagram : ${r.lues} compte(s) lu(s), ${r.proposees} rattachement(s) proposé(s). L'archive n'est pas gardée.`
-          : `${r.lues} fiche(s) lue(s), ${r.a_traiter} à vérifier dans « À traiter ».`)
-    } catch (err) { erreur(err) } finally { envoi = false; e.target.value = '' }
+  async function importer(fichier) {
+    try { dire(resumeImport(await envoyer('import', fichier))); rafraichirAccueil() } catch (err) { erreur(err) }
   }
 
   onMount(async () => {
@@ -99,10 +90,8 @@
     <div class="entete" bind:clientHeight={hautEntete}>
       <div class="ligne-titre">
         <h1 class="titre">Contacts <span class="discret nombre">{filtres.length !== (etat.contacts?.length ?? 0) ? `${filtres.length} / ` : ''}{etat.contacts?.length ?? ''}</span></h1>
-        <label class="bouton importer">
-          {envoi ? 'Import…' : 'Importer'}
-          <input type="file" accept=".vcf,.vcard,.csv,.zip,.json,text/vcard,text/csv,application/zip,application/json" onchange={importer} hidden />
-        </label>
+        <BoutonAnneau compact icone="envoyer" libelle="Importer" enCours="Envoi…" {...de('import')}
+                      fichier=".vcf,.vcard,.csv,.zip,.json,text/vcard,text/csv,application/zip,application/json" onfichier={importer} />
       </div>
       <input class="recherche" type="search" placeholder="Nom, société, numéro…" bind:value={recherche} aria-label="Chercher un contact" />
       <div class="outils">
@@ -235,7 +224,6 @@
   .nom { font-family: var(--font-livre); font-size: 1.05rem; display: flex; align-items: center; gap: 0.45rem; }
   .detail { font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .marque { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--color-onglet); flex: none; }
-  .importer { cursor: pointer; }
   .vide { padding: 2rem 0; }
 
   /* iPhone : index fin, fixé sur le bord droit, sous l'en-tête */

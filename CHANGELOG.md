@@ -1,5 +1,14 @@
 # Journal des versions
 
+## 2.2.0 — 10 novembre 2026 — barre pilule et boutons à anneau
+- **iPhone** : la barre d'onglets devient une pilule sombre qui flotte en bas. Les onglets montrent leur icône seule ; l'onglet ouvert s'élargit en pastille claire avec son nom. Le nombre de points à traiter reste sur l'icône.
+- **PC** : le rail de gauche reste, avec la même pastille claire pour l'onglet ouvert et des icônes.
+- **Boutons à anneau** : l'anneau du bouton se remplit pendant l'opération (pourcentage quand il est connu, sinon un arc qui tourne), devient vert avec une coche en cas de réussite, et rouge avec le message d'erreur en cas d'échec. Sur :
+  - Relire iCloud, Lancer la nuit (avec ses étapes), Relire Immich et Treemich, Relancer l'analyse globale ;
+  - Copier vers Synology Contacts, Envoyer au kit ;
+  - Importer (Contacts) et Déposer l'export Instagram, avec l'avancement de l'envoi ;
+  - deux nouveaux téléchargements dans État › Sauvegardes : **Télécharger cette sauvegarde** et **Exporter tout le carnet (.vcf)** (cartes iCloud telles qu'à la dernière lecture, photos comprises).
+
 ## 2.1.0 — 3 novembre 2026 — carnet devient un hub
 - **Complétude** : quatre critères par fiche (sans année de naissance, sans adresse, sans téléphone, sans moyen de contact). Dans Contacts, des filtres « Sans … », « À revoir » et « Validées » avec leur nombre ; un anneau autour de chaque avatar montre la complétude (vert si validée, rouge si à revoir).
 - **Valider une fiche** : la fiche entière est déclarée complète telle quelle et sort des filtres. Si elle change ensuite ailleurs (iPhone, autre appareil) sur l'année, l'adresse, un téléphone ou un courriel, elle passe « À revoir ». Une écriture faite par carnet garde la validation.

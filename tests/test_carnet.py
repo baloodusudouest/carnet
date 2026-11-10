@@ -1079,3 +1079,25 @@ def test_type_de_site_change_dans_l_editeur(c, services):
     actions.valider(c, "DDDD-4444", f, etag_vu=actions._etag(c, "DDDD-4444"), regler_revue=True)
     texte = services["icloud"].texte("DDDD-4444")
     assert texte.count("exemple.fr/paul") == 1 and "linkedin" in texte.lower()
+
+
+# ------------------------------------------------------------ 2.2 : téléchargements
+
+def test_export_vcf_et_telechargement_de_sauvegarde(c):
+    from fastapi.testclient import TestClient
+    from app import main
+    main.ETAT["carnet"] = c
+    with TestClient(main.app) as client:
+        assert client.get("/api/export.vcf").status_code == 401            # connexion exigée
+        client.post("/api/connexion", json={"mot_de_passe": "secret"})
+        r = client.get("/api/export.vcf")
+        assert r.status_code == 200 and r.headers["content-type"].startswith("text/vcard")
+        assert "attachment" in r.headers["content-disposition"] and int(r.headers["content-length"]) == len(r.content)
+        assert r.text.count("BEGIN:VCARD") == 4 and "UID:DDDD-4444" in r.text
+        nom = icloud.sauvegarder(c, "essai")
+        nom = nom if isinstance(nom, str) and nom.endswith(".vcf") else icloud.liste_sauvegardes(c)[0]["nom"]
+        f = client.get(f"/api/sauvegardes/{nom}/fichier")
+        assert f.status_code == 200 and "BEGIN:VCARD" in f.text
+        assert client.get("/api/sauvegardes/..%2Fcarnet2.db/fichier").status_code in (400, 404)
+        assert client.get("/api/sauvegardes/icloud-absente.vcf/fichier").status_code == 400
+    main.ETAT.clear()

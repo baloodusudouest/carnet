@@ -2,6 +2,8 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import { dire, erreur, etat as global, rafraichirAccueil, rafraichirContacts } from '../lib/etat.svelte.js'
+  import BoutonAnneau from '../components/BoutonAnneau.svelte'
+  import { appel, de, envoyer, occupe, resumeImport, tache, telecharger } from '../lib/suivi.svelte.js'
 
   let e = $state(null)
   let attente = $state('')
@@ -49,6 +51,28 @@
     } catch (err) { erreur(err) } finally { attente = '' }
   }
 
+  // Boutons à anneau
+  const bloque = $derived(!!attente || occupe() || global.accueil?.tache?.etat === 'en_cours')
+  async function fond(cle, chemin, corps, nom) {
+    try { await tache(cle, chemin, corps, nom); await rafraichirContacts() } catch (err) { erreur(err) }
+    charger()
+  }
+  async function action(cle, chemin, corps, message) {
+    try {
+      const r = await appel(cle, async () => {
+        const r = await api.post(chemin, corps)
+        if (r?.erreur) throw new Error(r.erreur)
+        return r
+      })
+      if (message) dire(typeof message === 'function' ? message(r) : message)
+    } catch (err) { erreur(err) }
+    charger()
+  }
+  async function importerFichier(cle, f) {
+    try { dire(resumeImport(await envoyer(cle, f))); rafraichirAccueil(); charger() } catch (err) { erreur(err) }
+  }
+  const chargerFichier = (cle, url, nom) => telecharger(cle, url, nom).catch(erreur)
+
   async function ouvrirSauvegarde(nom) {
     try { sauvegarde = { nom, cartes: await api.get(`/api/sauvegardes/${encodeURIComponent(nom)}`) }; choisies = [] }
     catch (err) { erreur(err) }
@@ -92,19 +116,12 @@
     await lancer('telegram', '/api/telegram/abandon', {}, 'Connexion à Telegram abandonnée.')
     tg = { telephone: '', code: '', mdp: '', etape: 'telephone' }
   }
-  async function importerInstagram(ev) {
-    const fichier = ev.target.files?.[0]
-    if (!fichier) return
-    await lancer('instagram', null, fichier, (r) => `Instagram : ${r.lues} compte(s) lu(s), ${r.proposees} rattachement(s) proposé(s). L'archive n'est pas gardée.`)
-    ev.target.value = ''
-  }
   // Analyse globale ; la remise à zéro des validations se confirme deux fois (bouton, puis mot à taper)
   let zero = $state({ ouvert: false, mot: '' })
   async function analyser(remettre) {
-    await lancer('analyse', '/api/analyse', remettre ? { remettre_a_zero: true, confirmation: zero.mot } : {},
-      remettre ? 'Validations remises à zéro, analyse globale lancée.' : 'Analyse globale lancée.')
+    const corps = remettre ? { remettre_a_zero: true, confirmation: zero.mot } : {}
     zero = { ouvert: false, mot: '' }
-    setTimeout(async () => { await rafraichirContacts(); charger() }, 4000)
+    await fond('analyse', '/api/analyse', corps, 'analyse')
   }
   const NOMS_RESEAUX = { telegram: 'Telegram', instagram: 'Instagram', facebook: 'Facebook', whatsapp: 'WhatsApp' }
 
@@ -143,8 +160,10 @@
       {#if e.nuit?.erreur}<p class="alerte" role="alert">{e.nuit.erreur}</p>{/if}
       {#each e.nuit?.details || [] as d}<p class="discret">{d}</p>{/each}
       <div class="boutons">
-        <button class="bouton" disabled={!!attente} onclick={() => lancer('relire', '/api/icloud/relire', {}, 'Lecture d\'iCloud lancée.')}>Relire iCloud</button>
-        <button class="bouton" disabled={!!attente} onclick={() => lancer('nuit', '/api/nuit', {}, 'Passage de nuit lancé.')}>Lancer la nuit maintenant</button>
+        <BoutonAnneau icone="relire" libelle="Relire iCloud" enCours="Lecture d'iCloud…" {...de('relire')}
+                      disabled={bloque} onclick={() => fond('relire', '/api/icloud/relire', {}, 'relecture')} />
+        <BoutonAnneau icone="nuit" libelle="Lancer la nuit maintenant" enCours="Nuit en cours…" {...de('nuit')}
+                      disabled={bloque} onclick={() => fond('nuit', '/api/nuit', {}, 'nuit')} />
         {#if e.nuit?.erreur?.includes('5 %')}
           <button class="bouton bouton-danger" disabled={!!attente} onclick={() => lancer('relire', '/api/icloud/relire', { forcer: true }, 'Lecture acceptée malgré les disparitions.')}>Relire quand même</button>
         {/if}
@@ -159,11 +178,20 @@
       {#if !e.sauvegardes.length}
         <p class="discret">Aucune sauvegarde pour l'instant.</p>
       {:else}
-        <select aria-label="Sauvegarde" onchange={(ev) => ev.target.value && ouvrirSauvegarde(ev.target.value)}>
+        <select aria-label="Sauvegarde" onchange={(ev) => ev.target.value ? ouvrirSauvegarde(ev.target.value) : (sauvegarde = null)}>
           <option value="">Choisir une sauvegarde à comparer</option>
           {#each e.sauvegardes as s}<option value={s.nom}>{s.nom.replace(/^icloud-|\.vcf$/g, '')} ({Math.round(s.taille / 1024)} Ko)</option>{/each}
         </select>
       {/if}
+      <div class="boutons">
+        {#if sauvegarde}
+          <BoutonAnneau icone="telecharger" libelle="Télécharger cette sauvegarde" enCours="Téléchargement…" {...de('sauvegarde')}
+                        disabled={bloque} onclick={() => chargerFichier('sauvegarde', `/api/sauvegardes/${encodeURIComponent(sauvegarde.nom)}/fichier`, sauvegarde.nom)} />
+        {/if}
+        <BoutonAnneau icone="telecharger" libelle="Exporter tout le carnet (.vcf)" enCours="Export…" {...de('export')}
+                      disabled={bloque} onclick={() => chargerFichier('export', '/api/export.vcf', 'carnet.vcf')} />
+      </div>
+      <p class="discret">L'export reprend les cartes d'iCloud telles qu'à la dernière lecture, photos comprises : un seul fichier à ouvrir dans Contacts ou à garder ailleurs.</p>
       {#if sauvegarde}
         {#if !sauvegarde.cartes.some((c) => c.etat !== 'identique')}
           <p class="discret">Toutes les fiches de cette sauvegarde sont identiques à iCloud.</p>
@@ -193,10 +221,14 @@
       {#if e.synology?.erreur}<p class="alerte">{e.synology.erreur}</p>{/if}
       <div class="boutons">
         {#if e.services.synology}
-          <button class="bouton" disabled={!!attente} onclick={() => lancer('syno', '/api/synology', {}, (r) => r.erreur || 'Synology Contacts à jour.')}>Copier maintenant</button>
+          <BoutonAnneau icone="copier" libelle="Copier maintenant" enCours="Copie vers Synology…" {...de('syno')}
+                        disabled={bloque} onclick={() => action('syno', '/api/synology', {}, 'Synology Contacts à jour.')} />
           {#if e.synology?.erreur}<button class="bouton bouton-danger" disabled={!!attente} onclick={() => lancer('syno', '/api/synology', { forcer: true }, 'Copie forcée.')}>Forcer la copie</button>{/if}
         {/if}
-        {#if e.services.kit}<button class="bouton" disabled={!!attente} onclick={() => lancer('kit', '/api/kit', {}, (r) => `${r.nb} contact(s) envoyé(s) au kit.`)}>Envoyer au kit</button>{/if}
+        {#if e.services.kit}
+          <BoutonAnneau icone="envoyer" libelle="Envoyer au kit" enCours="Envoi au kit…" {...de('kit')}
+                        disabled={bloque} onclick={() => action('kit', '/api/kit', {}, (r) => `${r.nb} contact(s) envoyé(s) au kit.`)} />
+        {/if}
       </div>
     </div>
     {/if}
@@ -262,8 +294,9 @@
 
       <h3>Instagram</h3>
       <p class="discret">Dans Instagram : Paramètres, Espace Comptes, Télécharger tes informations, format JSON, « Abonnés et abonnements ». Dépose l'archive .zip ici : seuls les pseudos sont lus, l'archive n'est pas gardée.</p>
-      <label class="bouton fichier">{attente === 'instagram' ? 'Lecture…' : 'Déposer l\'export Instagram'}
-        <input type="file" accept=".zip,.json,application/zip,application/json" onchange={importerInstagram} hidden /></label>
+      <BoutonAnneau icone="envoyer" libelle="Déposer l'export Instagram" enCours="Envoi de l'archive…" {...de('instagram')}
+                    fichier=".zip,.json,application/zip,application/json" disabled={bloque}
+                    onfichier={(f) => importerFichier('instagram', f)} />
 
       <h3>Facebook et WhatsApp</h3>
       <p class="discret">Pas d'import possible : sur la fiche, colle l'adresse du profil Facebook ou choisis le numéro WhatsApp (section Plateformes).</p>
@@ -283,7 +316,8 @@
       </dl>
       <p class="discret">L'analyse globale relit Immich et Treemich, recalcule doublons, complétude et rapprochements réseaux. Elle n'écrit rien dans iCloud.</p>
       <div class="boutons">
-        <button class="bouton bouton-principal" disabled={!!attente} onclick={() => analyser(false)}>Relancer l'analyse globale</button>
+        <BoutonAnneau icone="analyse" principal libelle="Relancer l'analyse globale" enCours="Analyse en cours…" {...de('analyse')}
+                      disabled={bloque} onclick={() => analyser(false)} />
         {#if !zero.ouvert}
           <button class="bouton bouton-danger" disabled={!!attente} onclick={() => (zero.ouvert = true)}>Remettre les validations à zéro…</button>
         {/if}
@@ -311,7 +345,8 @@
         <p class="discret">Reprise de la 1.3 le {date(e.reprise.le)} : {e.reprise.liaisons} liaison(s), {e.reprise.portraits} photo(s) choisie(s), {e.reprise.affiches} affiche(s), {e.reprise.linkedin} relation(s) LinkedIn.</p>
         {#if e.reprise.erreur}<p class="alerte">{e.reprise.erreur}</p>{/if}
       {/if}
-      <button class="bouton" disabled={!!attente} onclick={() => lancer('liens', '/api/liens/rafraichir', {}, 'Lecture d\'Immich et de Treemich lancée.')}>Relire Immich et Treemich</button>
+      <BoutonAnneau icone="relire" libelle="Relire Immich et Treemich" enCours="Lecture d'Immich et de Treemich…" {...de('liens')}
+                    disabled={bloque} onclick={() => fond('liens', '/api/liens/rafraichir', {}, 'liens')} />
     </div>
     {/if}
 
@@ -361,7 +396,6 @@
   .voyant { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--color-tranche); }
   .voyant.ok { background: var(--color-valide); }
   .journal { display: grid; gap: 0.35rem; max-height: 22rem; overflow-y: auto; font-size: 0.9rem; }
-  .fichier { justify-self: start; cursor: pointer; }
   .zero { display: grid; gap: 0.5rem; padding: 0.75rem; border: 1px solid color-mix(in srgb, var(--color-alerte) 50%, transparent); border-radius: 8px; }
   .pied { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 </style>

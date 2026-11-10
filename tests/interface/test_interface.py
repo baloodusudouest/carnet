@@ -77,7 +77,7 @@ def test_a_traiter_garder_une_modification_iphone(page):
 
 
 def test_contacts_recherche_et_tranche(page):
-    page.click("nav.onglets >> text=Contacts")
+    page.click("nav.onglets a[aria-label='Contacts']")
     page.wait_for_selector(".ligne")
     page.fill("input[type=search]", "fabre")
     assert page.locator(".ligne").count() == 1
@@ -89,7 +89,7 @@ def test_contacts_recherche_et_tranche(page):
 
 
 def test_tri_par_prenom_ou_par_nom(page):
-    page.click("nav.onglets >> text=Contacts")
+    page.click("nav.onglets a[aria-label='Contacts']")
     page.wait_for_selector(".ligne")
     page.get_by_role("button", name="Prénom", exact=True).click()
     assert page.locator(".ligne .nom").first.inner_text().startswith("Agnès")
@@ -105,7 +105,7 @@ def test_tri_par_prenom_ou_par_nom(page):
 def test_pc_liste_et_fiche_cote_a_cote(page):
     if page.viewport_size["width"] < 900:
         pytest.skip("PC seulement")
-    page.click("nav.onglets >> text=Contacts")
+    page.click("nav.onglets a[aria-label='Contacts']")
     page.click(".ligne:has-text('Paul MARTIN')")
     page.wait_for_selector(".volet-fiche h1:has-text('Paul MARTIN')")
     assert page.locator(".volet-liste .ligne").count() > 5
@@ -142,7 +142,7 @@ def test_pas_de_defilement_horizontal(page):
 
 
 def test_etat_et_deconnexion(page):
-    page.click("nav.onglets >> text=État")
+    page.click("nav.onglets a[aria-label='État']")
     page.locator(".tuile", has_text="Sauvegardes").click()
     page.wait_for_selector("h2:has-text(\"Sauvegardes d'iCloud\")")
     page.locator(".tuile", has_text="Journal").click()
@@ -154,7 +154,7 @@ def test_etat_et_deconnexion(page):
 # ------------------------------------------------------------------ 2.1 : complétude et réseaux
 
 def test_filtres_de_completude_et_jauges(page):
-    page.click("nav.onglets >> text=Contacts")
+    page.click("nav.onglets a[aria-label='Contacts']")
     page.wait_for_selector(".ligne")
     total = page.locator(".ligne").count()
     assert page.locator(".ligne .jauge").count() == total
@@ -188,7 +188,7 @@ def test_ajouter_puis_delier_un_profil_facebook(page):
 
 
 def test_a_traiter_famille_reseaux(page):
-    page.click("nav.onglets >> text=À traiter")
+    page.click("nav.onglets a[aria-label='À traiter']")
     filtre = page.locator(".filtres .pastille", has_text="Réseaux")
     if not filtre.count():
         pytest.skip("points réseau déjà traités par l'autre format")
@@ -200,7 +200,7 @@ def test_a_traiter_famille_reseaux(page):
 
 
 def test_etat_reseaux_et_remise_a_zero_confirmee(page):
-    page.click("nav.onglets >> text=État")
+    page.click("nav.onglets a[aria-label='État']")
     page.locator(".tuile", has_text="Réseaux").click()
     page.wait_for_selector("h3:has-text('Telegram')")
     assert page.locator("text=CARNET_TELEGRAM_API_ID").count() == 1          # non configuré dans la démo
@@ -217,3 +217,29 @@ def test_manifeste_pwa(adresse):
     r = httpx.get(adresse + "/manifest.json")
     assert r.status_code == 200 and r.json()["display"] == "standalone"
     assert httpx.get(adresse + "/icone-512.png").status_code == 200
+
+
+# ------------------------------------------------------------------ 2.2 : pilule et boutons à anneau
+
+def test_pilule_libelle_de_l_onglet_actif(page):
+    page.click("nav.onglets a[aria-label='Contacts']")
+    page.wait_for_selector("nav.onglets a[aria-label='Contacts'][aria-current='page']")
+    page.wait_for_timeout(500)                                  # fin de l'élargissement de la pilule
+    actif = page.locator("nav.onglets a[aria-current='page']")
+    assert actif.locator(".libelle").bounding_box()["width"] > 20
+    inactif = page.locator("nav.onglets a[aria-label='État'] .libelle").bounding_box()["width"]
+    large = page.viewport_size["width"] >= 900
+    assert (inactif > 20) if large else (inactif < 2)      # iPhone : icône seule ; PC : rail avec libellés
+
+
+def test_export_vcf_par_le_bouton_a_anneau(page):
+    page.click("nav.onglets a[aria-label='État']")
+    page.locator(".tuile", has_text="Sauvegardes").click()
+    with page.expect_download() as tele:
+        page.get_by_role("button", name="Exporter tout le carnet (.vcf)").click()
+    assert tele.value.suggested_filename.startswith("carnet-") and tele.value.suggested_filename.endswith(".vcf")
+    page.wait_for_selector(".bouton-anneau[data-etat='succes']")
+    page.route("**/api/export.vcf", lambda r: r.fulfill(status=502, json={"detail": "iCloud ne répond pas."}))
+    page.wait_for_selector(".bouton-anneau[data-etat='repos']", timeout=6000)
+    page.get_by_role("button", name="Exporter tout le carnet (.vcf)").click()
+    page.wait_for_selector(".bouton-anneau[data-etat='echec'] >> text=iCloud ne répond pas.")
