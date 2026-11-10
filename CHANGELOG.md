@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.6.4 — 11 novembre 2026
+- **Refus d'identifiants iCloud (401)** : carnet ne réessaie plus et marque une pause de 15 minutes sans aucune requête vers iCloud (nuit et boutons compris), pour ne pas faire verrouiller le compte Apple par des refus répétés. Le message explique qu'un changement du mot de passe du compte Apple annule les mots de passe d'application. Un nouveau mot de passe dans la stack suivi d'un Recreate lève la pause.
+
 ## 2.6.3 — 10 novembre 2026
 - **Moins de requêtes vers iCloud** : l'adresse du carnet d'adresses est retenue une heure. Chaque écriture faisait quatre requêtes de découverte avant son envoi ; une série de validations n'en fait plus qu'une fois par heure, ce qui ménage iCloud (le 500 du 10 novembre est arrivé après une série d'écritures). Si iCloud déplace le carnet (404), la découverte est refaite.
 

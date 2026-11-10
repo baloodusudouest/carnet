@@ -48,6 +48,11 @@ def _corps_propfind(props: str) -> str:
 # quatre requêtes de découverte avant son PUT, et une série de validations sollicite trop iCloud.
 DECOUVERTE_DUREE = 3600
 _decouverts: dict[tuple, tuple[str, float]] = {}
+# Après un refus d'identifiants (401), plus aucune requête pendant 15 min : des refus répétés
+# (nuit, boutons) peuvent faire verrouiller le compte Apple. Un redémarrage (nouveau mot de
+# passe dans la stack, puis Recreate) lève la pause.
+PAUSE_REFUS = 15 * 60
+_refus: dict[tuple, float] = {}
 
 
 class CardDAV:
@@ -62,6 +67,7 @@ class CardDAV:
                                "CARNET_ICLOUD_PASSWORD dans les variables de la stack.")
         self.base = url.rstrip("/") + "/"
         self._cle = (self.base, utilisateur, nom_carnet, id(transport) if transport else None)
+        self._cle_compte = (self.base, utilisateur, id(transport) if transport else None)
         self.client = httpx.Client(auth=(utilisateur, mot_de_passe), timeout=60, follow_redirects=True,
                                    transport=transport, verify=verifier_tls, headers={"User-Agent": "carnet (CardDAV)"})
         self.carnet: str | None = None
@@ -92,6 +98,12 @@ class CardDAV:
             return r
 
     def _une_requete(self, methode: str, url: str, **kw) -> httpx.Response:
+        jusqua = _refus.get(self._cle_compte)
+        if jusqua and time.monotonic() < jusqua:
+            reste = max(1, round((jusqua - time.monotonic()) / 60))
+            raise ErreurICloud(f"{self.service} a refusé l'identifiant ou le mot de passe : carnet attend encore {reste} min "
+                               "avant de réessayer, pour ne pas faire verrouiller le compte. Change le mot de passe "
+                               "d'application dans la stack puis Recreate pour réessayer tout de suite.")
         try:
             r = self.client.request(methode, url, **kw)
         except (httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError) as exc:
@@ -106,11 +118,15 @@ class CardDAV:
                 raise ErreurICloud(f"{self.service} : certificat HTTPS refusé (adresse IP ou certificat auto-signé). "
                                    "En réseau local, mets CARNET_SYNOLOGY_VERIFIER_TLS=non.") from exc
             raise ErreurICloud(f"{self.service} injoignable ({exc.__class__.__name__}).") from exc
+        if r.status_code == 401:
+            _refus[self._cle_compte] = time.monotonic() + PAUSE_REFUS
+            _decouverts.pop(self._cle, None)
         if r.status_code == 401 and self.service != "iCloud":
             raise ErreurICloud(f"{self.service} refuse la connexion : vérifie l'utilisateur et le mot de passe.")
         if r.status_code == 401:
-            raise ErreurICloud("iCloud refuse la connexion : vérifie l'identifiant Apple et le "
-                               "mot de passe d'application (pas le mot de passe du compte).")
+            raise ErreurICloud("iCloud refuse la connexion : vérifie l'identifiant Apple et le mot de passe d'application "
+                               "(pas le mot de passe du compte). Un changement du mot de passe du compte Apple annule "
+                               "tous les mots de passe d'application. carnet fait une pause de 15 min avant de réessayer.")
         if r.status_code == 412:
             raise Conflit("Carte modifiée dans iCloud depuis la lecture.")
         if r.status_code >= 400:

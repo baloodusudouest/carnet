@@ -1358,3 +1358,18 @@ def test_decouverte_icloud_retenue_entre_deux_operations(c, services):
     b.oublier_decouverte()
     carddav.CardDAV("https://contacts.icloud.com", "moi@icloud.com", "abcd-efgh-ijkl-mnop", transport=t).decouvrir()
     assert len(vues) > n
+
+
+def test_pause_apres_un_refus_d_identifiants():
+    import httpx as hx
+    from app import carddav
+    appels = []
+    t = hx.MockTransport(lambda r: (appels.append(1), hx.Response(401))[1])
+    a = carddav.CardDAV("https://contacts.icloud.com", "moi@icloud.com", "mauvais", transport=t)
+    with pytest.raises(carddav.ErreurICloud, match="refuse la connexion"):
+        a.decouvrir()
+    assert len(appels) == 1                                                   # pas de nouvel essai sur 401
+    b = carddav.CardDAV("https://contacts.icloud.com", "moi@icloud.com", "mauvais", transport=t)
+    with pytest.raises(carddav.ErreurICloud, match="attend encore"):
+        b.decouvrir()
+    assert len(appels) == 1                                                   # rien n'est envoyé pendant la pause
