@@ -56,10 +56,11 @@ class _Liens(HTMLParser):
             self.icones.append((150, a["content"]))
 
 
-def chercher(domaine: str, transport: httpx.BaseTransport | None = None) -> list[dict]:
-    """Logos trouvés : [{url, octets, largeur, hauteur}], les plus prometteurs d'abord."""
+def chercher(domaine: str, transport: httpx.BaseTransport | None = None, taille_min: int = TAILLE_MIN) -> list[dict]:
+    """Logos trouvés : [{url, octets, largeur, hauteur}], les plus prometteurs d'abord.
+    domaine : « exemple.fr » (https) ou une adresse complète (« http://immich-server:2283 »)."""
     with httpx.Client(timeout=8, follow_redirects=True, headers={"User-Agent": UA}, transport=transport) as c:
-        base, adresses = f"https://{domaine}/", []
+        base, adresses = (domaine.rstrip("/") + "/" if "://" in domaine else f"https://{domaine}/"), []
         try:
             r = c.get(base)
             if r.status_code < 400 and "html" in r.headers.get("content-type", ""):
@@ -86,7 +87,7 @@ def chercher(domaine: str, transport: httpx.BaseTransport | None = None) -> list
                 img.load()
             except Exception:  # noqa: BLE001 — pas une image lisible (SVG, HTML d'erreur…)
                 continue
-            if min(img.size) < TAILLE_MIN:
+            if min(img.size) < taille_min:
                 continue
             if any(abs(img.size[0] - x["largeur"]) < 2 and abs(img.size[1] - x["hauteur"]) < 2 for x in res):
                 continue   # même image en double (favicon.ico et icône déclarée)
@@ -157,4 +158,15 @@ def affiche(contenu: bytes, societe: str, largeur: int = 1179, hauteur: int = 25
                fill=(40, 34, 30) if clair else (245, 242, 236))
     sortie = io.BytesIO()
     fond.convert("RGB").save(sortie, "JPEG", quality=90, optimize=True)
+    return sortie.getvalue()
+
+
+def vignette(contenu: bytes, cote: int = 96) -> bytes:
+    """Icône carrée en PNG transparent (pastilles des plateformes)."""
+    img = _logo_rgba(contenu)
+    img.thumbnail((cote, cote), Image.LANCZOS)
+    fond = Image.new("RGBA", (cote, cote), (0, 0, 0, 0))
+    fond.paste(img, ((cote - img.width) // 2, (cote - img.height) // 2), img)
+    sortie = io.BytesIO()
+    fond.save(sortie, "PNG", optimize=True)
     return sortie.getvalue()

@@ -446,7 +446,29 @@ def etat():
                          "treemich": bool(c.cfg.treemich_email), "synology": bool(c.cfg.synology_url),
                          "kit": bool(c.cfg.kit_config and c.cfg.kit_config.is_dir()), "ha": bool(c.cfg.ha_token),
                          "nuit": c.cfg.veille_heure if c.cfg.nuit_active else None},
-            "reseaux": reseaux.bilan(c), "telegram": telegram.etat(c), "tache": c.tache}
+            "reseaux": reseaux.bilan(c), "telegram": telegram.etat(c), "tache": c.tache, "sante": sante(c)}
+
+
+def sante(c) -> dict:
+    """Chaque service : ok, erreur (avec le message) ou off (non configuré). D'après les dernières
+    opérations, sans rien interroger de plus."""
+    nuit_ = c.base.lire("nuit") or {}
+    syno = c.base.lire("synology") or {}
+    liens = c.memo_present("liens", liaisons.DUREE_CACHE) or {}
+    erreurs = liens.get("erreurs", [])
+
+    def un(configure, erreur=""):
+        return {"etat": "off" if not configure else "erreur" if erreur else "ok", "message": erreur or ""}
+    return {
+        "icloud": un(c.cfg.icloud_user, nuit_.get("erreur_lecture") or ""),
+        "immich": un(c.cfg.immich_cle, next((e for e in erreurs if "treemich" not in e.lower()), "")),
+        "treemich": un(c.cfg.treemich_email, next((e for e in erreurs if "treemich" in e.lower()), "")),
+        "synology": un(c.cfg.synology_url, syno.get("erreur") or ""),
+        "kit": un(c.cfg.kit_config and c.cfg.kit_config.is_dir()),
+        "ha": un(c.cfg.ha_token),
+        "telegram": un(c.cfg.telegram_api_id and c.cfg.telegram_api_hash),
+        "linkedin": un(c.cfg.linkedin_client_id),
+    }
 
 
 @app.post("/api/icloud/relire")
@@ -476,6 +498,14 @@ def sauvegarde_fichier(nom: str):
     """La sauvegarde telle quelle (.vcf), pour la garder ailleurs ou l'ouvrir dans Contacts."""
     chemin = icloud._fichier(carnet(), nom)
     return FileResponse(chemin, media_type="text/vcard", filename=chemin.name)
+
+
+@app.get("/api/logo-reseau/{service}")
+def logo_reseau(service: str):
+    png = reseaux.logo(carnet(), service)
+    if not png:
+        raise HTTPException(404, "Pas de logo")
+    return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=604800"})
 
 
 @app.get("/api/export.vcf")

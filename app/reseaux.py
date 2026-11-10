@@ -258,11 +258,58 @@ def delier(c: Carnet, uid: str, service: str, etag_vu: str | None = None) -> dic
 
 
 def bilan(c: Carnet) -> dict:
-    """Par réseau : personnes lues (gardées 90 jours au plus) et fiches liées."""
+    """Par réseau : personnes lues (gardées 90 jours au plus) et fiches liées. LinkedIn : relations
+    importées (CSV ou API) et celles rattachées à une fiche."""
     lues = {l["service"]: l["n"] for l in c.base.tous("SELECT service, COUNT(*) AS n FROM personnes_externes GROUP BY service")}
     liees = {l["service"]: l["n"] for l in c.base.tous("SELECT service, COUNT(*) AS n FROM liaisons GROUP BY service")}
     dernier = c.base.lire("reseaux_imports") or {}
-    return {s: {"lues": lues.get(s, 0), "liees": liees.get(s, 0), "importe_le": dernier.get(s)} for s in SERVICES}
+    res = {s: {"lues": lues.get(s, 0), "liees": liees.get(s, 0), "importe_le": dernier.get(s)} for s in SERVICES}
+    lk = c.base.un("SELECT COUNT(*) AS n, SUM(uid IS NOT NULL) AS liees, MAX(le) AS le FROM linkedin")
+    res = {"linkedin": {"lues": lk["n"] or 0, "liees": lk["liees"] or 0, "importe_le": lk["le"]}, **res}
+    return res
+
+
+# ------------------------------------------------------------ logos des plateformes
+
+def adresse_logo(c: Carnet, service: str) -> str | None:
+    """Site officiel dont carnet reprend l'icône (Immich et Treemich : ton propre serveur)."""
+    return {"icloud": "www.icloud.com", "linkedin": "www.linkedin.com", "facebook": "www.facebook.com",
+            "instagram": "www.instagram.com", "whatsapp": "www.whatsapp.com", "telegram": "telegram.org",
+            "immich": c.cfg.immich_url, "treemich": c.cfg.treemich_url}.get(service)
+
+
+_verrou_logos = __import__("threading").Lock()
+
+
+def logo(c: Carnet, service: str) -> bytes | None:
+    """Icône du réseau (PNG 96 px), cherchée une fois sur son site puis gardée en base. Un échec
+    est retenté au plus une fois par jour ; None : la pastille garde ses deux lettres."""
+    from base64 import b64decode, b64encode
+    from . import logos
+    adresse = adresse_logo(c, service)
+    if not adresse:
+        return None
+    with _verrou_logos:      # plusieurs lignes demandent le même logo : un seul appel au site
+        return _logo(c, service, adresse)
+
+
+def _logo(c: Carnet, service: str, adresse: str) -> bytes | None:
+    from base64 import b64decode, b64encode
+    from . import logos
+    cle = f"logo_reseau:{service}"
+    garde = c.base.lire(cle) or {}
+    if garde.get("png"):
+        return b64decode(garde["png"])
+    jour = iso(maintenant())[:10]
+    if garde.get("echec") == jour:
+        return None
+    try:
+        trouves = logos.chercher(adresse, transport=c.transports.get("logos"), taille_min=32)
+        png = logos.vignette(trouves[0]["octets"]) if trouves else None
+    except Exception:  # noqa: BLE001 — site injoignable, image illisible : on retentera demain
+        png = None
+    c.base.ecrire(cle, {"png": b64encode(png).decode()} if png else {"echec": jour})
+    return png
 
 
 PSEUDO = {"instagram": re.compile(r"[A-Za-z0-9._]{1,30}"), "telegram": re.compile(r"[A-Za-z][A-Za-z0-9_]{3,31}")}

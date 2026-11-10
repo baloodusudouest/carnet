@@ -3,6 +3,8 @@
   import { api } from '../lib/api.js'
   import { dire, erreur, etat as global, rafraichirAccueil, rafraichirContacts } from '../lib/etat.svelte.js'
   import BoutonAnneau from '../components/BoutonAnneau.svelte'
+  import Voyant from '../components/Voyant.svelte'
+  import { absents, logoReseau } from '../lib/logos.svelte.js'
   import { appel, de, envoyer, occupe, resumeImport, tache, telecharger } from '../lib/suivi.svelte.js'
 
   let e = $state(null)
@@ -23,19 +25,37 @@
       resume: (e) => `${e.sauvegardes.length} copie(s)`, alerte: () => false },
     { cle: 'copies', nom: 'Copies', icone: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
       resume: (e) => `Synology : ${e.synology ? court(e.synology.le) : 'jamais'}`, alerte: (e) => !!e.synology?.erreur },
-    { cle: 'linkedin', nom: 'LinkedIn', icone: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 11v5M8 8v.01M12 16v-5M12 13a2 2 0 0 1 4 0v3"/>',
-      resume: (e) => `${e.linkedin.sans_contact.length} sans fiche`, alerte: () => false },
     { cle: 'reseaux', nom: 'Réseaux', icone: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.9l7.6-3.8M8.2 13.1l7.6 3.8"/>',
-      resume: (e) => `${Object.values(e.reseaux).reduce((n, r) => n + r.liees, 0)} fiche(s) liée(s)`, alerte: () => false },
+      resume: (e) => `${Object.values(e.reseaux).reduce((n, r) => n + r.liees, 0)} fiche(s) liée(s)`,
+      alerte: (e) => ['telegram', 'linkedin'].some((k) => e.sante?.[k]?.etat === 'erreur') },
     { cle: 'completude', nom: 'Complétude', icone: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 8 8h-8z"/>',
       resume: (e) => `${e.statut.completude?.validees ?? 0} validée(s), ${e.statut.completude?.a_revoir ?? 0} à revoir`,
       alerte: (e) => !!e.statut.completude?.a_revoir },
     { cle: 'services', nom: 'Services', icone: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
-      resume: (e) => `${Object.entries(e.services).filter(([k, v]) => k !== 'nuit' && v).length} sur 6 configurés`,
-      alerte: (e) => !!e.reprise?.erreur },
+      resume: (e) => {
+        const v = Object.values(e.sante || {}).filter((x) => x.etat !== 'off')
+        const ko = v.filter((x) => x.etat === 'erreur').length
+        return ko ? `${ko} en erreur sur ${v.length}` : `${v.length} sur ${v.length} OK`
+      },
+      alerte: (e) => !!e.reprise?.erreur || Object.values(e.sante || {}).some((x) => x.etat === 'erreur') },
     { cle: 'journal', nom: 'Journal', icone: '<path d="M6 4h12v16H6z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
       resume: (e) => `${e.journal.length} lignes`, alerte: () => false },
   ]
+
+  // Voyants : roue pendant l'opération qui concerne la tuile, coche si tout va bien, croix sinon
+  const TACHES = { icloud: ['relecture', 'nuit', 'demarrage'], completude: ['analyse'], services: ['liens'],
+                   reseaux: [], sauvegardes: [], copies: [] }
+  const tacheEnCours = $derived(global.accueil?.tache?.etat === 'en_cours' ? global.accueil.tache : null)
+  function voyantTuile(s) {
+    if (tacheEnCours && (TACHES[s.cle] || []).includes(tacheEnCours.nom)) return 'en_cours'
+    return s.alerte(e) ? 'erreur' : 'ok'
+  }
+  const NOMS_TACHES = { relecture: 'Lecture d\'iCloud', nuit: 'Nuit', analyse: 'Analyse globale', liens: 'Lecture d\'Immich et de Treemich',
+                        demarrage: 'Démarrage' }
+  // Bandeau du haut : une opération en cours, sinon tout va bien, sinon ce qui ne va pas
+  const SERVICES = [['icloud', 'iCloud'], ['immich', 'Immich'], ['treemich', 'Treemich'], ['synology', 'Synology Contacts'],
+                    ['kit', 'Kit d\'urgence'], ['ha', 'Home Assistant'], ['linkedin', 'LinkedIn (API)'], ['telegram', 'Telegram']]
+  const enErreur = $derived(e ? SECTIONS.filter((x) => x.cle !== 'journal' && x.alerte(e)).map((x) => x.nom) : [])
 
   const date = (iso) => iso ? new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : 'jamais'
   async function charger() { try { e = await api.get('/api/etat') } catch (err) { erreur(err) } }
@@ -123,7 +143,7 @@
     zero = { ouvert: false, mot: '' }
     await fond('analyse', '/api/analyse', corps, 'analyse')
   }
-  const NOMS_RESEAUX = { telegram: 'Telegram', instagram: 'Instagram', facebook: 'Facebook', whatsapp: 'WhatsApp' }
+  const NOMS_RESEAUX = { linkedin: 'LinkedIn', telegram: 'Telegram', instagram: 'Instagram', facebook: 'Facebook', whatsapp: 'WhatsApp' }
 
   async function deconnecter() { await api.post('/api/deconnexion'); global.connecte = false }
 
@@ -135,14 +155,26 @@
   {#if !e}
     <p class="discret">Chargement…</p>
   {:else}
+    <p class="bilan" data-etat={tacheEnCours ? 'en_cours' : enErreur.length ? 'erreur' : 'ok'} role="status">
+      {#if tacheEnCours}
+        <Voyant etat="en_cours" taille="1.4rem" />
+        <span><strong>{NOMS_TACHES[tacheEnCours.nom] || 'Opération'} en cours</strong> <span class="discret">{tacheEnCours.message}</span></span>
+      {:else if enErreur.length}
+        <Voyant etat="erreur" taille="1.4rem" />
+        <span><strong>À voir :</strong> {enErreur.join(', ')}</span>
+      {:else}
+        <Voyant etat="ok" taille="1.4rem" />
+        <span><strong>Tout fonctionne</strong> <span class="discret">dernière nuit {court(e.nuit?.le)}</span></span>
+      {/if}
+    </p>
     <nav class="tuiles" aria-label="Sections">
       {#each SECTIONS as s}
         <button class="tuile" aria-pressed={section === s.cle} onclick={() => (section = section === s.cle ? null : s.cle)}>
+          {#if s.cle !== 'journal'}<span class="voyant-tuile"><Voyant etat={voyantTuile(s)} /></span>{/if}
           <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.7"
                stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{@html s.icone}</svg>
           <span class="nom-tuile">{s.nom}</span>
           <span class="resume">{s.resume(e)}</span>
-          {#if s.alerte(e)}<span class="alerte-point" aria-label="Problème à voir"></span>{/if}
         </button>
       {/each}
     </nav>
@@ -233,10 +265,21 @@
     </div>
     {/if}
 
-    {#if section === 'linkedin'}
+    {#if section === 'reseaux'}
     <div class="feuille bloc">
-      <h2 class="titre">LinkedIn</h2>
-      <p class="discret">Importe tes relations par l'API de portabilité, ou dépose Connections.csv avec « Importer » dans Contacts. Seuls les changements remontent.</p>
+      <h2 class="titre">Réseaux</h2>
+      <dl>
+        {#each Object.entries(e.reseaux) as [s, r]}
+          <dt class="reseau">{#if !absents[s]}<img class="logo-reseau" src={logoReseau(s)} alt="" onerror={() => (absents[s] = true)} />{/if}{NOMS_RESEAUX[s]}</dt>
+          <dd>{r.liees} fiche(s) liée(s){#if r.lues}, {r.lues} personne(s) lue(s){/if}{#if r.importe_le}{" "}<span class="discret">(import du {date(r.importe_le)})</span>{/if}</dd>
+        {/each}
+      </dl>
+      <p class="discret">Chaque rapprochement arrive dans « À traiter » (Réseaux) : rien n'est lié sans toi. Les personnes lues mais jamais liées sont effacées au bout de 90 jours.</p>
+
+      <h3 class="titre-reseau">{#if !absents.linkedin}<img class="logo-reseau" src={logoReseau('linkedin')} alt="" onerror={() => (absents.linkedin = true)} />{/if}LinkedIn</h3>
+      <p class="discret">Tes relations par l'API de portabilité, ou le fichier Connections.csv de l'export LinkedIn. Seuls les changements de poste ou de société remontent dans « À traiter ».</p>
+      <BoutonAnneau icone="envoyer" libelle="Déposer Connections.csv" enCours="Envoi du fichier…" {...de('linkedin_csv')}
+                    fichier=".csv,text/csv" disabled={bloque} onfichier={(f) => importerFichier('linkedin_csv', f)} />
       {#if e.linkedin.api}
         <div class="boutons">
           <button class="bouton" disabled={!!attente} onclick={linkedinConnecter}>Se connecter à LinkedIn</button>
@@ -247,7 +290,7 @@
             <button class="bouton" disabled={!adresseLinkedin || !!attente} onclick={linkedinCode}>Importer</button></span></label>
       {/if}
       {#if e.linkedin.sans_contact.length}
-        <h3>Relations sans fiche ({e.linkedin.sans_contact.length})</h3>
+        <h4>Relations sans fiche ({e.linkedin.sans_contact.length})</h4>
         <ul class="relations">
           {#each e.linkedin.sans_contact.slice(0, 50) as r (r.url)}
             <li>
@@ -264,21 +307,8 @@
           {/each}
         </ul>
       {/if}
-    </div>
-    {/if}
 
-    {#if section === 'reseaux'}
-    <div class="feuille bloc">
-      <h2 class="titre">Réseaux</h2>
-      <dl>
-        {#each Object.entries(e.reseaux) as [s, r]}
-          <dt>{NOMS_RESEAUX[s]}</dt>
-          <dd>{r.liees} fiche(s) liée(s){#if r.lues}, {r.lues} personne(s) lue(s){/if}{#if r.importe_le}{" "}<span class="discret">(import du {date(r.importe_le)})</span>{/if}</dd>
-        {/each}
-      </dl>
-      <p class="discret">Chaque rapprochement arrive dans « À traiter » (Réseaux) : rien n'est lié sans toi. Les personnes lues mais jamais liées sont effacées au bout de 90 jours.</p>
-
-      <h3>Telegram</h3>
+      <h3 class="titre-reseau">{#if !absents.telegram}<img class="logo-reseau" src={logoReseau('telegram')} alt="" onerror={() => (absents.telegram = true)} />{/if}Telegram</h3>
       {#if !e.telegram.configure}
         <p class="discret">Ajoute CARNET_TELEGRAM_API_ID et CARNET_TELEGRAM_API_HASH dans la stack (my.telegram.org, « API development tools »).</p>
       {:else if tg.etape === 'telephone'}
@@ -292,20 +322,20 @@
       {/if}
       {#if e.telegram.configure}<p class="discret">Import ponctuel : carnet lit tes contacts Telegram puis se déconnecte. La session n'est ni gardée ni sauvegardée.</p>{/if}
 
-      <h3>Facebook</h3>
+      <h3 class="titre-reseau">{#if !absents.facebook}<img class="logo-reseau" src={logoReseau('facebook')} alt="" onerror={() => (absents.facebook = true)} />{/if}Facebook</h3>
       <p class="discret">Compte Meta › Vos informations et autorisations › Exporter vos informations : choisis seulement Contacts › <strong>Ami(e)s</strong> (et Followers si tu veux), format <strong>JSON</strong>. Dépose le .zip tel quel, ou seulement <strong>your_friends.json</strong> si tu l'as décompressé (les autres fichiers sont des suggestions ou des demandes, ils ne sont pas lus). Facebook ne donne que les noms : un ami est proposé quand son nom désigne une seule fiche. « Lier » pose la pastille Facebook ; pour écrire le lien du profil dans iCloud, colle son adresse sur la fiche.</p>
       <BoutonAnneau icone="envoyer" libelle="Déposer l'export Facebook" enCours="Envoi de l'archive…" {...de('facebook')}
                     fichier=".zip,.json,application/zip,application/json" disabled={bloque}
                     onfichier={(f) => importerFichier('facebook', f)} />
 
-      <h3>Instagram</h3>
+      <h3 class="titre-reseau">{#if !absents.instagram}<img class="logo-reseau" src={logoReseau('instagram')} alt="" onerror={() => (absents.instagram = true)} />{/if}Instagram</h3>
       <p class="discret">Dans Instagram : Paramètres, Espace Comptes, Télécharger tes informations, format JSON, « Abonnés et abonnements ». Seuls les pseudos sont lus.</p>
       <BoutonAnneau icone="envoyer" libelle="Déposer l'export Instagram" enCours="Envoi de l'archive…" {...de('instagram')}
                     fichier=".zip,.json,application/zip,application/json" disabled={bloque}
                     onfichier={(f) => importerFichier('instagram', f)} />
       <p class="discret">Les archives sont lues en mémoire puis oubliées : rien n'est gardé sur le NAS.</p>
 
-      <h3>WhatsApp</h3>
+      <h3 class="titre-reseau">{#if !absents.whatsapp}<img class="logo-reseau" src={logoReseau('whatsapp')} alt="" onerror={() => (absents.whatsapp = true)} />{/if}WhatsApp</h3>
       <p class="discret">Pas d'export des contacts : sur la fiche, choisis le numéro WhatsApp (section Plateformes).</p>
     </div>
     {/if}
@@ -344,8 +374,13 @@
     <div class="feuille bloc">
       <h2 class="titre">Services</h2>
       <ul class="services">
-        {#each [['icloud', 'iCloud'], ['immich', 'Immich'], ['treemich', 'Treemich'], ['synology', 'Synology Contacts'], ['kit', 'Kit d\'urgence'], ['ha', 'Home Assistant']] as [k, nom]}
-          <li><span class="voyant" class:ok={e.services[k]}></span>{nom} <span class="discret">{e.services[k] ? 'configuré' : 'non configuré'}</span></li>
+        {#each SERVICES as [k, nom]}
+          {@const v = e.sante?.[k] || { etat: 'off', message: '' }}
+          <li>
+            <Voyant etat={tacheEnCours?.nom === 'liens' && (k === 'immich' || k === 'treemich') ? 'en_cours' : v.etat} />
+            <span>{nom} <span class="discret">{v.etat === 'ok' ? 'OK' : v.etat === 'off' ? 'non configuré' : ''}</span>
+              {#if v.etat === 'erreur'}<span class="alerte petit">{v.message}</span>{/if}</span>
+          </li>
         {/each}
       </ul>
       {#if e.reprise}
@@ -380,11 +415,22 @@
   .tuile[aria-pressed='true'] { border-color: var(--color-onglet); background: color-mix(in srgb, var(--color-onglet) 10%, var(--color-reliure)); }
   .nom-tuile { font-family: var(--font-livre); font-weight: 600; font-size: 1.05rem; }
   .resume { color: var(--color-mine); font-size: 0.82rem; }
-  .alerte-point { position: absolute; top: 0.7rem; right: 0.7rem; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--color-alerte); }
+  .voyant-tuile { position: absolute; top: 0.75rem; right: 0.75rem; display: grid; }
+  .bilan { display: flex; align-items: center; gap: 0.7rem; padding: 0.75rem 0.9rem; border-radius: 10px;
+    border: 1px solid var(--color-couture); background: var(--color-reliure); }
+  .bilan[data-etat='erreur'] { border-color: color-mix(in srgb, var(--color-alerte) 60%, transparent); }
+  .bilan[data-etat='ok'] { border-color: color-mix(in srgb, var(--color-valide) 40%, transparent); }
+  .bilan[data-etat='en_cours'] { border-color: color-mix(in srgb, var(--color-onglet) 50%, transparent); }
+  /* Logos des réseaux */
+  .logo-reseau { width: 1.35rem; height: 1.35rem; border-radius: 5px; background: #f4efe7; object-fit: contain;
+    box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25); flex: none; }
+  .titre-reseau { display: flex; align-items: center; gap: 0.5rem; }
+  dt.reseau { display: flex; align-items: center; gap: 0.45rem; }
   .page { max-width: 46rem; display: grid; gap: 1rem; }
   h1 { font-size: 1.9rem; }
   h2 { font-size: 1.2rem; margin-bottom: 0.6rem; }
   h3 { font-weight: 600; margin: 0.9rem 0 0.4rem; }
+  h4 { font-weight: 600; margin: 0.6rem 0 0.3rem; font-size: 0.95rem; }
   .bloc { padding: 1rem; display: grid; gap: 0.6rem; }
   dl { display: grid; grid-template-columns: minmax(8rem, auto) 1fr; gap: 0.3rem 1rem; }
   dt { color: var(--color-mine); }
@@ -400,8 +446,9 @@
   .relations li { display: grid; gap: 0.3rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--color-couture); }
   .services { display: grid; gap: 0.3rem; }
   .services li { display: flex; align-items: center; gap: 0.5rem; }
-  .voyant { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--color-tranche); }
-  .voyant.ok { background: var(--color-valide); }
+  .services li { align-items: flex-start; min-height: 1.8rem; }
+  .services li > span .alerte { display: block; }
+  .petit { font-size: 0.82rem; }
   .journal { display: grid; gap: 0.35rem; max-height: 22rem; overflow-y: auto; font-size: 0.9rem; }
   .zero { display: grid; gap: 0.5rem; padding: 0.75rem; border: 1px solid color-mix(in srgb, var(--color-alerte) 50%, transparent); border-radius: 8px; }
   .pied { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }

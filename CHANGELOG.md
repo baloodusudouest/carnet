@@ -1,5 +1,14 @@
 # Journal des versions
 
+## 2.4.0 — 10 novembre 2026 — voyants, logos des réseaux, LinkedIn dans Réseaux
+- **Voyants** :
+  - en haut d'État, un bandeau : roue qui tourne et nom de l'opération en cours (lecture d'iCloud, nuit, analyse globale, Immich et Treemich) ; sinon « Tout fonctionne » avec une coche ; sinon une croix et les sections à voir ;
+  - sur chaque tuile d'État : roue, coche ou croix ;
+  - dans Services, un voyant par service (iCloud, Immich, Treemich, Synology, kit, Home Assistant, LinkedIn, Telegram), avec le message d'erreur ;
+  - sur l'onglet État de la barre, une petite roue pendant une opération.
+- **Logos des réseaux** : l'icône officielle de chaque plateforme est reprise sur son site (ou sur ton serveur pour Immich et Treemich), une seule fois, puis gardée par carnet. Elle remplace les deux lettres dans les pastilles, sur la fiche et dans État › Réseaux. Si un site ne répond pas, les deux lettres restent et carnet réessaie le lendemain.
+- **LinkedIn rejoint État › Réseaux** (la tuile LinkedIn disparaît) : relations importées et liées dans le bilan, dépôt de Connections.csv par bouton ou glisser-déposer, connexion à l'API, relations sans fiche.
+
 ## 2.3.2 — 10 novembre 2026
 - Instagram : un export « Contacts » (synced_contacts.json, ton carnet d'adresses synchronisé, sans pseudo) est reconnu et explique quel export demander à la place (« Abonnés et abonnements », JSON).
 

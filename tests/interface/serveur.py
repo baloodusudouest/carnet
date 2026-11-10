@@ -43,7 +43,27 @@ def preparer(dossier: Path) -> tuple[Carnet, FauxICloud]:
     reseaux.enregistrer(c, "instagram", [{"ext_id": "brunolefevre", "nom": "", "pseudo": "brunolefevre"},
                                          {"ext_id": "camille.garnier", "nom": "", "pseudo": "camille.garnier"}])
     reseaux.proposer(c)
+    c.transports["logos"] = faux_logos()
     return c, ic
+
+
+def faux_logos():
+    """Sites des réseaux simulés : une icône unie par site (pas d'accès à Internet dans la démo)."""
+    import io
+    import httpx
+    from PIL import Image
+    teintes = {"facebook": "#7f95e0", "instagram": "#e08fb3", "linkedin": "#6fa3d8", "whatsapp": "#7fcf98",
+               "telegram": "#76c0e6", "icloud": "#8fa9c7"}
+
+    def repondre(requete):
+        hote = requete.url.host
+        teinte = next((t for k, t in teintes.items() if k in hote), None)
+        if not teinte or not requete.url.path.endswith(".png"):
+            return httpx.Response(404)
+        tampon = io.BytesIO()
+        Image.new("RGBA", (128, 128), teinte).save(tampon, "PNG")
+        return httpx.Response(200, content=tampon.getvalue(), headers={"content-type": "image/png"})
+    return httpx.MockTransport(repondre)
 
 
 if __name__ == "__main__":

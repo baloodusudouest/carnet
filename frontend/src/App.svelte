@@ -9,6 +9,7 @@
   import Fusion from './pages/Fusion.svelte'
   import Etat from './pages/Etat.svelte'
   import { ICONES } from './lib/icones.js'
+  import Voyant from './components/Voyant.svelte'
 
   const onglets = [
     { page: 'a-traiter', nom: 'À traiter' },
@@ -17,6 +18,7 @@
   ]
   const actif = $derived(etat.route.page === 'fusion' ? 'a-traiter' : etat.route.page)
   const compte = $derived(etat.accueil?.a_traiter?.total ?? 0)
+  const enCours = $derived(etat.accueil?.tache?.etat === 'en_cours')
   const alerte = $derived(etat.accueil?.nuit?.erreur || etat.accueil?.tache?.etat === 'erreur')
 
   async function demarrer() {
@@ -55,7 +57,8 @@
             <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"
                  stroke-linecap="round" stroke-linejoin="round">{@html ICONES[o.page]}</svg>
             {#if o.page === 'a-traiter' && compte}<span class="badge">{compte > 99 ? '99+' : compte}</span>{/if}
-            {#if o.page === 'etat' && alerte}<span class="point" aria-label="Problème à voir"></span>{/if}
+            {#if o.page === 'etat' && enCours}<span class="roue"><Voyant etat="en_cours" taille="0.85rem" titre="Opération en cours" /></span>
+            {:else if o.page === 'etat' && alerte}<span class="point" aria-label="Problème à voir"></span>{/if}
           </span>
           <span class="libelle">{o.nom}</span>
         </a>
@@ -129,6 +132,8 @@
   .onglet[aria-current='page'] .badge { box-shadow: 0 0 0 2px var(--color-papier); }
   .point { position: absolute; top: -0.15rem; right: -0.2rem; width: 0.55rem; height: 0.55rem; border-radius: 50%;
     background: var(--color-alerte); box-shadow: 0 0 0 2px #15110f; }
+  .roue { position: absolute; top: -0.4rem; right: -0.45rem; display: grid; border-radius: 50%; background: #15110f; padding: 1px; }
+  .onglet[aria-current='page'] .roue { background: var(--color-papier); }
   @media (prefers-reduced-motion: reduce) { .onglet, .libelle { transition: none; } }
   .tache { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; border-left: 3px solid var(--color-onglet); color: var(--color-mine); }
   .message {
@@ -153,6 +158,7 @@
     .icone-onglet { position: static; }
     .badge { left: auto; right: 0.75rem; top: 50%; transform: translateY(-50%); box-shadow: none; min-width: 1.4rem; }
     .point { top: 50%; right: 0.9rem; transform: translateY(-50%); box-shadow: none; }
+    .roue { top: 50%; right: 0.8rem; transform: translateY(-50%); background: none; }
     .onglet:hover:not([aria-current='page']) { color: var(--color-papier); background: color-mix(in srgb, var(--color-papier) 5%, transparent); }
     .contenu { margin-left: 13rem; padding: 1.75rem 2.5rem 3rem; max-width: none; }
     .message { bottom: 1.5rem; left: 14rem; }

@@ -1201,3 +1201,36 @@ def test_instagram_carnet_d_adresses_synchronise(c):
         z.writestr("connections/contacts/synced_contacts.json", synchro)
     with pytest.raises(ErreurCarnet, match="Abonnés et abonnements"):
         reseaux.lire_instagram(tampon.getvalue(), "instagram.zip")
+
+
+
+# ------------------------------------------------------------ 2.4 : logos des réseaux, santé des services
+
+def test_logo_de_reseau_garde_en_cache(c):
+    from tests.interface.serveur import faux_logos
+    appels = []
+    faux = faux_logos()
+
+    class Compteur(httpx.BaseTransport):
+        def handle_request(self, requete):
+            appels.append(str(requete.url))
+            return faux.handle_request(requete)
+    c.transports["logos"] = Compteur()
+    png = reseaux.logo(c, "facebook")
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+    n = len(appels)
+    assert reseaux.logo(c, "facebook") == png and len(appels) == n          # gardé en base
+    assert reseaux.logo(c, "inconnu") is None
+    c.transports["logos"] = httpx.MockTransport(lambda r: httpx.Response(404))
+    assert reseaux.logo(c, "whatsapp") is None
+    c.transports["logos"] = faux
+    assert reseaux.logo(c, "whatsapp") is None                               # échec retenu pour la journée
+
+
+def test_sante_des_services_et_linkedin_dans_le_bilan(c):
+    from app import main
+    c.base.ecrire("synology", {"erreur": "Synology injoignable"})
+    s = main.sante(c)
+    assert s["icloud"]["etat"] == "ok" and s["synology"] == {"etat": "erreur", "message": "Synology injoignable"}
+    assert s["telegram"]["etat"] == "off"
+    assert "linkedin" in reseaux.bilan(c) and list(reseaux.bilan(c))[0] == "linkedin"
