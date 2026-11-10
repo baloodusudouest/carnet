@@ -44,6 +44,12 @@ def _corps_propfind(props: str) -> str:
             f"<d:prop>{props}</d:prop></d:propfind>")
 
 
+# Adresse du carnet d'adresses découverte, retenue une heure : sans cela chaque écriture refait
+# quatre requêtes de découverte avant son PUT, et une série de validations sollicite trop iCloud.
+DECOUVERTE_DUREE = 3600
+_decouverts: dict[tuple, tuple[str, float]] = {}
+
+
 class CardDAV:
     def __init__(self, url: str, utilisateur: str, mot_de_passe: str,
                  transport: httpx.BaseTransport | None = None, nom_carnet: str | None = None,
@@ -55,6 +61,7 @@ class CardDAV:
             raise ErreurICloud("Identifiant iCloud absent : renseigne CARNET_ICLOUD_USER et "
                                "CARNET_ICLOUD_PASSWORD dans les variables de la stack.")
         self.base = url.rstrip("/") + "/"
+        self._cle = (self.base, utilisateur, nom_carnet, id(transport) if transport else None)
         self.client = httpx.Client(auth=(utilisateur, mot_de_passe), timeout=60, follow_redirects=True,
                                    transport=transport, verify=verifier_tls, headers={"User-Agent": "carnet (CardDAV)"})
         self.carnet: str | None = None
@@ -115,6 +122,8 @@ class CardDAV:
                                   + (" : panne passagère du serveur, réessaie dans quelques minutes" if r.status_code >= 500 else "")
                                   + ".")
             erreur.passagere = r.status_code in (429, 500, 502, 503, 504)
+            if r.status_code == 404 and self.carnet and url.rstrip("/") == self.carnet.rstrip("/"):
+                self.oublier_decouverte()
             raise erreur
         return r
 
@@ -147,6 +156,20 @@ class CardDAV:
     def decouvrir(self) -> str:
         if self.carnet:
             return self.carnet
+        garde = _decouverts.get(self._cle)
+        if garde and time.monotonic() - garde[1] < DECOUVERTE_DUREE:
+            self.carnet = garde[0]
+            return self.carnet
+        self.carnet = self._decouvrir()
+        _decouverts[self._cle] = (self.carnet, time.monotonic())
+        return self.carnet
+
+    def oublier_decouverte(self) -> None:
+        """Le carnet a changé d'adresse (404) : la prochaine opération refait la découverte."""
+        _decouverts.pop(self._cle, None)
+        self.carnet = None
+
+    def _decouvrir(self) -> str:
         # Adresse d'un carnet d'adresses précis (…/carddav/<compte>/<identifiant>/) : utilisée telle quelle
         for _, prop in self._propfind(self.base, "<d:resourcetype/>", 0):
             rt = prop.find(f"{{{D}}}resourcetype")

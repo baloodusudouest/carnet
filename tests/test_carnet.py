@@ -1336,3 +1336,25 @@ def test_lecture_carddav_reessayee_apres_un_rate_du_serveur(c, monkeypatch):
     with pytest.raises(carddav.ErreurICloud):
         toujours._requete("PUT", "https://contacts.icloud.com/x.vcf", content=b"")
     assert len(appels) == 1                                                   # écriture jamais rejouée
+
+
+def test_decouverte_icloud_retenue_entre_deux_operations(c, services):
+    import httpx as hx
+    from app import carddav
+    vues = []
+    vrai = services["icloud"].transport()
+
+    class Compteur(hx.BaseTransport):
+        def handle_request(self, r):
+            vues.append((r.method, r.url.path))
+            return vrai.handle_request(r)
+    t = Compteur()
+    a = carddav.CardDAV("https://contacts.icloud.com", "moi@icloud.com", "abcd-efgh-ijkl-mnop", transport=t)
+    a.decouvrir()
+    n = len(vues)
+    assert n >= 3
+    b = carddav.CardDAV("https://contacts.icloud.com", "moi@icloud.com", "abcd-efgh-ijkl-mnop", transport=t)
+    assert b.decouvrir() == a.carnet and len(vues) == n                # aucune requête de découverte
+    b.oublier_decouverte()
+    carddav.CardDAV("https://contacts.icloud.com", "moi@icloud.com", "abcd-efgh-ijkl-mnop", transport=t).decouvrir()
+    assert len(vues) > n

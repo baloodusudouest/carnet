@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.6.3 — 10 novembre 2026
+- **Moins de requêtes vers iCloud** : l'adresse du carnet d'adresses est retenue une heure. Chaque écriture faisait quatre requêtes de découverte avant son envoi ; une série de validations n'en fait plus qu'une fois par heure, ce qui ménage iCloud (le 500 du 10 novembre est arrivé après une série d'écritures). Si iCloud déplace le carnet (404), la découverte est refaite.
+
 ## 2.6.2 — 10 novembre 2026
 - **Ratés passagers d'iCloud** (et de Synology) : une lecture qui reçoit 429, 500, 502, 503 ou 504, ou dont la connexion coupe, est réessayée seule après 2, 6 puis 15 secondes avant d'abandonner. Les écritures ne sont jamais rejouées. Le message final précise « panne passagère du serveur, réessaie dans quelques minutes ».
 
