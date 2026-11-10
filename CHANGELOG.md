@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.6.1 — 10 novembre 2026
+- **Dates sans année et Immich** : une fiche qui n'a qu'un jour et un mois (« --01-01 ») ne crée plus de point « Date de naissance à trancher » quand aucune date complète n'existe ailleurs. « Écrire partout » n'envoie jamais une date sans année à Immich ni à Treemich (ils exigent l'année ; Immich répondait « 500 ») : elle reste sur la fiche seulement.
+- Les dates proposées s'affichent en clair (« 1er janvier », « 14 mars 1985 ») avec la mention « sans année : fiche seulement ».
+
 ## 2.6.0 — 10 novembre 2026 — réseaux : navigation et importés sans fiche
 - **Bilan des réseaux cliquable** : un clic sur LinkedIn, Telegram, Instagram, Facebook, X ou WhatsApp amène à sa partie, brièvement surlignée.
 - **Listes repliables** (Développer / Réduire, fermées par défaut) :

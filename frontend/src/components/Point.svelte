@@ -9,6 +9,14 @@
   let date = $state(Object.values(point.donnees.valeurs || {}).find((v) => v) || '')
   const d = point.donnees
 
+  const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+  // « 1985-03-14 » → « 14 mars 1985 » ; « --03-14 » (année inconnue) → « 14 mars »
+  const dateLisible = (v) => {
+    const m = /^(\d{4}|-)-(\d{2})-(\d{2})$/.exec(v || '')
+    if (!m) return v
+    const j = Number(m[3])
+    return `${j === 1 ? '1er' : j} ${MOIS[Number(m[2]) - 1]}${m[1] !== '-' ? ' ' + m[1] : ''}`
+  }
   const SERVICE = { immich: 'Immich', treemich: 'Treemich', telegram: 'Telegram', instagram: 'Instagram',
                     whatsapp: 'WhatsApp', facebook: 'Facebook' }
   const CHAMPS = { societe: 'Société', fonction: 'Fonction', courriel: 'Courriel' }
@@ -88,7 +96,7 @@
         <legend class="discret">Date à garder partout</legend>
         {#each [...new Set(Object.values(d.valeurs).filter(Boolean))] as v}
           <label><input type="radio" name={'date-' + point.id} value={v} bind:group={date} />
-            {v} <span class="discret">({Object.entries(d.valeurs).filter(([, x]) => x === v).map(([k]) => k === 'carnet' ? 'fiche' : SERVICE[k]).join(', ')})</span></label>
+            {dateLisible(v)}{#if v.startsWith('--')}<span class="discret"> (sans année : fiche seulement)</span>{/if} <span class="discret">({Object.entries(d.valeurs).filter(([, x]) => x === v).map(([k]) => k === 'carnet' ? 'fiche' : SERVICE[k]).join(', ')})</span></label>
         {/each}
       </fieldset>
     {:else if point.motif === 'nom'}

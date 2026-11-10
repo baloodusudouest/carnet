@@ -205,6 +205,11 @@ def dates(c: Carnet, d: dict | None = None) -> list[dict]:
         connues = {v for v in valeurs.values() if v}
         if len(valeurs) < 2 or not connues:
             continue
+        # Immich et Treemich n'acceptent qu'une date complète : sans aucune date complète (fiche
+        # « --01-01 » et rien ailleurs), il n'y a rien à trancher ni à écrire ailleurs
+        completes = {_date_complete(v) for v in connues} - {""}
+        if not completes:
+            continue
         # Fiche sans date et une seule valeur connue ailleurs : écrite seule la nuit
         if not valeurs["carnet"] and len(connues) == 1 and len(next(iter(connues))) == 10:
             continue
@@ -292,9 +297,14 @@ def _maj_cache(c: Carnet, service: str, ext_id: str, **champs) -> None:
 
 
 def ecrire_partout(c: Carnet, uid: str, date: str) -> list[str]:
-    """Date de naissance tranchée : écrite dans Immich et Treemich (la fiche est écrite à part)."""
+    """Date de naissance tranchée : écrite dans Immich et Treemich (la fiche est écrite à part).
+    Une date sans année n'y est pas écrite : ces deux services demandent une date complète."""
     lien = c.liaison(uid)
     faits = []
+    if date and not _date_complete(date):
+        c.base.noter("liens", "Date sans année : gardée sur la fiche seulement (Immich et Treemich demandent l'année)",
+                     {"uid": uid})
+        return faits
     if lien.get("immich"):
         im = c.immich()
         try:

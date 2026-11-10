@@ -1299,3 +1299,16 @@ def test_personnes_importees_non_liees_et_rattachement(c, services):
         reseaux.rattacher(c, "telegram", "absent", "DDDD-4444")
     with pytest.raises(ErreurCarnet):
         reseaux.non_lies(c, "site")
+
+
+def test_date_sans_annee_jamais_envoyee_a_immich(c, services):
+    liaisons.lier(c, "DDDD-4444", "immich", "im-paul")
+    f = c.fiche("DDDD-4444")
+    f["anniversaire"] = "--01-01"
+    actions.valider(c, "DDDD-4444", f, etag_vu=actions._etag(c, "DDDD-4444"), regler_revue=True)
+    d = {"immich": [{"id": "im-paul", "nom": "Paul MARTIN", "naissance": ""}], "treemich": [], "relations": [],
+         "naissances_treemich": {}, "erreurs": []}
+    assert not [x for x in liaisons.dates(c, d) if x["uid"] == "DDDD-4444"]      # rien à trancher
+    d["immich"][0]["naissance"] = "1983-01-01"
+    assert [x for x in liaisons.dates(c, d) if x["uid"] == "DDDD-4444"]          # l'année est connue dans Immich
+    assert liaisons.ecrire_partout(c, "DDDD-4444", "--01-01") == []              # rien envoyé à Immich
