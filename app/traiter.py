@@ -30,6 +30,45 @@ ORDRE = list(TITRES)
 ENREGISTRES = {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit", "import", "linkedin", "reseau"}
 
 
+# 2.9 : une tuile par type de chose à traiter. « incomplet » et « sans_groupe » ne sont pas des points
+# mais des listes de fiches ; « sans_groupe » compte dans le chiffre de l'onglet, « incomplet » non.
+TUILES = [
+    ("icloud", "Changé sur l'iPhone", {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit"}),
+    ("sans_groupe", "Pas de groupe", set()),
+    ("immich", "Immich non synchronisé", {"liaison"}),
+    ("treemich", "Treemich non synchronisé", {"relations", "mariage", "mariage_different", "deces_different"}),
+    ("doublons", "Doublons", {"doublon"}),
+    ("societes", "Sociétés", {"societe"}),
+    ("forme", "Mise en forme", {"forme", "emoji"}),
+    ("reseaux", "Réseaux", {"reseau"}),
+    ("imports", "Imports", {"import", "linkedin"}),
+    ("incomplet", "Contact incomplet", set()),
+]
+
+
+def tuile_de(p: dict) -> str:
+    """Tuile d'un point. Un nom ou une date de naissance à trancher va au service concerné
+    (Treemich dès qu'il est en cause, sinon Immich)."""
+    m, d = p["motif"], p.get("donnees") or {}
+    if m == "nom":
+        return "treemich" if d.get("service") == "treemich" else "immich"
+    if m == "date":
+        return "treemich" if "treemich" in (d.get("valeurs") or {}) else "immich"
+    return next((cle for cle, _, motifs in TUILES if m in motifs), "forme")
+
+
+def tuiles(c) -> list[dict]:
+    """[{cle, nom, nombre, compte}] : ce que montre la grille d'« À traiter » (types vides compris,
+    l'interface ne montre que ceux qui ont quelque chose)."""
+    from . import attentes
+    par: dict[str, int] = {}
+    for p in liste(c):
+        par[p["tuile"]] = par.get(p["tuile"], 0) + 1
+    par["sans_groupe"] = next((l["nombre"] for l in attentes.lignes(c) if l["cle"] == attentes.SANS_GROUPE), 0)
+    par["incomplet"] = attentes.total(c)["incompletes"]
+    return [{"cle": cle, "nom": nom, "nombre": par.get(cle, 0), "compte": cle != "incomplet"} for cle, nom, _ in TUILES]
+
+
 def empreinte(objet) -> str:
     return hashlib.sha1(json.dumps(objet, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:12]
 
@@ -104,6 +143,7 @@ def liste(c) -> list[dict]:
             p["nom"] = p["donnees"]["variantes"][0]["nom"]     # le point porte le nom de la société, pas d'une fiche
         p["titre"] = TITRES.get(p["motif"], p["motif"])
         p["id"] = f"{p['motif']}:{p['cle']}"
+        p["tuile"] = tuile_de(p)
         if p["motif"] == "doublon":
             autre = fiches.get(p["donnees"]["b"])
             p["autre"] = nom_affiche(autre) if autre else ""
@@ -115,7 +155,10 @@ def compte(c) -> dict:
     par = {}
     for p in tous:
         par[p["motif"]] = par.get(p["motif"], 0) + 1
-    return {"total": len(tous), "par_motif": par}
+    from . import attentes
+    sans_groupe = next((l["nombre"] for l in attentes.lignes(c) if l["cle"] == attentes.SANS_GROUPE), 0)
+    # 2.9 : une fiche sans groupe est une décision à prendre ; elle compte dans le chiffre de l'onglet
+    return {"total": len(tous) + sans_groupe, "points": len(tous), "sans_groupe": sans_groupe, "par_motif": par}
 
 
 def trouver(c, ident: str) -> dict:

@@ -62,14 +62,38 @@ def page(request, navigateur, adresse):
     ctx.close()
 
 
+def ouvrir_tuile(page, nom):
+    """2.9 : « À traiter » s'ouvre sur une grille de tuiles ; on entre dans celle demandée.
+    Faux si la tuile n'existe pas (rien de ce type à traiter)."""
+    page.click("nav.onglets a[aria-label='Contacts']")
+    page.click("nav.onglets a[aria-label='À traiter']")
+    page.wait_for_selector("nav[aria-label='Types de choses à traiter'], .vide:has-text('Rien à traiter')")
+    tuile = page.locator("nav[aria-label='Types de choses à traiter'] .tuile", has_text=nom)
+    page.wait_for_timeout(300)                                   # la grille se remplit après la réponse du serveur
+    if not tuile.count():
+        return False
+    tuile.click()
+    page.wait_for_selector(".retour-tuiles")
+    return True
+
+
+def ouvrir_service(page, nom):
+    """2.9 : Connexion, une icône par service."""
+    page.click("nav.onglets a[aria-label='Connexion']")
+    page.wait_for_selector("nav[aria-label='Services'] .tuile")
+    # par le nom de la tuile, pas par son résumé (« Import » cite Instagram et Facebook)
+    page.locator("nav[aria-label='Services'] .tuile", has=page.locator(".nom-tuile", has_text=nom)).first.click()
+
+
 def test_trois_onglets_et_badge(page):
     onglets = page.locator("nav.onglets a.onglet")
-    assert onglets.count() == 5          # 2.8 : Photos et Réglages s'ajoutent
+    assert onglets.count() == 6          # 2.9 : À traiter, Contacts, Groupes, Photos, Connexion, Réglages
     assert re.fullmatch(r"\d+", page.locator(".badge").inner_text())
 
 
 def test_a_traiter_garder_une_modification_iphone(page):
     # Le serveur est partagé : la première fiche de l'iPhone déjà gardée, on prend la suivante
+    assert ouvrir_tuile(page, "Changé sur l'iPhone")
     carte = page.locator("article", has=page.get_by_role("button", name="Garder", exact=True)).first
     carte.get_by_role("button", name="Garder", exact=True).click()
     page.wait_for_selector(".message")
@@ -142,11 +166,13 @@ def test_pas_de_defilement_horizontal(page):
 
 
 def test_etat_et_deconnexion(page):
-    page.click("nav.onglets a[aria-label='État']")
-    page.locator(".tuile", has_text="Sauvegardes").click()
-    page.wait_for_selector("h2:has-text(\"Sauvegardes d'iCloud\")")
-    page.locator(".tuile", has_text="Journal").click()
-    assert page.locator("h2", has_text="Sauvegardes d'iCloud").count() == 0      # une section à la fois
+    ouvrir_service(page, "Sauvegardes")
+    page.wait_for_selector("text=Exporter tout le carnet")
+    page.locator("nav.tuiles .tuile", has_text="Home Assistant").click()
+    page.wait_for_selector("h2:has-text('Home Assistant')")
+    assert page.locator("text=Exporter tout le carnet").count() == 0             # un service à la fois
+    page.click("nav.onglets a[aria-label='Réglages']")
+    page.wait_for_selector("h2:has-text('Journal')")
     page.click("text=Se déconnecter")
     page.wait_for_selector("#mdp")
 
@@ -190,11 +216,8 @@ def test_ajouter_puis_delier_un_profil_facebook(page):
 
 def test_annonce_avant_un_traitement_par_lot(page):
     """2.6.5 : avant « Confirmer », carnet dit ce que le lot fera. Rien n'est confirmé ici."""
-    page.click("nav.onglets a[aria-label='À traiter']")
-    filtre = page.locator(".filtres .pastille", has_text="Réseaux")
-    if not filtre.count():
+    if not ouvrir_tuile(page, "Réseaux"):
         pytest.skip("points réseau déjà traités")
-    filtre.click()
     tout_lier = page.get_by_role("button", name=re.compile(r"^Tout lier \(\d+\)$"))
     if not tout_lier.count():
         pytest.skip("un seul point réseau : pas de traitement par lot")
@@ -212,11 +235,8 @@ def test_annonce_avant_un_traitement_par_lot(page):
 
 
 def test_a_traiter_famille_reseaux(page):
-    page.click("nav.onglets a[aria-label='À traiter']")
-    filtre = page.locator(".filtres .pastille", has_text="Réseaux")
-    if not filtre.count():
+    if not ouvrir_tuile(page, "Réseaux"):
         pytest.skip("points réseau déjà traités par l'autre format")
-    filtre.click()
     carte = page.locator("article", has_text="Réseau à rattacher").first
     assert carte.get_by_role("button", name="Pas lui").count() == 1
     carte.get_by_role("button", name="Lier", exact=True).click()
@@ -224,13 +244,11 @@ def test_a_traiter_famille_reseaux(page):
 
 
 def test_etat_reseaux_et_remise_a_zero_confirmee(page):
-    page.click("nav.onglets a[aria-label='Réglages']")              # 2.8.4 : Réseaux est dans Réglages
-    page.wait_for_selector("h3:has-text('Telegram')")
+    ouvrir_service(page, "Telegram")                                # 2.9 : un réseau par icône, dans Connexion
     page.wait_for_selector("h3:has-text('Telegram')")
     assert page.locator("text=CARNET_TELEGRAM_API_ID").count() == 1          # non configuré dans la démo
-    page.click("nav.onglets a[aria-label='État']")
-    assert page.locator(".tuile", has_text="Réseaux").count() == 0           # la tuile a quitté État
-    page.locator(".tuile", has_text="Manques").click()             # 2.8 : la tuile Complétude s'appelle Manques
+    assert page.locator("h3:has-text('Facebook')").count() == 0              # un seul réseau affiché
+    page.click("nav.onglets a[aria-label='Réglages']")              # 2.9 : l'analyse globale est dans Réglages
     page.get_by_role("button", name="Remettre les validations à zéro…").click()
     bouton = page.get_by_role("button", name="Remettre à zéro et analyser")
     assert bouton.is_disabled()
@@ -251,16 +269,20 @@ def test_pilule_libelle_de_l_onglet_actif(page):
     page.click("nav.onglets a[aria-label='Contacts']")
     page.wait_for_selector("nav.onglets a[aria-label='Contacts'][aria-current='page']")
     page.wait_for_timeout(500)                                  # fin de l'élargissement de la pilule
-    actif = page.locator("nav.onglets a[aria-current='page']")
-    assert actif.locator(".libelle").bounding_box()["width"] > 20
-    inactif = page.locator("nav.onglets a[aria-label='État'] .libelle").bounding_box()["width"]
     large = page.viewport_size["width"] >= 900
-    assert (inactif > 20) if large else (inactif < 2)      # iPhone : icône seule ; PC : rail avec libellés
+    # 2.9, six onglets : sur iPhone des icônes seules (le nom est le titre de l'écran) ; sur PC, le rail garde les noms
+    for onglet in ("Contacts", "Réglages"):
+        libelle = page.locator(f"nav.onglets a[aria-label='{onglet}'] .libelle")
+        if large:
+            assert libelle.bounding_box()["width"] > 20
+        else:
+            assert not libelle.is_visible() or libelle.bounding_box()["width"] < 2
+    barre = page.locator("nav.onglets").bounding_box()
+    assert barre["x"] >= 0 and barre["x"] + barre["width"] <= page.viewport_size["width"] + 1      # la barre tient dans l'écran
 
 
 def test_export_vcf_par_le_bouton_a_anneau(page):
-    page.click("nav.onglets a[aria-label='État']")
-    page.locator(".tuile", has_text="Sauvegardes").click()
+    ouvrir_service(page, "Sauvegardes")
     with page.expect_download() as tele:
         page.get_by_role("button", name="Exporter tout le carnet (.vcf)").click()
     assert tele.value.suggested_filename.startswith("carnet-") and tele.value.suggested_filename.endswith(".vcf")
@@ -274,8 +296,8 @@ def test_export_vcf_par_le_bouton_a_anneau(page):
 def test_glisser_deposer_un_export_instagram(page):
     if page.viewport_size["width"] < 900:
         pytest.skip("glisser-déposer : PC seulement")
-    page.click("nav.onglets a[aria-label='Réglages']")              # 2.8.4 : Réseaux est dans Réglages
-    page.wait_for_selector("h3:has-text('Telegram')")
+    ouvrir_service(page, "Instagram")
+    page.wait_for_selector("h3:has-text('Instagram')")
     cible = page.locator("label.bouton-anneau", has_text="Déposer l'export Instagram")
     assert "ou glisse le fichier ici" in cible.inner_text()
     contenu = '{"relationships_following": [{"title": "glisse.depot", "string_list_data": [{"value": "glisse.depot"}]}]}'
@@ -290,10 +312,8 @@ def test_glisser_deposer_un_export_instagram(page):
 
 
 def test_reseaux_aller_a_la_partie_et_rattacher_un_importe(page):
-    page.click("nav.onglets a[aria-label='Réglages']")              # 2.8.4 : Réseaux est dans Réglages
+    ouvrir_service(page, "Telegram")
     page.wait_for_selector("h3:has-text('Telegram')")
-    page.locator("button.reseau", has_text="Telegram").click()
-    page.wait_for_timeout(700)
     assert page.locator("#reseau-telegram").is_visible()
     liste = page.locator(".non-lies", has_text="Importés de Telegram sans fiche")
     liste.get_by_role("button", name=re.compile("Importés de Telegram")).click()
@@ -313,7 +333,7 @@ def test_reseaux_aller_a_la_partie_et_rattacher_un_importe(page):
 
 def test_28_manques_dans_a_traiter_ouvrent_la_liste(page):
     compteur = page.locator(".badge").inner_text()
-    page.locator(".filtres .pastille", has_text="Manques").click()
+    assert ouvrir_tuile(page, "Contact incomplet")
     ligne = page.locator(".ligne-manque", has_text="Sans photo ni logo")
     nombre = int(ligne.locator(".nombre").inner_text())
     assert nombre > 0 and page.locator(".badge").inner_text() == compteur      # les manques ne comptent pas
@@ -325,7 +345,7 @@ def test_28_manques_dans_a_traiter_ouvrent_la_liste(page):
 
 
 def test_28_reglages_une_case_annonce_puis_change_les_manques(page):
-    page.click("nav.onglets a[aria-label='Réglages']")
+    ouvrir_service(page, "Attentes")                                 # 2.9 : le tableau est dans Connexion
     page.wait_for_selector("text=Ce que chaque groupe doit avoir")
     if page.locator("details.groupe").count():                                  # iPhone : un groupe à la fois
         page.locator("details.groupe", has_text="Clients").locator("summary").click()
@@ -346,18 +366,21 @@ def test_28_reglages_une_case_annonce_puis_change_les_manques(page):
     page.wait_for_selector(".message")
     page.wait_for_function("!document.querySelector('.confirmer')")
     assert case.is_checked() != avant
-    # Les deux interrupteurs sont là, éteints
-    bascules = page.get_by_role("switch")
-    assert bascules.count() == 2 and not bascules.nth(0).is_checked() and not bascules.nth(1).is_checked()
-    assert page.get_by_role("button", name="Se déconnecter").count() == 1
+    # 2.9 : les interrupteurs « la nuit » sont par service ; celui de Treemich (écritures toutes seules) reste éteint
+    page.locator("nav.tuiles .tuile", has_text="Treemich").click()
+    page.wait_for_selector("h2:has-text('Treemich')")
+    bascule = page.get_by_role("switch")
+    assert bascule.count() == 1 and not bascule.is_checked()
+    page.click("nav.onglets a[aria-label='Réglages']")
+    page.get_by_role("button", name="Se déconnecter").wait_for()
 
 
 def test_28_photos_logo_depose_puis_pose(page):
     import io
     from PIL import Image
     page.click("nav.onglets a[aria-label='Photos']")
-    page.wait_for_selector(".tuile")
-    assert page.locator(".tuile").count() == 4
+    page.wait_for_selector("nav[aria-label='Files'] .tuile")
+    assert page.locator("nav[aria-label='Files'] .tuile").count() == 4
     fiche = page.locator("li.fiche", has_text="Plomberie Garonne")
     if not fiche.count():
         pytest.skip("logo déjà posé par l'autre appareil (serveur partagé)")
@@ -409,16 +432,71 @@ def test_28_supprimer_une_fiche_demande_toujours_confirmation(page):
 
 
 def test_282_societe_ecrite_de_plusieurs_facons(page):
+    if not ouvrir_tuile(page, "Sociétés"):
+        pytest.skip("déjà harmonisée par l'autre appareil (serveur partagé)")
     page.wait_for_selector("article.point")
     point = page.locator("article.point", has_text="Société écrite de plusieurs façons")
-    if not point.count():
-        if page.locator(".sommaire button", has_text="Société écrite de plusieurs façons").count():   # PC : sommaire à gauche
-            page.locator(".sommaire button", has_text="Société écrite de plusieurs façons").click()
-            point = page.locator("article.point", has_text="Société écrite de plusieurs façons")
-        else:
-            pytest.skip("déjà harmonisée par l'autre appareil (serveur partagé)")
     assert point.get_by_label("Atelier Dupont", exact=False).count() >= 2
     bouton = point.get_by_role("button", name="Écrire sur 1 fiche")
     assert bouton.is_enabled()
     bouton.click()
     page.wait_for_selector(".message >> text=écrit sur 1 fiche")
+
+
+# ------------------------------------------------------------------ 2.9 : tuiles, groupes, connexion
+
+def test_29_a_traiter_s_ouvre_sur_les_tuiles(page):
+    page.wait_for_selector("nav[aria-label='Types de choses à traiter'] .tuile")
+    assert page.locator("article.point").count() == 0                            # la grille d'abord, pas la liste
+    noms = page.locator("nav.tuiles .tuile .nom-tuile").all_inner_texts()
+    assert "Contact incomplet" in noms and "Pas de groupe" in noms
+    # Le chiffre de l'onglet = les tuiles qui comptent ; « Contact incomplet » n'en fait pas partie
+    compte = sum(int(t.locator(".chiffre").inner_text()) for t in page.locator("nav.tuiles .tuile:not(.secondaire)").all())
+    assert int(page.locator(".badge").inner_text()) == compte
+    page.locator("nav.tuiles .tuile", has_text="Pas de groupe").click()          # ouvre Contacts, déjà filtré
+    page.wait_for_selector(".ligne")
+    assert page.locator(".manques .pastille[aria-pressed='true']").count() == 1
+
+
+def test_29_groupes_creer_ajouter_retirer_supprimer(page):
+    nom = "Essai " + ("PC" if page.viewport_size["width"] >= 900 else "iPhone")   # serveur partagé : un groupe par appareil
+    page.click("nav.onglets a[aria-label='Groupes']")
+    page.wait_for_selector("input[aria-label='Nom du nouveau groupe']")
+    page.fill("input[aria-label='Nom du nouveau groupe']", nom)
+    page.get_by_role("button", name="Créer", exact=True).click()
+    page.wait_for_selector(f"h2:has-text('{nom}')")
+    page.locator("label.ajout input").fill("Bonnet")
+    page.locator("button.candidat", has_text="BONNET").first.click()
+    page.wait_for_selector(".message >> text=ajouté(s) au groupe")
+    page.wait_for_selector(".membres li:has-text('BONNET')")
+    page.locator(".membres li", has_text="BONNET").locator("input[type=checkbox]").check()
+    page.get_by_role("button", name="Retirer du groupe (1)").click()
+    page.wait_for_selector(".message >> text=retiré(s) du groupe")
+    page.wait_for_selector(".membres li", state="detached")
+    page.get_by_role("button", name="Supprimer ce groupe…").click()
+    confirmation = page.get_by_role("alertdialog", name="Confirmer la suppression du groupe")
+    assert nom in confirmation.inner_text()
+    confirmation.get_by_role("button", name="Supprimer le groupe").click()
+    page.wait_for_selector(".message >> text=Aucune fiche n'a été supprimée")
+
+
+def test_29_connexion_verifier_puis_interrupteur_de_nuit(page):
+    page.click("nav.onglets a[aria-label='Connexion']")
+    page.wait_for_selector("nav[aria-label='Services'] .tuile")
+    noms = " ".join(page.locator("nav.tuiles .tuile .nom-tuile").all_inner_texts())
+    for attendu in ("iCloud", "Immich", "Treemich", "Sauvegardes", "Import", "LinkedIn", "Home Assistant", "Attentes"):
+        assert attendu in noms
+    page.locator("nav.tuiles .tuile", has_text="Immich").click()
+    page.wait_for_selector("h2:has-text('Immich')")
+    page.get_by_role("button", name="Vérifier", exact=True).click()
+    page.wait_for_selector(".rapport")
+    texte = page.locator(".rapport").inner_text()
+    assert "reliée(s) à une personne d'Immich" in texte
+    assert "Aucun écart" not in texte                                            # rien de relié dans la démo : rien de comparé
+    bascule = page.get_by_role("switch")
+    avant = bascule.is_checked()
+    bascule.click()
+    page.wait_for_selector(".message")
+    assert bascule.is_checked() != avant
+    bascule.click()                                                              # on remet (serveur partagé)
+    page.wait_for_function("(a) => document.querySelector('input[role=switch]').checked === a", arg=avant)

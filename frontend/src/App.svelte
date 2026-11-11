@@ -7,7 +7,8 @@
   import Contacts from './pages/Contacts.svelte'
   import Fiche from './pages/Fiche.svelte'
   import Fusion from './pages/Fusion.svelte'
-  import Etat from './pages/Etat.svelte'
+  import Services from './pages/Services.svelte'
+  import Groupes from './pages/Groupes.svelte'
   import Photos from './pages/Photos.svelte'
   import Reglages from './pages/Reglages.svelte'
   import { ICONES } from './lib/icones.js'
@@ -16,11 +17,13 @@
   const onglets = [
     { page: 'a-traiter', nom: 'À traiter' },
     { page: 'contacts', nom: 'Contacts' },
+    { page: 'groupes', nom: 'Groupes' },
     { page: 'photos', nom: 'Photos' },
-    { page: 'etat', nom: 'État' },
+    { page: 'connexion', nom: 'Connexion' },
     { page: 'reglages', nom: 'Réglages' },
   ]
-  const actif = $derived(etat.route.page === 'fusion' ? 'a-traiter' : etat.route.page)
+  // « #/etat » : ancienne adresse (avant la 2.9), envoyée vers Connexion
+  const actif = $derived(etat.route.page === 'fusion' ? 'a-traiter' : etat.route.page === 'etat' ? 'connexion' : etat.route.page)
   const compte = $derived(etat.accueil?.a_traiter?.total ?? 0)
   const enCours = $derived(etat.accueil?.tache?.etat === 'en_cours')
   const alerte = $derived(etat.accueil?.nuit?.erreur || etat.accueil?.tache?.etat === 'erreur')
@@ -61,8 +64,8 @@
             <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8"
                  stroke-linecap="round" stroke-linejoin="round">{@html ICONES[o.page]}</svg>
             {#if o.page === 'a-traiter' && compte}<span class="badge">{compte > 99 ? '99+' : compte}</span>{/if}
-            {#if o.page === 'etat' && enCours}<span class="roue"><Voyant etat="en_cours" taille="0.85rem" titre="Opération en cours" /></span>
-            {:else if o.page === 'etat' && alerte}<span class="point" aria-label="Problème à voir"></span>{/if}
+            {#if o.page === 'connexion' && enCours}<span class="roue"><Voyant etat="en_cours" taille="0.85rem" titre="Opération en cours" /></span>
+            {:else if o.page === 'connexion' && alerte}<span class="point" aria-label="Problème à voir"></span>{/if}
           </span>
           <span class="libelle">{o.nom}</span>
         </a>
@@ -88,8 +91,10 @@
         <Photos />
       {:else if etat.route.page === 'reglages'}
         <Reglages />
-      {:else if etat.route.page === 'etat'}
-        <Etat />
+      {:else if etat.route.page === 'groupes'}
+        <Groupes />
+      {:else if etat.route.page === 'connexion' || etat.route.page === 'etat'}
+        <Services />
       {:else}
         <ATraiter />
       {/if}
@@ -145,11 +150,11 @@
     background: var(--color-alerte); box-shadow: 0 0 0 2px var(--color-cuir); }
   .roue { position: absolute; top: -0.4rem; right: -0.45rem; display: grid; border-radius: 50%; background: var(--color-cuir); padding: 1px; }
   .onglet[aria-current='page'] .roue { background: var(--color-papier); }
-  /* Cinq onglets : sur un iPhone étroit, les icônes se resserrent pour que la pilule tienne */
-  @media (max-width: 26rem) {
+  /* Six onglets : sur iPhone, des icônes seules ; le nom de la section est le grand titre de l'écran */
+  @media (max-width: 899px) {
     .onglets { gap: 0.1rem; }
-    .onglet { padding: 0 0.72rem; }
-    .onglet[aria-current='page'] { padding: 0 0.9rem 0 0.75rem; }
+    .onglet, .onglet[aria-current='page'] { padding: 0 0.78rem; }
+    .libelle, .onglet[aria-current='page'] .libelle { max-width: 0; opacity: 0; position: absolute; }
   }
   @media (prefers-reduced-motion: reduce) { .onglet, .libelle { transition: none; } }
   .lecture-seule { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; border: 1px solid var(--color-onglet); border-radius: 8px; color: var(--color-papier); }

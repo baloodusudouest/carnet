@@ -521,6 +521,9 @@ def annuler(c: Carnet, jeton: str) -> dict:
     a = c.annulations.pop(jeton, None)
     if not a or a["jusqua"] < time.monotonic():
         raise ErreurCarnet("Trop tard pour annuler : modifie la fiche à nouveau si besoin.")
+    if a.get("groupe"):
+        from . import groupes
+        return groupes.remettre(c, a)
     if a.get("supprimee"):
         # Suppression demandée sur la fiche (2.8) : la carte revient à l'identique, avec ce que
         # carnet savait d'elle (liaisons, exceptions, validation)
