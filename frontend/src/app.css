@@ -1,34 +1,48 @@
 @import "tailwindcss";
 
-/* Carnet d'adresses en cuir sombre : fond brun chaud, papier pour le texte, l'ocre des onglets
-   alphabétiques comme seule couleur d'accent. L'élément marquant : l'index des lettres, taillé
-   comme la tranche d'un vrai carnet, sur le bord droit de la liste des contacts. */
+/* Habillage du socle (2.7.0) : minimalisme. Du texte, des filets fins, de l'espace ; l'ocre de
+   carnet ne sert qu'à ce qui demande l'attention (compteur, motif d'un point, valeur modifiée).
+   Sombre par défaut, clair quand l'appareil le demande. Les noms des couleurs sont ceux de
+   l'ancien thème (cuir, papier…) pour ne toucher qu'à leurs valeurs. */
 @theme {
-  --color-cuir: #1c1715;        /* fond */
-  --color-reliure: #241e1b;     /* surfaces */
-  --color-couture: #3a302b;     /* filets */
-  --color-tranche: #4d413a;     /* bordures actives */
-  --color-champ: #7d6e62;       /* bord des champs (contraste ≥ 3:1 sur le fond) */
-  --color-papier: #efe6d8;      /* texte principal */
-  --color-mine: #a99b8b;        /* texte secondaire */
-  --color-onglet: #d9a441;      /* accent */
-  --color-valide: #8fbf8f;
-  --color-alerte: #e57373;
+  --color-cuir: #0f0f10;        /* fond */
+  --color-reliure: #19191b;     /* surfaces discrètes (survol, sélection, rail) */
+  --color-couture: #2a2a2d;     /* filets */
+  --color-tranche: #404045;     /* bordures actives */
+  --color-champ: #73737a;       /* bord des champs (contraste ≥ 3:1 sur le fond) */
+  --color-papier: #f2f2f0;      /* texte principal */
+  --color-mine: #9c9ca3;        /* texte secondaire */
+  --color-onglet: #d9a441;      /* accent : l'ocre de carnet */
+  --color-sur-onglet: #23190a;  /* texte posé sur l'ocre */
+  --color-valide: #7fc493;
+  --color-alerte: #ef7b72;
+  --color-ombre: rgb(0 0 0 / 0.5);
 
-  --font-sans: "Instrument Sans Variable", system-ui, sans-serif;
-  --font-livre: "Spectral", Georgia, serif;
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-livre: var(--font-sans);   /* les titres ne sont plus en caractères à empattements */
 }
 
 @layer base {
   html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
+  /* Clair : seulement quand l'appareil le demande. Mêmes rôles, valeurs inversées ; l'ocre est
+     assombri pour rester lisible sur fond clair. */
+  @media (prefers-color-scheme: light) {
+    :root {
+      --color-cuir: #fcfcfb; --color-reliure: #f3f3f1; --color-couture: #e3e3df; --color-tranche: #c6c6c1;
+      --color-champ: #85858a; --color-papier: #161617; --color-mine: #68686e;
+      --color-onglet: #a8760f; --color-sur-onglet: #ffffff;
+      --color-valide: #2f7d4a; --color-alerte: #c0392b; --color-ombre: rgb(30 30 40 / 0.16);
+    }
+    html { color-scheme: light; }
+  }
   body {
     background: var(--color-cuir); color: var(--color-papier);
     font-family: var(--font-sans); font-size: 15px; line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
+    -webkit-font-smoothing: antialiased; font-feature-settings: "cv11", "ss01";
   }
   :focus-visible { outline: 2px solid var(--color-onglet); outline-offset: 2px; }
   input, select, textarea {
-    background: var(--color-cuir); border: 1px solid var(--color-champ); border-radius: 6px;
+    background: var(--color-cuir); border: 1px solid var(--color-champ); border-radius: 8px;
     padding: 0.45rem 0.6rem; color: var(--color-papier); width: 100%;
   }
   input[type="checkbox"], input[type="radio"] { width: auto; }
@@ -42,25 +56,29 @@
 @layer components {
   .bouton {
     display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem;
-    min-height: 2.25rem; padding: 0.4rem 0.9rem; border-radius: 6px;
+    min-height: 2.25rem; padding: 0.4rem 0.9rem; border-radius: 8px;
     border: 1px solid var(--color-tranche); color: var(--color-papier); font-weight: 500;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
   }
-  .bouton:hover { border-color: var(--color-mine); }
+  .bouton:hover { background: var(--color-reliure); }
   .bouton:disabled { opacity: 0.45; cursor: not-allowed; }
-  .bouton-principal { background: var(--color-onglet); border-color: var(--color-onglet); color: #23190a; font-weight: 600; }
-  .bouton-principal:hover { background: #e6b354; border-color: #e6b354; }
+  /* Le bouton plein est neutre (texte sur fond inversé) : un seul par bloc, l'action attendue */
+  .bouton-principal { background: var(--color-papier); border-color: var(--color-papier); color: var(--color-cuir); font-weight: 600; }
+  .bouton-principal:hover { background: color-mix(in srgb, var(--color-papier) 86%, var(--color-cuir)); border-color: transparent; }
   .bouton-danger { border-color: color-mix(in srgb, var(--color-alerte) 60%, transparent); color: var(--color-alerte); }
   .pastille {
     display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2rem; padding: 0 0.85rem;
     border-radius: 9999px; border: 1px solid var(--color-couture); color: var(--color-mine); font-size: 0.875rem;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
-  .pastille[aria-pressed="true"] { border-color: var(--color-onglet); color: var(--color-papier);
-    background: color-mix(in srgb, var(--color-onglet) 12%, transparent); }
-  .titre { font-family: var(--font-livre); font-weight: 600; letter-spacing: -0.01em; }
-  .feuille { background: var(--color-reliure); border: 1px solid var(--color-couture); border-radius: 10px; }
+  .pastille[aria-pressed="true"] { border-color: var(--color-papier); color: var(--color-cuir); background: var(--color-papier); }
+  /* Titres : fins et serrés en grand (signature du socle), plus fermes en petit */
+  .titre { font-family: var(--font-sans); font-weight: 600; letter-spacing: -0.015em; }
+  h1.titre { font-weight: 300; letter-spacing: -0.035em; }
+  .feuille { background: transparent; border: 1px solid var(--color-couture); border-radius: 12px; }
   .discret { color: var(--color-mine); }
   .avant { color: var(--color-mine); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--color-alerte) 70%, transparent); }
-  .apres { color: var(--color-papier); background: color-mix(in srgb, var(--color-onglet) 16%, transparent); border-radius: 3px; padding: 0 0.2rem; }
+  .apres { color: var(--color-papier); background: color-mix(in srgb, var(--color-onglet) 22%, transparent); border-radius: 4px; padding: 0 0.25rem; }
   /* Écran tactile ou petit écran : 16 px dans les champs (Safari ne zoome plus) et aucune
      cible sous 44 px. Dans cette couche, pour passer devant .bouton et .pastille. */
   @media (pointer: coarse), (max-width: 899px) {

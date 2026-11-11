@@ -4,15 +4,16 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **2.6.5 prête** (branche `main`) : mode lecture seule, annonce avant un traitement par lot, restes de la 1.3 retirés, versions exactes. 83 tests du back et 20 tests d'interface verts. Pas encore mise en service sur le NAS.
-- En service sur le NAS : 2.6.4.
+- **En service sur le NAS : 2.6.5** (branche `main`). Refus d'écriture en lecture seule, retour à la 2.6.4 et remise en écriture vérifiés par Julien.
+- **2.7.0 en cours** sur la branche `habillage-2.7` : étape 1 faite (thème du socle, navigation et écran À traiter), en attente de la validation de Julien sur captures. Tests d'interface verts, aucun réécrit.
 - Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md). Premier tour du grill de la 2.8.0 : [`docs/2.8-grill.md`](docs/2.8-grill.md).
 
 ## Prochaine étape
 
-1. **Julien met la 2.6.5 en service**, puis essaie pour de vrai le retour à la 2.6.4 par `CARNET_VERSION` (étape 5 du plan).
-2. **2.7.0, nouvel habillage seul** : commence par un écran réel (À traiter) à faire valider par Julien, en sombre et en clair, sur PC et iPhone.
-3. **2.8.0, parcours et complétude** : finir le grill, écrire le dossier, passer au conseil.
+1. Validation par Julien de l'écran À traiter (sombre et clair, PC et iPhone).
+2. Étapes 2 à 6 de la 2.7.0 : composants de base, connexion, fusion, contacts et fiche, État en tuiles. Les couleurs encore écrites en dur dans `Contacts.svelte`, `Etat.svelte`, `PhotosFiche.svelte`, `Plateformes.svelte`, `Voyant.svelte` et `BoutonAnneau.svelte` sont à passer en rôles.
+3. Mise en service de la 2.7.0, en lecture seule le premier jour.
+4. 2.8.0 : finir le grill, écrire le dossier, passer au conseil.
 
 ## Décisions tranchées
 
@@ -24,6 +25,7 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 - L'anneau de progression, la jauge autour de l'avatar et l'index en tranche sont gardés et reteintés.
 - Le mot de passe reste `CARNET_PASSWORD` ; connexion unique plus tard, avec l'Anneau unique.
 - Conseil du 11/11/2026 : ménage, habillage et parcours sont trois livraisons séparées.
+- Habillage 2.7.0 : les couleurs gardent leurs noms d'origine (`--color-cuir`, `--color-papier`…), seules leurs valeurs changent ; le clair se fait par `prefers-color-scheme`, sans bouton. Le bouton plein est neutre ; l'ocre est réservé à ce qui demande l'attention.
 
 ## Pièges
 

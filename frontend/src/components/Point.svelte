@@ -155,11 +155,11 @@
 </article>
 
 <style>
-  .point { padding: 0.9rem 1rem; display: grid; gap: 0.7rem; }
+  .point { padding: 1rem 1.1rem; display: grid; gap: 0.75rem; }
   header { display: flex; gap: 0.7rem; align-items: center; }
   .qui { display: grid; min-width: 0; }
-  .nom { font-size: 1.1rem; color: var(--color-papier); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .motif { color: var(--color-onglet); font-size: 0.85rem; }
+  .nom { font-size: 1.02rem; color: var(--color-papier); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .motif { color: var(--color-onglet); font-size: 0.82rem; font-weight: 500; }
   .corps { min-width: 0; overflow-wrap: anywhere; }
   footer { display: flex; flex-wrap: wrap; gap: 0.5rem; }
   .conflit { display: grid; grid-template-columns: auto 1fr; gap: 0.2rem 0.8rem; margin-top: 0.5rem; }

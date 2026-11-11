@@ -135,15 +135,16 @@
   .sommaire { position: sticky; top: 1rem; max-height: calc(100dvh - 9rem); overflow-y: auto; display: grid; gap: 2px; }
   .sommaire button { width: 100%; display: grid; text-align: left; padding: 0.5rem 0.75rem; border-radius: 8px; }
   .sommaire button:hover { background: var(--color-reliure); }
-  .sommaire button[aria-current] { background: var(--color-reliure); box-shadow: inset 3px 0 0 var(--color-onglet); }
-  .sommaire .titre { font-size: 1rem; }
+  .sommaire button[aria-current] { background: var(--color-reliure); }
+  .sommaire .titre { font-size: 0.95rem; }
   .sommaire .motif { color: var(--color-mine); font-size: 0.82rem; }
   .detail { position: sticky; top: 1rem; }
-  h1 { font-size: 1.9rem; margin-bottom: 0.75rem; }
+  h1 { font-size: 2.1rem; line-height: 1.1; margin-bottom: 1rem; }
   .filtres { display: flex; gap: 0.4rem; overflow-x: auto; padding-bottom: 0.4rem; margin-bottom: 0.75rem; scrollbar-width: none; }
   .filtres .pastille { flex: none; }
   .liste { display: grid; gap: 0.75rem; }
+  .annonce { flex-basis: 100%; }
   .lot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
   .vide { padding: 3rem 0; }
-  .vide .titre { font-size: 1.4rem; margin-bottom: 0.3rem; }
+  .vide .titre { font-size: 1.3rem; font-weight: 500; margin-bottom: 0.3rem; }
 </style>

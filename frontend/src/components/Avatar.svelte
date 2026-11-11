@@ -16,7 +16,7 @@
 <style>
   .avatar {
     flex: none; display: inline-grid; place-items: center; border-radius: 50%; overflow: hidden;
-    background: #302622; color: var(--color-mine); font-family: var(--font-livre); font-weight: 600;
+    background: var(--color-reliure); color: var(--color-mine); font-weight: 600; box-shadow: inset 0 0 0 1px var(--color-couture);
   }
   img { width: 100%; height: 100%; object-fit: cover; }
 </style>

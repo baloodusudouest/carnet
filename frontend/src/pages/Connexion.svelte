@@ -26,6 +26,6 @@
 
 <style>
   .connexion { max-width: 20rem; margin: 22vh auto 0; padding: 0 1.25rem; display: grid; gap: 0.6rem; }
-  h1 { font-size: 2.6rem; margin-bottom: 1rem; }
+  h1 { font-size: 2.6rem; line-height: 1.1; margin-bottom: 1rem; }
   .erreur { color: var(--color-alerte); }
 </style>

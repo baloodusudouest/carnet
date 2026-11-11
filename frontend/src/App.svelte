@@ -111,8 +111,8 @@
     position: fixed; z-index: 20; left: 50%; transform: translateX(-50%);
     bottom: calc(0.6rem + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 0.25rem;
     padding: 0.35rem; border-radius: 9999px;
-    background: color-mix(in srgb, #15110f 92%, transparent); border: 1px solid var(--color-couture);
-    box-shadow: 0 10px 30px rgb(0 0 0 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.04);
+    background: color-mix(in srgb, var(--color-cuir) 82%, transparent); border: 1px solid var(--color-couture);
+    box-shadow: 0 10px 30px var(--color-ombre);
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   }
   .marque { display: none; }
@@ -123,28 +123,28 @@
   }
   .onglet:focus-visible { outline: 2px solid var(--color-onglet); outline-offset: 2px; }
   .libelle { max-width: 0; overflow: hidden; opacity: 0; transition: max-width 0.32s ease, opacity 0.2s ease; }
-  .onglet[aria-current='page'] { background: var(--color-papier); color: #241c17; padding: 0 1.15rem 0 0.95rem; }
+  .onglet[aria-current='page'] { background: var(--color-papier); color: var(--color-cuir); padding: 0 1.15rem 0 0.95rem; }
   .onglet[aria-current='page'] .libelle { max-width: 7rem; opacity: 1; }
   .icone-onglet { position: relative; display: grid; place-items: center; }
   .icone-onglet svg { width: 1.45rem; height: 1.45rem; }
   .badge {
     position: absolute; top: -0.45rem; left: 0.85rem; min-width: 1.15rem; height: 1.15rem; padding: 0 0.3rem;
     border-radius: 9999px; font-size: 0.68rem; font-weight: 700; line-height: 1.15rem; text-align: center;
-    background: var(--color-onglet); color: #23190a; box-shadow: 0 0 0 2px #15110f;
+    background: var(--color-onglet); color: var(--color-sur-onglet); box-shadow: 0 0 0 2px var(--color-cuir);
   }
   .onglet[aria-current='page'] .badge { box-shadow: 0 0 0 2px var(--color-papier); }
   .point { position: absolute; top: -0.15rem; right: -0.2rem; width: 0.55rem; height: 0.55rem; border-radius: 50%;
-    background: var(--color-alerte); box-shadow: 0 0 0 2px #15110f; }
-  .roue { position: absolute; top: -0.4rem; right: -0.45rem; display: grid; border-radius: 50%; background: #15110f; padding: 1px; }
+    background: var(--color-alerte); box-shadow: 0 0 0 2px var(--color-cuir); }
+  .roue { position: absolute; top: -0.4rem; right: -0.45rem; display: grid; border-radius: 50%; background: var(--color-cuir); padding: 1px; }
   .onglet[aria-current='page'] .roue { background: var(--color-papier); }
   @media (prefers-reduced-motion: reduce) { .onglet, .libelle { transition: none; } }
-  .lecture-seule { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; border: 1px solid var(--color-onglet); border-radius: 6px; color: var(--color-papier); }
+  .lecture-seule { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; border: 1px solid var(--color-onglet); border-radius: 8px; color: var(--color-papier); }
   .tache { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; border-left: 3px solid var(--color-onglet); color: var(--color-mine); }
   .message {
     position: fixed; z-index: 30; left: 1rem; right: 1rem; bottom: calc(4.9rem + env(safe-area-inset-bottom));
     display: flex; align-items: center; justify-content: space-between; gap: 1rem;
     max-width: 34rem; margin: 0 auto; padding: 0.6rem 0.6rem 0.6rem 1rem; border-radius: 10px;
-    background: #2f2723; border: 1px solid var(--color-tranche); box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+    background: var(--color-reliure); border: 1px solid var(--color-tranche); box-shadow: 0 8px 24px var(--color-ombre);
   }
   .message.erreur { border-color: var(--color-alerte); }
   @media (min-width: 900px) {
@@ -152,11 +152,12 @@
     .onglets {
       top: 0; bottom: 0; left: 0; transform: none; width: 13rem; flex-direction: column; align-items: stretch; gap: 0.25rem;
       padding: 1.25rem 0.75rem; border-radius: 0; border: 0; border-right: 1px solid var(--color-couture);
-      background: var(--color-reliure); box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+      background: var(--color-cuir); box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
     }
-    .marque { display: block; font-size: 1.6rem; padding: 0 0.75rem 1.25rem; color: var(--color-papier); }
+    .marque { display: block; font-size: 1.5rem; font-weight: 300; letter-spacing: -0.03em; padding: 0 0.85rem 1.25rem; color: var(--color-papier); }
     .onglet { height: 2.75rem; padding: 0 0.85rem; gap: 0.7rem; font-size: 0.95rem; }
-    .onglet[aria-current='page'] { padding: 0 0.85rem; }
+    .onglet[aria-current='page'] { padding: 0 0.85rem; background: var(--color-reliure); color: var(--color-papier); }
+    .onglet[aria-current='page'] .roue { background: none; }
     .libelle, .onglet .libelle { max-width: none; opacity: 1; overflow: visible; }
     .onglet { position: relative; }
     .icone-onglet { position: static; }
