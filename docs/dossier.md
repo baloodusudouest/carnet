@@ -224,21 +224,45 @@ Base SQLite `carnet2.db`, version de schéma 2, une seule connexion sous verrou.
 
 ---
 
-## 6. Plan d'implémentation du nouvel habillage
+## 6. Plan d'implémentation
 
-Sept étapes. Chacune laisse l'appli utilisable et se termine par la même vérification : les 19 tests d'interface verts, et une capture de chaque écran en sombre et en clair, sur PC et iPhone. Aucune route de l'API ne change.
+Trois livraisons, décidées le 11/11/2026 après le passage au conseil. Chacune remplace la précédente dans Portainer et se vérifie seule.
 
-| # | Étape | Livré | Vérification propre |
-|---|---|---|---|
-| 1 | Thème | Couleurs, typographie et rayons du socle ; ocre en accent ; clair selon l'appareil | Les 6 écrans restent lisibles dans les deux thèmes |
-| 2 | Composants de base | Bouton, pastille, carte, champ, avancement de shadcn-svelte à la place de `.bouton`, `.pastille`, `.feuille` | Aucun bouton sans état désactivé ni contour de focus |
-| 3 | Navigation et connexion | Pilule et rail du socle, écran de connexion | Pastille de compte, roue et point rouge toujours visibles |
-| 4 | À traiter, point, fusion | Sommaire et détail, 14 motifs | Un point de chaque motif affiché sur données fictives |
-| 5 | Contacts et fiche | Liste, index, fiche en lecture et en édition, photo | Aperçu « ce qui part dans iCloud » inchangé |
-| 6 | État en tuiles bento | Bilan, tuiles de taille selon l'importance, Réseaux découpé | Chaque action d'État se lance encore |
-| 7 | Mise en service | Version 2.7.0 publiée, à la place de l'actuelle | Voir « Retour arrière » |
+### 2.6.5 — ménage, sans toucher l'apparence
 
-**Retour arrière.** Avant l'étape 7 : copie de `/state` (la base et les sauvegardes). L'image 2.6.4 reste publiée : mettre `CARNET_VERSION=2.6.4` dans Portainer suffit à revenir. Le schéma de la base ne change pas, donc les deux versions lisent la même base.
+| # | Étape | Vérification |
+|---|---|---|
+| 1 | Retirer les restes de la 1.3 : `sqlcipher3-wheels`, `app/reprise.py`, `CARNET_DB_KEY` | 80 tests du back verts ; l'appli démarre sur la base actuelle |
+| 2 | Versions exactes dans `frontend/package.json` | Interface compilée identique |
+| 3 | Annonce avant un traitement par lot : ce qui sera écrit, pour combien de fiches | Test d'interface ajouté (ajout, pas réécriture) |
+| 4 | Mode lecture seule (`CARNET_LECTURE_SEULE=oui`) : aucune écriture vers iCloud, Immich, Treemich ni Synology | Test du back : toute écriture est refusée et signalée |
+| 5 | Mise en service, puis essai réel du retour à la 2.6.4 par `CARNET_VERSION` | L'appli revient et relit la même base |
+
+### 2.7.0 — nouvel habillage seul
+
+Règles : mêmes textes, même navigation, mêmes rôles d'accessibilité ; les 19 tests d'interface ne sont pas réécrits ; les noms internes dont ils dépendent sont conservés ; deux reprises au plus par écran. L'anneau de progression, la jauge autour de l'avatar et l'index en tranche sont gardés et reteintés.
+
+| # | Étape | Vérification |
+|---|---|---|
+| 1 | Un écran réel (À traiter) dans le nouvel habillage, en sombre et en clair, sur PC et iPhone | Validé par Julien avant de continuer |
+| 2 | Thème et composants de base (bouton, pastille, carte, champ) pour toute l'appli | 19 tests verts ; aucun écran dégradé |
+| 3 | Navigation et connexion | Pastille de compte, roue et point rouge visibles |
+| 4 | À traiter, point, fusion | Un point de chaque motif affiché sur données fictives |
+| 5 | Contacts et fiche | Aperçu « ce qui part dans iCloud » inchangé |
+| 6 | État en tuiles bento | Chaque action d'État se lance encore |
+| 7 | Mise en service à la place de l'habillage actuel, en lecture seule le premier jour | Essai sur iPhone : clavier, défilement, fenêtres |
+
+### 2.8.0 — parcours et complétude
+
+Évolution fonctionnelle : elle aura son propre grill, son dossier et son passage au conseil. Demandes de Julien du 11/11/2026 :
+
+- une seule entrée pour importer ;
+- des filtres de manques plus nombreux : sans Immich, sans photo ni logo, sans liens familiaux, sans année ou sans date de naissance, sans moyen de contact ;
+- un écran de réglages disant quelles informations chaque groupe doit avoir (un client ou un artisan sans Immich ni Treemich, c'est normal ; un collègue sans Treemich aussi, mais il devrait avoir une photo) ;
+- une section Photos pour choisir et pousser les portraits et les affiches pour l'iPhone, pour plusieurs contacts à la fois ;
+- une fiche aussi complète que possible, d'après ce que proposent les applis de contacts.
+
+**Retour arrière.** L'image de chaque version reste publiée : `CARNET_VERSION` dans Portainer suffit à revenir. Copie de `/state` avant chaque mise en service. Côté iCloud, carnet garde déjà une copie complète avant la première écriture de chaque jour et sait remettre une fiche comme dans la sauvegarde.
 
 ---
 
@@ -246,14 +270,14 @@ Sept étapes. Chacune laisse l'appli utilisable et se termine par la même véri
 
 | # | Écart | Constat | Gravité | Proposition |
 |---|---|---|---|---|
-| 1 | Habillage | Thème cuir propre à carnet, composants faits main, pas de shadcn-svelte | Voulu | Plan de la section 6 |
-| 2 | Thème clair | Sombre uniquement (`color-scheme: dark`) | Moyen | Traité à l'étape 1 |
-| 3 | Mot de passe | `CARNET_PASSWORD` propre à carnet, sans longueur minimale ; le socle prévoit `APPS_PASSWORD` commun, 12 caractères au moins | Moyen | Accepter `APPS_PASSWORD` et garder `CARNET_PASSWORD` en repli ; refuser moins de 12 caractères |
-| 4 | Reste de la 1.3 | `sqlcipher3-wheels`, `app/reprise.py` et `CARNET_DB_KEY` toujours présents alors que la reprise est faite | Faible | Retirer les trois, après vérification qu'aucune reprise n'est attendue |
-| 5 | Versions du front | 7 dépendances avec `^` dans `package.json` (le fichier de verrouillage les fige quand même) | Faible | Versions exactes, comme le socle |
+| 1 | Habillage | Thème cuir propre à carnet, composants faits main, pas de shadcn-svelte | Voulu | 2.7.0 |
+| 2 | Thème clair | Sombre uniquement (`color-scheme: dark`) | Moyen | 2.7.0 |
+| 3 | Mot de passe | `CARNET_PASSWORD` propre à carnet, sans longueur minimale ; le socle prévoit `APPS_PASSWORD` commun, 12 caractères au moins | Moyen | **Laissé tel quel** (décision du 11/11/2026) : à revoir avec la connexion unique, quand toutes les applis seront prêtes pour l'Anneau unique |
+| 4 | Reste de la 1.3 | `sqlcipher3-wheels`, `app/reprise.py` et `CARNET_DB_KEY` toujours présents alors que la reprise est faite | Faible | 2.6.5 |
+| 5 | Versions du front | 7 dépendances avec `^` dans `package.json` (le fichier de verrouillage les fige quand même) | Faible | 2.6.5 |
 | 6 | Fichier de reprise | Absent | Faible | Ajouté avec ce dossier |
 | 7 | Langage du front | JavaScript ; les composants shadcn-svelte sont en TypeScript | Faible | Ajouter TypeScript au seul usage des composants ; ne pas convertir l'existant |
 | 8 | Poids de l'interface | Non mesuré ; la bibliothèque de graphiques du socle pèse lourd | À surveiller | Ne pas embarquer de graphique dans carnet tant qu'aucun écran n'en a besoin |
-| 9 | Friction de parcours | Cinq points relevés en section 3 | Moyen | Le n° 2 (Réseaux) à l'étape 6 ; les autres à trancher |
+| 9 | Friction de parcours | Cinq points relevés en section 3 | Moyen | L'annonce avant un lot en 2.6.5 ; l'import unique et le reste en 2.8.0 |
 
 **Conforme au socle, à garder tel quel :** FastAPI et image en 3 étapes, session par cookie signé (le socle la reprend de carnet), `/health` public, versions du back épinglées, étiquettes d'image permettant le retour arrière, sauvegarde avec restauration, tests du back et de l'interface, aucune donnée personnelle dans le dépôt.
