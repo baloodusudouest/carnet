@@ -59,7 +59,11 @@ def relire(c: Carnet, origine: str = "manuel") -> dict:
     if reference and stockees and len(disparues) > max(3, SEUIL_DISPARUES * len(stockees)):
         raise ErreurCarnet(f"Lecture d'iCloud arrêtée : {len(disparues)} fiches sur {len(stockees)} auraient disparu "
                            "d'un coup (plus de 5 %). Rien n'a été modifié. Vérifie sur l'iPhone, puis « Relire quand même ».")
-    return _appliquer(c, contacts, groupes, appartenance, stockees, disparues, bool(reference), origine)
+    bilan = _appliquer(c, contacts, groupes, appartenance, stockees, disparues, bool(reference), origine)
+    if contacts:
+        from . import attentes
+        attentes.semer(c)   # premier démarrage de la 2.8 : tableau de départ des attentes
+    return bilan
 
 
 def relire_quand_meme(c: Carnet) -> dict:
@@ -185,7 +189,8 @@ def carte(c: Carnet, uid: str, fiche: dict, photo: tuple[bytes, str] | None, tex
         types_avant = {cle_site(x): x.get("type") for x in (avant or {}).get("sites", [])}
         retypes = {cle_site(x) for x in fiche.get("sites", [])
                    if cle_site(x) in types_avant and types_avant[cle_site(x)] != x.get("type")}
-        return synchro.assembler_partiel(nouvelle, texte_distant, champs, retypes)
+        partielle = synchro.assembler_partiel(nouvelle, texte_distant, champs, retypes)
+        return synchro.remplacer_dates(partielle, fiche, champs)
     texte = assembler(photo)
     if len(texte.encode()) > TAILLE_MAX and photo:
         texte = assembler(images.alleger(photo, 50_000))

@@ -176,7 +176,11 @@ PROPRIETES = {
     "fonction": {"TITLE"}, "anniversaire": {"BDAY"}, "telephones": {"TEL"}, "courriels": {"EMAIL"},
     "adresses": {"ADR"}, "sites": {"URL", "X-SOCIALPROFILE"}, "noms_associes": {"X-ABRELATEDNAMES"},
     "notes": {"NOTE"}, "photo": {"PHOTO"} | PHOTO_ANNEXES,
+    "service": {"ORG"}, "prononciation_prenom": {"X-PHONETIC-FIRST-NAME"},
+    "prononciation_nom": {"X-PHONETIC-LAST-NAME"},
 }
+# Fête, mariage, décès : des X-ABDATE repérés par leur libellé (voir remplacer_dates)
+CHAMPS_DATES = ("fete", "mariage", "deces")
 
 
 def assembler_partiel(nouvelle: str, distante: str, champs: set[str], retypes: set[str] | None = None) -> str:
@@ -251,6 +255,27 @@ def assembler_partiel(nouvelle: str, distante: str, champs: set[str], retypes: s
     ajout = _renumeroter(ajout, max(items, default=0) + 1)
     lignes = gardees + ajout + ["END:VCARD"]
     return "\r\n".join(plier(l) for l in lignes) + "\r\n"
+
+
+def remplacer_dates(texte: str, fiche: dict, champs: set[str]) -> str:
+    """Réécrit dans la carte les seules dates supplémentaires des champs donnés (fete, mariage,
+    deces). Les autres dates de la carte — autre libellé, libellé natif d'Apple — ne bougent pas."""
+    from .export import lignes_dates
+    from .vcard import champ_date
+    champs = {c for c in champs if c in CHAMPS_DATES}
+    if not champs:
+        return texte
+    lignes = deplier(texte)
+    libelles = {g: _devaleur(v).strip() for g, nom, v in map(_decouper, lignes) if g and nom == "X-ABLABEL"}
+    a_retirer = {g for g, nom, _ in map(_decouper, lignes)
+                 if g and nom == "X-ABDATE" and champ_date(libelles.get(g, "")) in champs}
+    gardees = [l for l in lignes if _decouper(l)[0] not in a_retirer and _decouper(l)[1] != "END"]
+    items = [int(m.group(1)) for l in gardees if (m := re.match(r"item(\d+)\.", l))]
+    suivant = max(items, default=0) + 1
+    for (propriete, valeur), libelle in lignes_dates(fiche, champs):
+        gardees += [f"item{suivant}.{propriete}:{valeur}", f"item{suivant}.X-ABLabel:{libelle}"]
+        suivant += 1
+    return "\r\n".join(plier(l) for l in gardees + ["END:VCARD"]) + "\r\n"
 
 
 def carte_groupe(nom: str, uid: str, membres: list[str], distante: str | None = None) -> str:

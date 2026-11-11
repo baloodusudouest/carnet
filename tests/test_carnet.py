@@ -729,13 +729,12 @@ from app import completude, reseaux, telegram
 
 
 def test_completude_et_validation(c, services):
+    # 2.8 : ce qui manque dépend des groupes (détail dans test_28_attentes_et_manques)
     r = completude.resume(c)
-    assert set(r["BBBB-2222"]["manques"]) == {"annee", "adresse"}          # date sans année = manquante
-    assert r["CCCC-3333"]["manques"] == ["annee", "adresse"]
-    assert completude.compteurs(c)["annee"] >= 2
+    assert r["BBBB-2222"]["manques"] == [] and r["BBBB-2222"]["total"] == 0     # sans groupe : rien d'attendu
     completude.valider(c, "BBBB-2222")
     assert completude.resume(c)["BBBB-2222"]["statut"] == "valide"
-    assert completude.resume(c)["BBBB-2222"]["score"] == 4
+    assert completude.resume(c)["BBBB-2222"]["score"] == completude.resume(c)["BBBB-2222"]["total"]
     # Une écriture de carnet sur un champ non audité garde la validation
     f = c.fiche("BBBB-2222")
     f["notes"] = "note"
@@ -1453,3 +1452,149 @@ def test_essai_28_une_seule_carte_et_rapport_sans_nom(c, services, tmp_path):
     base_avant = c.cfg.db_path.read_bytes()
     assert isinstance(essai28.fiches_sans_photo(c.cfg.db_path), list)
     assert c.cfg.db_path.read_bytes() == base_avant
+
+
+# ================================================================ 2.8 : champs nouveaux de la carte
+
+CARTE_ESSAI = """BEGIN:VCARD
+VERSION:3.0
+N:Essai;Carnet;;;
+FN:Carnet Essai
+X-PHONETIC-FIRST-NAME:Karnè
+X-PHONETIC-LAST-NAME:Essè
+ORG:Société d'essai;Service d'essai
+item1.X-ABDATE:2010-06-12
+item1.X-ABLabel:_$!<Anniversary>!$_
+item2.X-ABDATE:2011-07-13
+item2.X-ABLabel:Mariage
+item3.X-ABDATE;X-APPLE-OMIT-YEAR=1604:1604-08-15
+item3.X-ABLabel:Fête
+item4.X-ABDATE:2020-01-02
+item4.X-ABLabel:Décès
+NOTE:Carte d'essai.
+UID:carnet-essai-28
+END:VCARD
+"""
+# La même carte après le changement d'une seule date sur l'iPhone (relevé de l'essai du 11/11/2026)
+CARTE_ESSAI_IPHONE = """BEGIN:VCARD
+VERSION:3.0
+N:Essai;Carnet;;;
+FN:Carnet Essai
+X-PHONETIC-FIRST-NAME:Karnè
+X-PHONETIC-LAST-NAME:Essè
+ORG:Société d'essai;Service d'essai
+NOTE:Carte d'essai.
+item1.X-ABDATE;type=pref:2010-06-12
+item1.X-ABLabel:_$!<Anniversary>!$_
+item2.X-ABDATE:2011-07-16
+item2.X-ABLabel:Mariage
+item3.X-ABDATE:1604-08-15
+item3.X-ABLabel:Fête
+item4.X-ABDATE:2020-01-02
+item4.X-ABLabel:Décès
+UID:carnet-essai-28
+END:VCARD
+"""
+
+
+def test_28_champs_nouveaux_lus_par_valeur():
+    from app import fiches as F
+    a, _ = F.lire(CARTE_ESSAI, [])
+    assert (a["service"], a["prononciation_prenom"], a["prononciation_nom"]) == ("Service d'essai", "Karnè", "Essè")
+    assert (a["fete"], a["mariage"], a["deces"]) == ("--08-15", "2011-07-13", "2020-01-02")
+    # Le libellé natif d'Apple (affiché « fête » en français) n'est lu comme rien
+    assert "2010-06-12" not in (a["fete"], a["mariage"], a["deces"], a["anniversaire"])
+    # Après la retouche sur l'iPhone (ordre changé, type=pref, paramètre de l'année retiré) :
+    # seule la date modifiée est vue comme un changement
+    b, _ = F.lire(CARTE_ESSAI_IPHONE, [])
+    assert [d["champ"] for d in F.differences(a, b)] == ["mariage"]
+
+
+def test_28_ecriture_ne_touche_que_le_champ_modifie():
+    from app import export, fiches as F, synchro
+    avant, _ = F.lire(CARTE_ESSAI_IPHONE, [])
+    apres = dict(avant, fete="--12-06", service="Atelier")
+    champs = {d["champ"] for d in F.differences(avant, apres)}
+    assert champs == {"fete", "service"}
+    texte = synchro.remplacer_dates(
+        synchro.assembler_partiel(export.vcard(apres, "carnet-essai-28"), CARTE_ESSAI_IPHONE, champs), apres, champs)
+    relue, _ = F.lire(texte, [])
+    assert (relue["fete"], relue["service"], relue["societe"]) == ("--12-06", "Atelier", "Société d'essai")
+    assert (relue["mariage"], relue["deces"]) == ("2011-07-16", "2020-01-02")
+    # La date au libellé d'Apple, que carnet ne lit pas, est restée dans la carte avec son libellé
+    assert "X-ABDATE;type=pref:2010-06-12" in texte and "_$!<Anniversary>!$_" in texte
+    assert texte.count("X-ABLabel:Fête") == 1 and "1604-08-15" not in texte
+    # Retirer une date la retire de la carte, sans toucher aux autres
+    sans = dict(relue, deces="")
+    texte2 = synchro.remplacer_dates(texte, sans, {"deces"})
+    assert "Décès" not in texte2 and "X-ABLabel:Mariage" in texte2
+    # Une carte neuve porte les champs nouveaux
+    neuve = export.vcard(apres, "X")
+    assert "ORG:Société d'essai;Atelier" in neuve and "X-PHONETIC-FIRST-NAME:Karnè" in neuve
+    assert F.lire(neuve, [])[0]["mariage"] == "2011-07-16"
+
+
+# ================================================================ 2.8 : attentes par groupe et manques
+
+def test_28_attentes_et_manques(c, services):
+    from app import attentes
+    # Tableau de départ inscrit à la première lecture ; jamais réinscrit ensuite
+    t = attentes.tableau(c)
+    urgence = next(g for g in t["groupes"] if g["nom"] == "Urgence")
+    assert urgence["attentes"] == ["telephone"] and urgence["nombre"] == 1
+    assert next(g for g in t["groupes"] if g["nom"] == "Famille")["attentes"] == \
+        ["telephone", "jour", "annee", "photo", "immich", "treemich", "liens", "fete"]
+    assert not next(g for g in t["groupes"] if g["nom"] == "Moi")["attentes"]
+    attentes.regler(c, "Urgence", "telephone", False)
+    assert not attentes.semer(c) and not attentes.par_groupe(c).get("Urgence")
+    # Les attentes des groupes s'additionnent ; l'aperçu ne modifie rien
+    assert attentes.tout(c)["AAAA-1111"]["attendues"] == []
+    vu = attentes.apercu(c, "Urgence", "treemich", True)
+    assert (vu["avant"], vu["apres"]) == (0, 1) and attentes.tout(c)["AAAA-1111"]["attendues"] == []
+    attentes.regler(c, "Urgence", "treemich", True)
+    attentes.regler(c, "Urgence", "immich", True)
+    b = attentes.tout(c)["AAAA-1111"]
+    assert b["manques"] == ["immich", "treemich"] and (b["score"], b["total"]) == (0, 2)
+    assert [(l["cle"], l["nombre"]) for l in attentes.lignes(c)][:2] == [("immich", 1), ("treemich", 1)]
+    assert any(l["cle"] == "sans_groupe" and l["nombre"] >= 2 for l in attentes.lignes(c))
+    # « Normal pour ce contact » : le manque se tait, la jauge monte, et on peut revenir en arrière
+    attentes.excepter(c, "AAAA-1111", "immich")
+    b = attentes.tout(c)["AAAA-1111"]
+    assert b["manques"] == ["treemich"] and b["exceptees"] == ["immich"] and b["score"] == 1
+    assert [(e["uid"], e["info"]) for e in attentes.liste_exceptions(c)] == [("AAAA-1111", "immich")]
+    attentes.excepter(c, "AAAA-1111", "immich", False)
+    assert attentes.tout(c)["AAAA-1111"]["manques"] == ["immich", "treemich"]
+    # Une fiche validée ne manque de rien
+    completude.valider(c, "AAAA-1111")
+    assert attentes.tout(c)["AAAA-1111"]["manques"] == [] and attentes.total(c)["incompletes"] == 0
+    completude.devalider(c, "AAAA-1111")
+    # Une personne décédée non plus
+    c.base.executer("INSERT INTO deces(uid, date, origine, le) VALUES ('AAAA-1111', NULL, 'main', '2026-11-11')")
+    c.oublier()
+    assert attentes.tout(c)["AAAA-1111"]["manques"] == [] and "AAAA-1111" in attentes.decedes(c)
+    # Une fiche d'entreprise n'attend ni naissance, ni fête, ni arbre
+    assert attentes.attendues({"societe": "X", "groupes": ["Famille"]}, attentes.par_groupe(c)) == ["telephone", "photo"]
+    # La fête : celle du calendrier tant que rien n'est écrit ; une date saisie à la main l'emporte
+    assert attentes.fete_de({"prenom": "Claire"}) == ("--08-11", "calendrier")
+    assert attentes.fete_de({"prenom": "Claire", "fete": "--08-11"}) == ("--08-11", "carte")
+    assert attentes.fete_de({"prenom": "Claire", "fete": "--02-03"}) == ("--02-03", "main")
+    assert attentes.fete_de({"prenom": "Zorglub"}) == ("", "")
+
+
+def test_28_memes_nombres_que_la_sonde(c, services):
+    """Le calcul de carnet et celui de la sonde (qui a mesuré les vraies données) concordent."""
+    from app import attentes, sonde28
+    nuit.passer(c, "test")
+    for g, infos in sonde28.ATTENTES.items():           # tableau de la sonde : sans fête ni groupe personnel
+        for k in attentes.INFOS:
+            c.base.executer("DELETE FROM attentes WHERE groupe = ? AND info = ?", (g, k))
+        for k in infos:
+            c.base.executer("INSERT INTO attentes(groupe, info) VALUES (?, ?)", (g, k))
+    c.base.executer("DELETE FROM attentes WHERE groupe NOT IN (%s)" % ",".join("?" * len(sonde28.ATTENTES)), tuple(sonde28.ATTENTES))
+    c.oublier()
+    b = sonde28.sonder_base(c.cfg.db_path)
+    # La sonde ne connaît pas l'exemption des fiches d'entreprise : on compare sur les personnes
+    personnes = {u for u, f in c.fiches().items() if not attentes.est_entreprise(f)}
+    assert personnes
+    for cle in ("telephone", "photo", "societe"):       # informations sans exemption
+        assert sum(1 for x in attentes.tout(c).values() if cle in x["manques"]) == b["total_manques"].get(cle, 0)

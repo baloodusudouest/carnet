@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 import vobject
 
 from . import normalisation as n
-from .modele import fiche_vide, groupes_reconnus
+from .modele import DATES_LIBELLEES, fiche_vide, groupes_reconnus
 
 
 @dataclass
@@ -49,6 +49,22 @@ def _groupe_connu(nom: str) -> str | None:
     return {n.cle_texte(g): g for g in groupes_reconnus()}.get(n.cle_texte(nom))
 
 BLOC = re.compile(r"BEGIN:VCARD.*?END:VCARD", re.S | re.I)
+_CHAMP_DATE = {n.cle_texte(v): k for k, v in DATES_LIBELLEES.items()}
+
+
+def champ_date(libelle: str) -> str | None:
+    """Libellé d'une date supplémentaire → champ de la fiche (« Fête » → fete), sinon None."""
+    return _CHAMP_DATE.get(n.cle_texte(libelle))
+
+
+def date_supplementaire(valeur: str, champ: str) -> str:
+    """Valeur d'un X-ABDATE → « AAAA-MM-JJ » ou « --MM-JJ ». L'an 1604 veut dire « sans année »,
+    que le paramètre X-APPLE-OMIT-YEAR soit là ou non (l'iPhone le retire en réécrivant la carte).
+    La fête n'a jamais d'année."""
+    d = n.anniversaire(valeur)
+    if len(d) == 10 and (d.startswith("1604-") or champ == "fete"):
+        d = "--" + d[5:]
+    return d
 
 
 def _etiquette(libelle: str) -> str | None:
@@ -144,6 +160,17 @@ def lire_carte(brut: str, region: str = "FR") -> tuple[FicheLue | None, dict | N
             elif nom == "ORG":
                 org = ligne.value if isinstance(ligne.value, list) else [ligne.value]
                 f["societe"] = _texte(org[0] if org else "")
+                f["service"] = " ".join(_texte(org[1]).split()) if len(org) > 1 else ""
+            elif nom == "X-PHONETIC-FIRST-NAME":
+                f["prononciation_prenom"] = _texte(ligne.value)
+            elif nom == "X-PHONETIC-LAST-NAME":
+                f["prononciation_nom"] = _texte(ligne.value)
+            elif nom == "X-ABDATE":
+                # Date supplémentaire : seuls les libellés Fête, Mariage et Décès sont lus ; les
+                # autres restent dans la carte sans que carnet y touche
+                champ = champ_date(libelles.get((ligne.group or "").lower(), ""))
+                if champ and not f[champ]:
+                    f[champ] = date_supplementaire(_texte(ligne.value), champ)
             elif nom == "TITLE":
                 f["fonction"] = _texte(ligne.value)
             elif nom == "NOTE":

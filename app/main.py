@@ -13,7 +13,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .temps import maintenant
-from . import (__version__, actions, completude, icloud, liaisons, linkedin, nuit, photos, reseaux, sorties,
+from . import (__version__, actions, attentes, completude, icloud, liaisons, linkedin, nuit, photos, reseaux, sorties,
                telegram, traiter, vcard)
 from .auth import COOKIE, DUREE, Sessions
 from .carddav import ErreurICloud
@@ -42,6 +42,8 @@ def demarrage(c: Carnet) -> None:
                 icloud.relire(c, "démarrage")
         # La reprise des choix de la 1.3 a été retirée en 2.6.5. Si l'ancienne base est là et que
         # la reprise n'a jamais eu lieu, on le dit une fois plutôt que de perdre ces choix en silence.
+        if c.fiches():
+            attentes.semer(c)   # passage à la 2.8 sur une base déjà lue
         if (c.cfg.state / "carnet.db").is_file() and not c.base.lire("reprise") \
                 and not c.base.lire("reprise_signalee"):
             c.base.noter("reprise", "La base de la 1.3 est présente mais ses choix n'ont jamais été repris. "

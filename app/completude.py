@@ -14,28 +14,16 @@ import hashlib
 import json
 import re
 
+from . import attentes
 from .carnet import Carnet, ErreurCarnet
 from .temps import iso, maintenant
 
-CRITERES = {"annee": "Sans année de naissance", "adresse": "Sans adresse", "telephone": "Sans téléphone",
-            "contact": "Sans moyen de contact"}
+# Depuis la 2.8, les critères sont les informations du tableau des attentes (app/attentes.py) :
+# ce qui manque à une fiche dépend de ses groupes.
+CRITERES = {k: v[1] for k, v in attentes.INFOS.items()}
 PLATEFORMES = ["icloud", "immich", "treemich", "linkedin", "facebook", "instagram", "x", "whatsapp", "telegram"]
 _WHATSAPP = re.compile(r"whatsapp|wa\.me", re.I)
 _TELEGRAM = re.compile(r"telegram|t\.me/", re.I)
-
-
-def manques(fiche: dict) -> list[str]:
-    a = fiche.get("anniversaire") or ""
-    res = []
-    if len(a) != 10:
-        res.append("annee")
-    if not fiche.get("adresses"):
-        res.append("adresse")
-    if not fiche.get("telephones"):
-        res.append("telephone")
-    if not fiche.get("telephones") and not fiche.get("courriels"):
-        res.append("contact")
-    return res
 
 
 def empreinte(fiche: dict) -> str:
@@ -121,15 +109,16 @@ def plateformes(c: Carnet, uid: str, fiche: dict, texte: str | None = None) -> l
 
 
 def resume(c: Carnet) -> dict[str, dict]:
-    """uid → {manques, statut, plateformes, score} pour toutes les fiches (gardé en mémoire)."""
+    """uid → {attendues, manques, exceptees, score, total, statut, plateformes, decede} pour toutes
+    les fiches (gardé en mémoire)."""
     def calcul():
         textes = {l["uid"]: l["texte"] for l in c.base.tous("SELECT uid, texte FROM fiches")}
         res = {}
+        bilans, morts = attentes.tout(c), attentes.decedes(c)
         for uid, f in c.fiches().items():
-            m = manques(f)
-            st = statut(c, uid, f)
-            res[uid] = {"manques": m, "statut": st, "plateformes": plateformes(c, uid, f, textes.get(uid)),
-                        "score": 4 if st == "valide" else 4 - len(m)}
+            b = bilans[uid]
+            res[uid] = {**b, "statut": statut(c, uid, f), "plateformes": plateformes(c, uid, f, textes.get(uid)),
+                        "decede": uid in morts}
         return res
     return c.memo("completude", calcul)
 
@@ -160,5 +149,5 @@ def analyse_globale(c: Carnet, remettre_a_zero: bool = False) -> dict:
     return bilan
 
 
-__all__ = ["manques", "empreinte", "statut", "valider", "devalider", "plateformes", "resume", "compteurs",
+__all__ = ["empreinte", "statut", "valider", "devalider", "plateformes", "resume", "compteurs",
            "analyse_globale", "ErreurCarnet"]

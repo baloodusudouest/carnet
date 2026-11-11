@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-VERSION = 2   # 2 : validations, personnes_externes (carnet 2.1)
+VERSION = 3   # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8)
 
 SCHEMA = """
 -- Cartes contact lues dans iCloud : la source maître. `fiche` est la forme lisible (JSON),
@@ -128,6 +128,56 @@ CREATE TABLE IF NOT EXISTS kv (
     cle    TEXT PRIMARY KEY,
     valeur TEXT
 );
+-- ---- 2.8 (schéma 3) : uniquement des ajouts, la 2.7 rouvre la base sans rien perdre ----
+-- Une ligne par case cochée du tableau « quelles informations chaque groupe doit avoir »
+CREATE TABLE IF NOT EXISTS attentes (
+    groupe TEXT NOT NULL,
+    info   TEXT NOT NULL,
+    PRIMARY KEY (groupe, info)
+);
+-- « Normal pour ce contact » : un manque précis qu'on ne signale plus
+CREATE TABLE IF NOT EXISTS exceptions (
+    uid  TEXT NOT NULL,
+    info TEXT NOT NULL,
+    le   TEXT NOT NULL,
+    PRIMARY KEY (uid, info)
+);
+-- Couples de Treemich (a < b) : dernier état lu, et la réponse « pas de mariage ni PACS »
+CREATE TABLE IF NOT EXISTS unions (
+    a         TEXT NOT NULL,
+    b         TEXT NOT NULL,
+    mariage   TEXT,
+    divorce   TEXT,
+    sans      INTEGER NOT NULL DEFAULT 0,
+    ignoree   TEXT,              -- dates différentes déjà écartées (« Ignorer »)
+    lu_le     TEXT,
+    PRIMARY KEY (a, b)
+);
+-- Décès connus de carnet : date si elle existe, origine icloud / treemich / main
+CREATE TABLE IF NOT EXISTS deces (
+    uid     TEXT PRIMARY KEY,
+    date    TEXT,
+    origine TEXT NOT NULL,
+    le      TEXT NOT NULL
+);
+-- Dernière recherche de logo par fiche (pour ne pas rechercher sans fin)
+CREATE TABLE IF NOT EXISTS logos_cherches (
+    uid      TEXT PRIMARY KEY,
+    le       TEXT NOT NULL,
+    trouves  INTEGER NOT NULL DEFAULT 0
+);
+-- Écritures faites par carnet tout seul (fête, mariage, décès), avec la valeur d'avant
+CREATE TABLE IF NOT EXISTS automatiques (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    le       TEXT NOT NULL,
+    service  TEXT NOT NULL,      -- icloud / treemich
+    sujet    TEXT NOT NULL,      -- fete / mariage / deces
+    cible    TEXT NOT NULL,      -- uid de la fiche, ou « a|b » pour un couple, ou id Treemich
+    avant    TEXT,
+    apres    TEXT,
+    defaite  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_automatiques_le ON automatiques(le);
 """
 
 
