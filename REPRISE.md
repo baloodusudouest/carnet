@@ -5,15 +5,14 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 ## État (11/11/2026)
 
 - **2.7.1 sur `main`** : la 2.7.0 (nouvel habillage) plus la sonde avant la 2.8.0. Julien a la 2.7.0 en service ; « À traiter » est vide chez lui.
-- **2.8.0 : grill terminé** ([`docs/2.8-grill.md`](docs/2.8-grill.md)) **et sonde faite** ([`docs/sonde-2.8.md`](docs/sonde-2.8.md)) : 437 fiches incomplètes sur 563, dont 406 faute de photo ; aucun mariage dans Treemich ; champs nouveaux absents partout.
+- **2.8.0 : grill, sonde et dossier faits** : [`docs/2.8-grill.md`](docs/2.8-grill.md), [`docs/sonde-2.8.md`](docs/sonde-2.8.md), [`docs/2.8-dossier.md`](docs/2.8-dossier.md). 437 fiches incomplètes sur 563, dont 406 faute de photo ; aucune date de mariage dans Treemich ni dans iCloud ; champs nouveaux absents partout.
 - Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md).
 
 ## Prochaine étape
 
-1. Trancher avec Julien ce que la sonde a ouvert : attentes de photo, groupe personnel sans attentes, mariage sans Treemich.
-2. Écrire le dossier de la 2.8.0 à partir du grill et de la sonde, puis un passage au conseil (deux si le conseil le juge : c'est une grosse version).
-3. Plan d'implémentation, puis code, en une seule livraison.
-4. Après une semaine d'usage de la 2.7.0 : document du socle et planche de couleurs.
+1. Passage du dossier 2.8.0 au conseil, puis arbitrages de Julien.
+2. Plan d'implémentation validé, puis code, en une seule livraison. Commencer par la carte d'essai (étape 1 du plan).
+3. Après une semaine d'usage de la 2.7.0 : document du socle et planche de couleurs.
 
 ## Décisions tranchées
 
@@ -30,6 +29,7 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## Pièges
 
+- Treemich range le mariage et le divorce sur le couple, pas sur la personne : lire `GET /relationships`, écrire par `PATCH /people/<id>/relationships`. Les évènements de vie d'une personne ne les contiennent jamais.
 - carnet écrit dans le vrai compte iCloud : Watchtower est désactivé, toute mise à jour est manuelle dans Portainer.
 - Treemich limite les connexions et le rythme des requêtes : une seule session réutilisée.
 - Pousser sur `main` reconstruit et republie l'image `latest`.

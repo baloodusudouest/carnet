@@ -56,17 +56,27 @@ Deux groupes existent sans attentes dans le tableau : un groupe personnel de 46 
 ## D. Treemich
 
 - 221 personnes, 148 relations : 47 parent, 47 enfant, 28 fratrie, 26 conjoint (13 couples).
-- Une relation ne porte que ses deux personnes et son type : **aucune date**.
-- Un seul type d'évènement de vie existe : la naissance (87, toutes avec une année).
-- **Aucun mariage n'est enregistré dans Treemich**, pour aucun des 13 couples.
-- Treemich ne publie pas de description de son interface.
+- Aucune relation ne porte de date remplie. D'après le code de Treemich (lu le 11/11/2026, voir plus bas), la liste des relations renvoie pour chaque couple `marriageAnniversaryDate` et `divorceDate` : ils sont donc vides pour les 13 couples.
+- Évènements de vie rattachés aux personnes : seulement des naissances (87, toutes avec une année). Aucun décès.
+- **Aucun mariage n'a de date dans Treemich aujourd'hui.** Réserve : cela suppose que la version installée renvoie bien ces deux champs ; la 2.8.0 le saura dès sa première nuit.
+- Treemich ne publie pas de description de son interface ; son code source, lui, est public.
+
+### Ce que dit le code de Treemich (dépôt `ShailChoksi/treemich`, état du 21/10/2026)
+
+Correction d'une première version de ce rapport, qui disait que le mariage n'existait pas dans Treemich.
+
+- Douze types d'évènements de vie existent, dont le mariage et le divorce.
+- **Mariage et divorce se rangent sur le couple**, pas sur une personne. La sonde n'avait lu que les évènements des personnes.
+- Lire : `GET /relationships` donne pour chaque lien de conjoint `marriageAnniversaryDate` et `divorceDate`.
+- Écrire : `PATCH /people/<id>/relationships` avec `toPersonId` et `marriageAnniversaryDate` (date au format année-mois-jour) ; Treemich crée ou met à jour l'évènement de mariage du couple. Une valeur vide l'efface.
+- Le décès se lit sur la personne (`deathDate`, ou évènement de vie de type décès).
 
 ## Ce que cela impose à la conception
 
 1. **La photo domine tout.** 406 des 437 fiches incomplètes le sont faute de photo ou de logo, dont 164 clients, 139 du Jardin secret, 46 collègues et 46 artisans. Sans changement, la famille « Manques » serait une seule ligne énorme. La recherche de logos par lot (onglet Photos) vise exactement les clients et les artisans.
 2. **Hors photo, les manques sont peu nombreux** : 59 sans téléphone, puis moins de 20 fiches par ligne. La famille « Manques » restera lisible.
 3. **Le groupe personnel de 46 contacts doit recevoir des attentes** dans le tableau.
-4. **Le mariage ne peut pas venir de Treemich aujourd'hui** : il n'y en a aucun. Le sens Treemich vers iCloud ne produira rien tant que des mariages n'y sont pas saisis. Et rien ne dit comment en écrire un : le sens carnet vers Treemich est à vérifier avant de s'y engager.
+4. **Le mariage part de zéro des deux côtés** : aucune date dans Treemich, aucune dans iCloud. Les deux sens sont possibles techniquement (lecture et écriture vérifiées dans le code de Treemich). Les premières dates viendront de la saisie de Julien, dans carnet ou dans Treemich.
 5. **Les champs nouveaux partent de zéro** : pas de reprise, mais il faut vérifier sur une carte d'essai qu'iCloud les rend bien.
 6. **Les fêtes** concernent au plus une centaine de contacts (Famille et Amis) : une centaine d'écritures dans iCloud, à faire par lots. 36 prénoms composés ou multiples demandent une règle.
 7. **63 fiches sans prénom** (entreprises) n'ont ni fête ni naissance : les attentes « jour de naissance » et « fête » ne doivent pas s'appliquer à une fiche d'entreprise.
