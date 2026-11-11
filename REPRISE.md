@@ -21,7 +21,7 @@ Restes de la 2.8, toujours valables :
 1. Julien met la 2.8.0 en service **en lecture seule un jour** (`CARNET_LECTURE_SEULE=oui`), copie de `/state` avant. Il vérifie : les nombres de la famille « Manques » (la sonde donnait 437 fiches incomplètes, 406 sans photo, 59 sans téléphone, avant l'exemption des fiches d'entreprise et sans la colonne Fête), le tableau des attentes, la liste « ce que carnet écrirait ».
 2. Il enlève la lecture seule, puis allume « fêtes » ; une semaine plus tard, « dates de famille ». Relire « Écrit par carnet tout seul » après chaque première nuit.
 3. À voir à l'usage : le calendrier des fêtes (prénoms introuvables dans la ligne « Sans fête »), le logo glissé depuis Google Images sur iPhone et sur PC, l'écriture réelle d'un mariage dans Treemich (jamais essayée sur la vraie installation).
-4. Home Assistant : `maison/anniversaires.yaml` v2 livré le 11/11 (mariages et fêtes dans `calendar.anniversaires`, alerte 08:00, carte) ; à installer par Julien (secret `carnet_fetes_url`, redémarrage).
+4. Home Assistant : `maison/anniversaires.yaml` v2 livré le 11/11 (mariages et fêtes dans `calendar.anniversaires`, alerte 08:00, carte) ; **installé et validé par Julien le 11/11/2026**.
 5. Idée gardée : route unique d'évènements pour Home Assistant.
 6. Après une semaine d'usage : document du socle et planche de couleurs.
 
