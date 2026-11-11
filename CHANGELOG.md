@@ -1,5 +1,22 @@
 # Journal des versions
 
+## 2.8.0 — 11 novembre 2026
+Parcours et complétude. Dossier : `docs/2.8-dossier.md` ; conseil : `docs/2.8-conseil.md` ; essai : `docs/essai-2.8.md`. La base passe au schéma 3 (ajouts seulement : la 2.7 la rouvre).
+- **Attentes par groupe** : un tableau (onglet Réglages) dit quelles informations chaque groupe doit avoir. Prérempli au premier démarrage ; un groupe hors du tableau de départ reçoit les attentes d'Amis, « Moi » aucune. Les attentes de plusieurs groupes s'additionnent. Chaque case annonce son effet avant d'être enregistrée.
+- **Manques** : dans « À traiter », une ligne par information manquante avec son nombre de fiches ; elle ouvre la liste. Les manques ne comptent pas dans le compteur de l'onglet. Filtres de Contacts refaits sur les mêmes informations, plus « Sans groupe », « Sans union déclarée », « Décédés ».
+- **Exceptions** : sur une fiche, « Normal pour ce contact » fait taire un manque précis ; la liste est dans Réglages, où on peut la reprendre. La jauge autour de l'avatar montre la part des attentes remplies.
+- **Onglet Photos** : quatre files (logos, portraits, affiches à préparer, affiches à poser), traitées par lots de 20. **Logo déposé** : glissé depuis une autre fenêtre, collé, ou choisi comme fichier ; un bouton ouvre la recherche Google Images. Une adresse d'image n'est téléchargée que si elle est publique (jamais le réseau local), 3 Mo au plus.
+- **Import unique** : un seul bouton « Importer » ; carnet dit ce qu'il a reconnu et ce qu'il fera avant d'importer, avec le mode opératoire de chaque type de fichier.
+- **Champs nouveaux** : service, prononciation du prénom et du nom, fête, mariage, décès. Les trois dates sont des dates supplémentaires de la carte, aux libellés « Fête », « Mariage », « Décès » (le libellé natif d'Apple s'affiche « fête » en français : il n'est pas utilisé). L'an 1604 veut dire « sans année ». Écrire un de ces champs ne touche à rien d'autre dans la carte.
+- **Fête** : d'après un calendrier embarqué (`app/fetes.py`, établi pour carnet, à corriger sur la fiche si besoin). Home Assistant la lit sur `/ha/fetes` dans tous les cas.
+- **Dates de famille** : mariage et décès accordés avec Treemich — carnet remplit le côté vide, n'écrase jamais, ne propage jamais un effacement ; deux dates différentes deviennent un point. Divorce et décès lus dans Treemich : plus d'annonce (`/ha/anniversaires` porte aussi les mariages). Une croix (†) précède le nom d'une personne décédée ; une case « décédée, date inconnue » existe sur la fiche.
+- **Deux interrupteurs, éteints à la livraison** (Réglages) : « écrire les fêtes », « accorder mariages et décès avec Treemich ». Éteints, carnet montre ce qu'il écrirait. Chaque écriture automatique est journalisée avec la valeur d'avant et peut être défaite ; après une écriture dans Treemich, carnet relit et coupe l'interrupteur si la valeur n'est pas revenue.
+- **Supprimer une fiche** : depuis la modification d'une fiche, « Supprimer cette fiche… », toujours suivi d'une confirmation qui dit ce qui sera retiré. La carte quitte iCloud (donc l'iPhone) ; rien n'est supprimé dans Immich ni Treemich. « Annuler » la remet pendant 10 secondes, avec ses liaisons ; ensuite, la sauvegarde du jour.
+- Cinq onglets : À traiter, Contacts, Photos, État, Réglages. « Se déconnecter » est aussi dans Réglages.
+- **Écarts avec le dossier** : la section Réseaux reste dans État (non déplacée) ; le journal « écrit par carnet tout seul » est dans Réglages et non dans une tuile d'État ; pas de shadcn-svelte (fenêtre et cases natives).
+- Au premier démarrage, les cartes déjà en base sont relues une fois pour connaître les champs nouveaux qu'elles portent déjà (rien n'est signalé ni écrit).
+- Tests : 98 du back, 24 d'interface (PC et iPhone). Retour à la 2.7.2 par `CARNET_VERSION=2.7.2`.
+
 ## 2.7.2 — 11 novembre 2026
 - **Essai avant la 2.8.0** (`python -m app.essai28`, mode opératoire dans `docs/essai-2.8.md`) : un programme à part qui crée **une** carte d'essai dans iCloud (« Carnet Essai », données inventées), la relit, et mesure la recherche de logos sur 30 sociétés sans photo. Relancé après une modification sur l'iPhone, il dit ce qui a changé. Aucune fiche existante n'est touchée ; le rapport ne contient ni nom ni site. carnet lui-même ne change pas.
 - Dossier de la 2.8.0 (`docs/2.8-dossier.md`) et compte rendu du conseil (`docs/2.8-conseil.md`).

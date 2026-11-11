@@ -8,13 +8,17 @@
   import Fiche from './pages/Fiche.svelte'
   import Fusion from './pages/Fusion.svelte'
   import Etat from './pages/Etat.svelte'
+  import Photos from './pages/Photos.svelte'
+  import Reglages from './pages/Reglages.svelte'
   import { ICONES } from './lib/icones.js'
   import Voyant from './components/Voyant.svelte'
 
   const onglets = [
     { page: 'a-traiter', nom: 'À traiter' },
     { page: 'contacts', nom: 'Contacts' },
+    { page: 'photos', nom: 'Photos' },
     { page: 'etat', nom: 'État' },
+    { page: 'reglages', nom: 'Réglages' },
   ]
   const actif = $derived(etat.route.page === 'fusion' ? 'a-traiter' : etat.route.page)
   const compte = $derived(etat.accueil?.a_traiter?.total ?? 0)
@@ -80,6 +84,10 @@
         <Contacts />
       {:else if etat.route.page === 'fusion'}
         <Fusion a={etat.route.args[0]} b={etat.route.args[1]} />
+      {:else if etat.route.page === 'photos'}
+        <Photos />
+      {:else if etat.route.page === 'reglages'}
+        <Reglages />
       {:else if etat.route.page === 'etat'}
         <Etat />
       {:else}
@@ -137,6 +145,12 @@
     background: var(--color-alerte); box-shadow: 0 0 0 2px var(--color-cuir); }
   .roue { position: absolute; top: -0.4rem; right: -0.45rem; display: grid; border-radius: 50%; background: var(--color-cuir); padding: 1px; }
   .onglet[aria-current='page'] .roue { background: var(--color-papier); }
+  /* Cinq onglets : sur un iPhone étroit, les icônes se resserrent pour que la pilule tienne */
+  @media (max-width: 26rem) {
+    .onglets { gap: 0.1rem; }
+    .onglet { padding: 0 0.72rem; }
+    .onglet[aria-current='page'] { padding: 0 0.9rem 0 0.75rem; }
+  }
   @media (prefers-reduced-motion: reduce) { .onglet, .libelle { transition: none; } }
   .lecture-seule { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; border: 1px solid var(--color-onglet); border-radius: 8px; color: var(--color-papier); }
   .tache { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; border-left: 3px solid var(--color-onglet); color: var(--color-mine); }

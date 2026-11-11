@@ -4,6 +4,8 @@ export const ICONES = {
   'a-traiter': '<path d="M4 13.5 6.2 5.6A1.6 1.6 0 0 1 7.8 4.5h8.4a1.6 1.6 0 0 1 1.6 1.1L20 13.5"/><path d="M4 13.5V18a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 18v-4.5h-4.6l-1.2 2.2h-4.4l-1.2-2.2z"/>',
   contacts: '<path d="M6 3.5h11.5A1.5 1.5 0 0 1 19 5v14a1.5 1.5 0 0 1-1.5 1.5H6z"/><path d="M6 3.5v17M4 7.5h3.5M4 12h3.5M4 16.5h3.5"/><circle cx="12.6" cy="10" r="2.3"/><path d="M9.3 16.3c.6-1.9 1.8-2.8 3.3-2.8s2.7.9 3.3 2.8"/>',
   etat: '<path d="M4.5 16.5a7.5 7.5 0 1 1 15 0"/><path d="m12 16.5 3.6-4.6"/><circle cx="12" cy="16.5" r="1.2"/><path d="M4 19.5h16"/>',
+  photos: '<rect x="3.5" y="5.5" width="17" height="13.5" rx="2"/><circle cx="9" cy="10.5" r="1.7"/><path d="m4.5 17.5 4.6-4.4 3.2 3 2.6-2.4 4.6 4.3"/>',
+  reglages: '<path d="M5 7.5h6M15 7.5h4M5 16.5h3M12 16.5h7"/><circle cx="13" cy="7.5" r="2"/><circle cx="10" cy="16.5" r="2"/>',
   // Boutons à anneau
   telecharger: '<path d="M12 6.5v10M7.5 12.5 12 17l4.5-4.5"/>',
   envoyer: '<path d="M12 17.5v-10M7.5 11.5 12 7l4.5 4.5"/>',

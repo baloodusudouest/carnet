@@ -16,6 +16,8 @@ export const etat = $state({
   connecte: null,
   large: LARGE.matches, // PC : liste et fiche côte à côte
   tri: lireTri(),       // « prenom » ou « nom », gardé sur cet appareil
+  manque: null,         // filtre de manque demandé depuis « À traiter » (2.8)
+  criteres: null,       // clé → libellé des manques (« Sans téléphone »…)
 })
 LARGE.addEventListener('change', (e) => { etat.large = e.matches })
 
@@ -55,6 +57,7 @@ export async function rafraichirAccueil() {
 }
 
 export async function rafraichirContacts() {
+  if (!etat.criteres) api.get('/api/completude').then((r) => { etat.criteres = r.criteres }).catch(() => {})
   etat.contacts = await api.get('/api/contacts')
   return etat.contacts
 }

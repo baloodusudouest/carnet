@@ -23,6 +23,8 @@ TITRES = {
     "linkedin": "Changement LinkedIn", "doublon": "Doublon possible", "forme": "Mise en forme",
     "emoji": "Groupe par émoji", "liaison": "Liaison à confirmer", "date": "Date de naissance à trancher",
     "nom": "Nom à reporter", "relations": "Liens familiaux", "reseau": "Réseau à rattacher",
+    "mariage": "Date de mariage manquante", "mariage_different": "Dates de mariage différentes",
+    "deces_different": "Dates de décès différentes",
 }
 ORDRE = list(TITRES)
 ENREGISTRES = {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit", "import", "linkedin", "reseau"}
@@ -77,6 +79,9 @@ def calcules(c) -> list[dict]:
             point("nom", p["uid"], f"{p['uid']}|{p['service']}|{p['actuel']}", p)
         for p in liaisons.relations(c, d):
             point("relations", p["uid"], f"{p['uid']}|{empreinte(p['ajouts'])}", p)
+        from . import famille
+        for p in famille.examiner(c, d)["points"]:
+            point(p["motif"], p["uid"], p["cle"], p["donnees"])
     return res
 
 

@@ -3,6 +3,8 @@
 {
   "prenom": str, "nom": str, "surnom": str, "societe": str, "fonction": str,
   "anniversaire": "AAAA-MM-JJ" | "--MM-JJ" | "", "notes": str,
+  "service": str, "prononciation_prenom": str, "prononciation_nom": str,          (2.8)
+  "fete": "--MM-JJ" | "", "mariage": date | "", "deces": date | "",                (2.8)
   "photo": id de la fiche source dont on garde la photo | None,
   "telephones":    [{"valeur": "+33612345678", "type": "mobile", "affichage": "+33 6 12 34 56 78", "valide": True}],
   "courriels":     [{"valeur": "a@b.fr", "type": "domicile"}],
@@ -45,6 +47,11 @@ def regles_groupes() -> dict[str, str]:
 GROUPE_URGENCE = "Urgence"
 
 CHAMPS_SIMPLES = ["prenom", "nom", "surnom", "societe", "fonction", "anniversaire", "notes"]
+# Champs de la 2.8. Les trois dates sont des « dates supplémentaires » de la carte, repérées par
+# leur libellé (Fête, Mariage, Décès) ; le libellé natif d'Apple s'affiche « fête » en français
+# et n'est jamais utilisé.
+CHAMPS_28 = ["service", "prononciation_prenom", "prononciation_nom", "fete", "mariage", "deces"]
+DATES_LIBELLEES = {"fete": "Fête", "mariage": "Mariage", "deces": "Décès"}
 CHAMPS_MULTIPLES = ["telephones", "courriels", "adresses", "sites", "noms_associes"]
 
 TYPES = {
@@ -67,6 +74,8 @@ def fiche_vide() -> dict:
     return {
         "prenom": "", "nom": "", "surnom": "", "societe": "", "fonction": "",
         "anniversaire": "", "notes": "", "photo": None,
+        "service": "", "prononciation_prenom": "", "prononciation_nom": "",
+        "fete": "", "mariage": "", "deces": "",
         "telephones": [], "courriels": [], "adresses": [], "sites": [], "noms_associes": [],
         "groupes": [],
     }

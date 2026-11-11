@@ -59,7 +59,11 @@ def relire(c: Carnet, origine: str = "manuel") -> dict:
     if reference and stockees and len(disparues) > max(3, SEUIL_DISPARUES * len(stockees)):
         raise ErreurCarnet(f"Lecture d'iCloud arrêtée : {len(disparues)} fiches sur {len(stockees)} auraient disparu "
                            "d'un coup (plus de 5 %). Rien n'a été modifié. Vérifie sur l'iPhone, puis « Relire quand même ».")
-    return _appliquer(c, contacts, groupes, appartenance, stockees, disparues, bool(reference), origine)
+    bilan = _appliquer(c, contacts, groupes, appartenance, stockees, disparues, bool(reference), origine)
+    if contacts:
+        from . import attentes
+        attentes.semer(c)   # premier démarrage de la 2.8 : tableau de départ des attentes
+    return bilan
 
 
 def relire_quand_meme(c: Carnet) -> dict:
@@ -157,6 +161,29 @@ def _relire_une(c: Carnet, dav, uid: str, href: str) -> tuple[str, str] | None:
     return brute.etag, brute.texte
 
 
+def reanalyser(c: Carnet) -> int:
+    """Passage à la 2.8 : relit les cartes déjà en base avec la lecture d'aujourd'hui, pour que
+    les champs nouveaux (service, prononciation, fête, mariage, décès) déjà présents dans iCloud
+    soient connus sans attendre que la carte change. Rien n'est signalé, rien n'est écrit dans
+    iCloud. Fait une seule fois."""
+    if c.base.lire("analyse_28"):
+        return 0
+    changees = 0
+    with c.base.transaction() as cx:
+        for l in cx.execute("SELECT uid, texte, fiche FROM fiches").fetchall():
+            avant = json.loads(l["fiche"])
+            try:
+                apres, _ = F.lire(l["texte"], avant.get("groupes", []), c.cfg.region)
+            except Exception:  # noqa: BLE001 — carte illisible : laissée telle quelle
+                continue
+            if apres != avant:
+                cx.execute("UPDATE fiches SET fiche = ? WHERE uid = ?", (json.dumps(apres, ensure_ascii=False), l["uid"]))
+                changees += 1
+    c.base.ecrire("analyse_28", True)
+    c.oublier()
+    return changees
+
+
 # ================================================================ écriture
 
 def _groupes_actuels(c: Carnet) -> dict[str, list[dict]]:
@@ -185,7 +212,8 @@ def carte(c: Carnet, uid: str, fiche: dict, photo: tuple[bytes, str] | None, tex
         types_avant = {cle_site(x): x.get("type") for x in (avant or {}).get("sites", [])}
         retypes = {cle_site(x) for x in fiche.get("sites", [])
                    if cle_site(x) in types_avant and types_avant[cle_site(x)] != x.get("type")}
-        return synchro.assembler_partiel(nouvelle, texte_distant, champs, retypes)
+        partielle = synchro.assembler_partiel(nouvelle, texte_distant, champs, retypes)
+        return synchro.remplacer_dates(partielle, fiche, champs)
     texte = assembler(photo)
     if len(texte.encode()) > TAILLE_MAX and photo:
         texte = assembler(images.alleger(photo, 50_000))
@@ -493,6 +521,21 @@ def annuler(c: Carnet, jeton: str) -> dict:
     a = c.annulations.pop(jeton, None)
     if not a or a["jusqua"] < time.monotonic():
         raise ErreurCarnet("Trop tard pour annuler : modifie la fiche à nouveau si besoin.")
+    if a.get("supprimee"):
+        # Suppression demandée sur la fiche (2.8) : la carte revient à l'identique, avec ce que
+        # carnet savait d'elle (liaisons, exceptions, validation)
+        if c.base.un("SELECT 1 FROM fiches WHERE uid = ?", (a["uid"],)):
+            raise ErreurCarnet("Cette fiche existe de nouveau : rien à remettre.")
+        res = recreer(c, a["texte"], a["href"], a["groupes"])
+        with c.base.transaction() as cx:
+            for table, lignes in a["memoire"].items():
+                for l in lignes:
+                    cles = list(l)
+                    cx.execute(f"INSERT OR IGNORE INTO {table}({', '.join(cles)}) VALUES ({', '.join('?' * len(cles))})",
+                               tuple(l[k] for k in cles))
+        c.oublier()
+        c.base.noter("ecriture", "Suppression annulée : fiche remise dans iCloud", {"uid": a["uid"]})
+        return res
     ligne = c.base.un("SELECT etag FROM fiches WHERE uid = ?", (a["uid"],))
     if not ligne or ligne["etag"] != a["etag"]:
         raise ErreurCarnet("La fiche a changé depuis : annulation impossible sans risque.")

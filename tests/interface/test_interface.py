@@ -64,7 +64,7 @@ def page(request, navigateur, adresse):
 
 def test_trois_onglets_et_badge(page):
     onglets = page.locator("nav.onglets a.onglet")
-    assert onglets.count() == 3
+    assert onglets.count() == 5          # 2.8 : Photos et Réglages s'ajoutent
     assert re.fullmatch(r"\d+", page.locator(".badge").inner_text())
 
 
@@ -158,10 +158,11 @@ def test_filtres_de_completude_et_jauges(page):
     page.wait_for_selector(".ligne")
     total = page.locator(".ligne").count()
     assert page.locator(".ligne .jauge").count() == total
-    page.locator(".manques .pastille", has_text="Sans adresse").click()
+    # 2.8 : les filtres viennent du tableau des attentes (ici, Amis attend le jour de naissance)
+    page.locator(".manques .pastille", has_text="Sans jour de naissance").click()
     filtrees = page.locator(".ligne").count()
-    assert 0 < filtrees <= total
-    page.locator(".manques .pastille", has_text="Sans adresse").click()
+    assert 0 < filtrees < total
+    page.locator(".manques .pastille", has_text="Sans jour de naissance").click()
     assert page.locator(".ligne").count() == total
 
 
@@ -227,7 +228,7 @@ def test_etat_reseaux_et_remise_a_zero_confirmee(page):
     page.locator(".tuile", has_text="Réseaux").click()
     page.wait_for_selector("h3:has-text('Telegram')")
     assert page.locator("text=CARNET_TELEGRAM_API_ID").count() == 1          # non configuré dans la démo
-    page.locator(".tuile", has_text="Complétude").click()
+    page.locator(".tuile", has_text="Manques").click()             # 2.8 : la tuile Complétude s'appelle Manques
     page.get_by_role("button", name="Remettre les validations à zéro…").click()
     bouton = page.get_by_role("button", name="Remettre à zéro et analyser")
     assert bouton.is_disabled()
@@ -304,3 +305,102 @@ def test_reseaux_aller_a_la_partie_et_rattacher_un_importe(page):
     liste.get_by_role("button", name="Hugo BONNET").click()
     page.wait_for_selector(".message >> text=rattaché")
     page.wait_for_selector(".non-lies li:has-text('Hugo B.')", state="detached")
+
+
+# ------------------------------------------------------------------ 2.8 : manques, réglages, photos, import
+
+def test_28_manques_dans_a_traiter_ouvrent_la_liste(page):
+    compteur = page.locator(".badge").inner_text()
+    page.locator(".filtres .pastille", has_text="Manques").click()
+    ligne = page.locator(".ligne-manque", has_text="Sans photo ni logo")
+    nombre = int(ligne.locator(".nombre").inner_text())
+    assert nombre > 0 and page.locator(".badge").inner_text() == compteur      # les manques ne comptent pas
+    assert page.get_by_role("link", name="Traiter dans Photos").count() == 1
+    ligne.click()
+    page.wait_for_selector(".ligne")
+    assert page.locator(".ligne").count() == nombre
+    assert page.locator(".manques .pastille[aria-pressed='true']").inner_text().startswith("Sans photo ni logo")
+
+
+def test_28_reglages_une_case_annonce_puis_change_les_manques(page):
+    page.click("nav.onglets a[aria-label='Réglages']")
+    page.wait_for_selector("text=Ce que chaque groupe doit avoir")
+    if page.locator("details.groupe").count():                                  # iPhone : un groupe à la fois
+        page.locator("details.groupe", has_text="Clients").locator("summary").click()
+        case = page.locator("details.groupe", has_text="Clients").get_by_label("Adresse")
+    else:
+        case = page.get_by_label("Clients : Adresse")
+    avant = case.is_checked()
+    case.click()
+    annonce = page.locator(".confirmer")
+    annonce.wait_for()
+    assert "Sans adresse" in annonce.inner_text() and "passera de" in annonce.inner_text()
+    annonce.get_by_role("button", name="Annuler").click()                        # rien n'est enregistré avant « Enregistrer »
+    page.wait_for_function("!document.querySelector('.confirmer')")
+    assert case.is_checked() == avant
+    case.click()
+    annonce.wait_for()
+    annonce.get_by_role("button", name="Enregistrer").click()
+    page.wait_for_selector(".message")
+    page.wait_for_function("!document.querySelector('.confirmer')")
+    assert case.is_checked() != avant
+    # Les deux interrupteurs sont là, éteints
+    bascules = page.get_by_role("switch")
+    assert bascules.count() == 2 and not bascules.nth(0).is_checked() and not bascules.nth(1).is_checked()
+    assert page.get_by_role("button", name="Se déconnecter").count() == 1
+
+
+def test_28_photos_logo_depose_puis_pose(page):
+    import io
+    from PIL import Image
+    page.click("nav.onglets a[aria-label='Photos']")
+    page.wait_for_selector(".tuile")
+    assert page.locator(".tuile").count() == 4
+    fiche = page.locator("li.fiche", has_text="Plomberie Garonne")
+    if not fiche.count():
+        pytest.skip("logo déjà posé par l'autre appareil (serveur partagé)")
+    assert fiche.get_by_role("link", name="Chercher sur Google Images").get_attribute("href").startswith("https://www.google.com/search")
+    image = io.BytesIO()
+    Image.new("RGB", (240, 240), (30, 90, 160)).save(image, "PNG")
+    fiche.locator("input[type=file]").set_input_files({"name": "logo.png", "mimeType": "image/png", "buffer": image.getvalue()})
+    fiche.locator("text=prêt à poser").wait_for()
+    assert fiche.locator("img.apercu-logo").count() == 1
+    page.get_by_role("button", name=re.compile(r"Poser les logos \(1\)")).click()
+    page.wait_for_function("!document.body.innerText.includes('Plomberie Garonne')", timeout=20000)
+
+
+def test_28_import_annonce_avant_d_importer(page):
+    page.click("nav.onglets a[aria-label='Contacts']")
+    page.get_by_role("button", name="Importer").click()
+    fenetre = page.locator("dialog[open]")
+    fenetre.wait_for()
+    assert fenetre.get_by_role("button", name="Importer").is_disabled()
+    fenetre.locator("input[type=file]").set_input_files({"name": "notes.txt", "mimeType": "text/plain", "buffer": b"rien a voir"})
+    fenetre.locator(".refus").wait_for()
+    assert "non reconnu" in fenetre.locator(".refus").inner_text()
+    carte = "BEGIN:VCARD\r\nVERSION:3.0\r\nN:Essai;Import;;;\r\nFN:Import Essai\r\nTEL:+33 6 01 02 03 04\r\nEND:VCARD\r\n"
+    fenetre.locator("input[type=file]").set_input_files({"name": "un.vcf", "mimeType": "text/vcard", "buffer": carte.encode()})
+    fenetre.locator(".reconnu").wait_for()
+    assert "1 fiche(s)" in fenetre.locator(".reconnu").inner_text()
+    fenetre.get_by_role("button", name="Fermer").click()                        # on n'importe pas : rien n'a été ajouté
+    page.wait_for_function("!document.querySelector('dialog[open]')")
+
+
+def test_28_supprimer_une_fiche_demande_toujours_confirmation(page):
+    base = page.url.split("#")[0]
+    page.goto(base + "#/contacts/F-18")
+    page.get_by_role("button", name="Modifier les informations").click()
+    page.get_by_role("button", name="Supprimer cette fiche…").click()
+    confirmation = page.get_by_role("alertdialog", name="Confirmer la suppression")
+    assert "Sophie" in confirmation.inner_text() and "iPhone" in confirmation.inner_text()
+    confirmation.get_by_role("button", name="Garder la fiche").click()            # on peut toujours renoncer
+    assert page.get_by_role("alertdialog").count() == 0
+    page.get_by_role("button", name="Supprimer cette fiche…").click()
+    page.get_by_role("alertdialog").get_by_role("button", name="Supprimer définitivement").click()
+    page.wait_for_selector(".message >> text=supprimée d'iCloud")
+    assert "#/contacts" in page.url and "F-18" not in page.url
+    # « Annuler » la remet (le serveur est partagé entre PC et iPhone : la fiche doit revenir)
+    page.locator(".message").get_by_role("button", name="Annuler").click()
+    page.wait_for_selector(".message >> text=Annulé")
+    page.goto(base + "#/contacts/F-18")
+    page.wait_for_selector("h1:has-text('Sophie')")

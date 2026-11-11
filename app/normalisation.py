@@ -487,8 +487,15 @@ def normaliser_fiche(fiche: dict, region: str = "FR") -> dict:
     f = completer(fiche)
     f["prenom"] = formater_prenom(f["prenom"])
     f["nom"] = formater_nom(f["nom"])
-    for cle in ("surnom", "societe", "fonction"):
+    for cle in ("surnom", "societe", "fonction", "service", "prononciation_prenom", "prononciation_nom"):
         f[cle] = " ".join(str(f[cle] or "").split())
+    for cle, nom_champ in (("fete", "Fête"), ("mariage", "Mariage"), ("deces", "Décès")):
+        saisi = str(f[cle] or "").strip()
+        f[cle] = anniversaire(saisi) if saisi else ""
+        if saisi and not f[cle]:
+            raise ValeurInvalide(f"{nom_champ} « {saisi} » non reconnue : écris par exemple 15/03/1985 ou 15 mars.")
+        if cle == "fete" and len(f[cle]) == 10:
+            f[cle] = "--" + f[cle][5:]
     f["notes"] = note(f["notes"])
     saisi = str(f["anniversaire"] or "").strip()
     f["anniversaire"] = anniversaire(saisi) if saisi else ""

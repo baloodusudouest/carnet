@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 from . import images
-from .modele import GROUPE_VERIFIES
+from .modele import DATES_LIBELLEES, GROUPE_VERIFIES
 
 TEL = {"mobile": "type=CELL;type=VOICE", "domicile": "type=HOME;type=VOICE",
        "travail": "type=WORK;type=VOICE", "principal": "type=MAIN", "autre": "type=OTHER;type=VOICE"}
@@ -57,8 +57,12 @@ def vcard(fiche: dict, uid: str, photo: tuple[bytes, str] | None = None,
         l.append("X-ABShowAs:COMPANY")
     if fiche.get("surnom"):
         l.append(f"NICKNAME:{echapper(fiche['surnom'])}")
-    if societe:
-        l.append(f"ORG:{echapper(societe)};")
+    if societe or fiche.get("service"):
+        l.append(f"ORG:{echapper(societe)};{echapper(fiche.get('service') or '')}")
+    if fiche.get("prononciation_prenom"):
+        l.append(f"X-PHONETIC-FIRST-NAME:{echapper(fiche['prononciation_prenom'])}")
+    if fiche.get("prononciation_nom"):
+        l.append(f"X-PHONETIC-LAST-NAME:{echapper(fiche['prononciation_nom'])}")
     if fiche.get("fonction"):
         l.append(f"TITLE:{echapper(fiche['fonction'])}")
     annif = fiche.get("anniversaire", "")
@@ -97,6 +101,8 @@ def vcard(fiche: dict, uid: str, photo: tuple[bytes, str] | None = None,
     for r in fiche.get("noms_associes", []):
         etiquette("X-ABRELATEDNAMES", echapper(r["valeur"]),
                   f"_$!<{RELATIONS.get(r.get('type', 'autre'), 'Other')}>!$_")
+    for ligne_date, libelle in lignes_dates(fiche):
+        etiquette(*ligne_date, libelle)
     if fiche.get("notes"):
         l.append(f"NOTE:{echapper(fiche['notes'])}")
     groupes = list(fiche.get("groupes", [])) + ([GROUPE_VERIFIES] if verifie else [])
@@ -109,6 +115,21 @@ def vcard(fiche: dict, uid: str, photo: tuple[bytes, str] | None = None,
     l.append(f"UID:{uid}")
     l.append("END:VCARD")
     return "\r\n".join(plier(x) for x in l) + "\r\n"
+
+
+def lignes_dates(fiche: dict, champs=None) -> list[tuple[tuple[str, str], str]]:
+    """Dates supplémentaires à écrire : [((propriété, valeur), libellé)]. Une date sans année
+    s'écrit comme le fait l'iPhone : an 1604 et paramètre X-APPLE-OMIT-YEAR."""
+    res = []
+    for champ, libelle in DATES_LIBELLEES.items():
+        d = fiche.get(champ) or ""
+        if champs is not None and champ not in champs:
+            continue
+        if len(d) == 10:
+            res.append((("X-ABDATE", d), libelle))
+        elif d.startswith("--") and len(d) == 7:
+            res.append((("X-ABDATE;X-APPLE-OMIT-YEAR=1604", f"1604-{d[2:]}"), libelle))
+    return res
 
 
 def ecrire_atomique(chemin: Path, texte: str) -> None:

@@ -64,6 +64,38 @@ def annuler(c: Carnet, jeton: str) -> dict:
         return icloud.annuler(c, jeton)
 
 
+# Ce que carnet sait d'une fiche en dehors de sa carte iCloud : retiré avec elle, remis si on annule
+TABLES_D_UNE_FICHE = ("liaisons", "portraits", "affiches", "en_attente", "validations", "exceptions", "deces", "logos_cherches")
+
+
+def supprimer(c: Carnet, uid: str, etag_vu: str | None, confirmation: bool) -> dict:
+    """Suppression d'une fiche demandée par Julien depuis la fiche (2.8). Toujours confirmée : sans
+    `confirmation`, rien n'est fait. La carte est retirée d'iCloud, donc de l'iPhone. « Annuler »
+    la remet pendant 10 secondes ; ensuite, la sauvegarde du jour permet de la remettre (État)."""
+    if confirmation is not True:
+        raise ErreurCarnet("Suppression non confirmée : rien n'a été supprimé.")
+    f = c.fiche(uid)
+    ligne = c.base.un("SELECT href, etag, texte FROM fiches WHERE uid = ?", (uid,))
+    if not etag_vu or etag_vu != ligne["etag"]:
+        raise ErreurCarnet("La fiche a changé depuis son affichage : recharge-la avant de la supprimer.")
+    import secrets
+    import time
+    memoire = {t: [dict(l) for l in c.base.tous(f"SELECT * FROM {t} WHERE uid = ?", (uid,))] for t in TABLES_D_UNE_FICHE}
+    with c.ecriture(attendre=5):
+        icloud.supprimer(c, uid, origine="fiche")
+        with c.base.transaction() as cx:
+            for table in TABLES_D_UNE_FICHE:
+                cx.execute(f"DELETE FROM {table} WHERE uid = ?", (uid,))
+            cx.execute("UPDATE linkedin SET uid = NULL WHERE uid = ?", (uid,))
+        c.logos.pop(uid, None)
+        c.oublier()
+    jeton = secrets.token_urlsafe(12)
+    c.annulations[jeton] = {"supprimee": True, "uid": uid, "texte": ligne["texte"], "href": ligne["href"],
+                            "groupes": sorted(f.get("groupes", [])), "memoire": memoire,
+                            "jusqua": time.monotonic() + icloud.DELAI_ANNULER}
+    return {"ok": True, "jeton": jeton, "nom": nom_affiche(f)}
+
+
 def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
     """Réponse à un point de la boîte « À traiter »."""
     p = traiter.trouver(c, ident)
@@ -182,6 +214,18 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
         if action == "pas_lui":
             reseaux.refuser(c, uid, d["service"], d["ext_id"])
             return {"ok": True}
+    if motif in ("mariage", "mariage_different"):
+        from . import famille
+        if action == "sans" and motif == "mariage":
+            return famille.sans_union(c, d["a"], d["b"])
+        if action == "ecrire":
+            reliees = famille._reliees(c)
+            res = famille.ecrire_partout(c, "mariage", str(valeur or ""), [reliees[t] for t in (d["a"], d["b"]) if t in reliees],
+                                         a=d["a"], b=d["b"])
+            return res
+    if motif == "deces_different" and action == "ecrire":
+        from . import famille
+        return famille.ecrire_partout(c, "deces", str(valeur or ""), [uid], treemich=d["treemich"])
     if motif == "doublon" and action == "distincts":
         traiter.ignorer(c, motif, cle)
         return {"ok": True}

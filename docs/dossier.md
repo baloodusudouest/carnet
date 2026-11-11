@@ -1,5 +1,7 @@
 # Dossier de carnet — tel que construit (version 2.6.4), mis à jour pour la 2.6.5
 
+> **Depuis la 2.8.0**, ce dossier n'est plus à jour sur trois points : la complétude (remplacée par les attentes par groupe), la navigation (cinq onglets : Photos et Réglages s'ajoutent) et le schéma (version 3). Voir `docs/2.8-dossier.md`, qui fait foi pour ces sujets jusqu'à la prochaine mise à jour de ce document.
+
 Rédigé le 11/11/2026 à partir du code, sans modifier celui-ci. Six sections, puis la liste des écarts par rapport au socle commun (`baloodusudouest/socle`).
 
 Ce dossier décrit ce qui existe. Ce qui doit changer est dans « Écarts » et dans le plan de la section 6.

@@ -16,8 +16,12 @@
     { cle: 'sites', nom: 'Sites et réseaux', vide: { valeur: '', type: 'site' }, saisie: 'url' },
     { cle: 'noms_associes', nom: 'Noms associés', vide: { valeur: '', type: 'conjoint' }, saisie: 'text' },
   ]
-  const simples = [['prenom', 'Prénom'], ['nom', 'Nom'], ['surnom', 'Surnom'], ['societe', 'Société'], ['fonction', 'Fonction'],
-                   ['anniversaire', 'Anniversaire']]
+  const simples = [['prenom', 'Prénom'], ['nom', 'Nom'], ['prononciation_prenom', 'Prononciation du prénom'],
+                   ['prononciation_nom', 'Prononciation du nom'], ['surnom', 'Surnom'], ['societe', 'Société'],
+                   ['service', 'Service'], ['fonction', 'Fonction'], ['anniversaire', 'Anniversaire'], ['fete', 'Fête'],
+                   ['mariage', 'Mariage ou PACS'], ['deces', 'Décès']]
+  const AIDES = { anniversaire: '15/03/1985, ou 15/03/1900 sans année', fete: '15/08 — vide : celle du calendrier',
+                  mariage: '12/06/2010', deces: '02/01/2020', prononciation_prenom: 'Comme on le dit', service: 'Au sein de la société' }
 
   function ajouter(cle, vide) { fiche[cle] = [...(fiche[cle] || []), { ...vide }] }
   function retirer(cle, i) { fiche[cle] = fiche[cle].filter((_, j) => j !== i) }
@@ -33,7 +37,7 @@
     {#each simples as [cle, nom]}
       <label class:large={cle === 'societe' || cle === 'fonction'}>
         <span class="discret">{nom}</span>
-        <input bind:value={fiche[cle]} placeholder={cle === 'anniversaire' ? '15/03/1985, ou 15/03/1900 sans année' : ''}
+        <input bind:value={fiche[cle]} placeholder={AIDES[cle] || ''}
                autocomplete="off" autocapitalize={cle === 'prenom' || cle === 'nom' ? 'words' : 'sentences'} />
       </label>
     {/each}

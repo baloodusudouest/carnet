@@ -220,18 +220,26 @@ def affiches(c: Carnet) -> list[dict]:
 
 # ------------------------------------------------------------ logos
 
+def garder_logos(c: Carnet, uid: str, trouves: list[dict]) -> None:
+    """Logos en attente d'un choix, gardés en mémoire (au plus 80 fiches : les plus anciennes sortent)."""
+    c.logos.pop(uid, None)
+    c.logos[uid] = trouves
+    while len(c.logos) > 80:
+        c.logos.pop(next(iter(c.logos)))
+
+
 def chercher_logos(c: Carnet, uid: str) -> list[dict]:
     f = c.fiche(uid)
     domaine = logos.domaine_de(f, domaine_pro)
     if not domaine:
         raise ErreurCarnet("Pas de site ni de courriel professionnel dans la fiche : impossible de trouver le logo.")
     trouves = logos.chercher(domaine, transport=c.transports.get("logos"))
-    c._memo[f"logos:{uid}"] = (0, trouves)
+    garder_logos(c, uid, trouves)
     return [{"n": i, "url": x["url"], "largeur": x["largeur"], "hauteur": x["hauteur"]} for i, x in enumerate(trouves)]
 
 
 def _logo(c: Carnet, uid: str, n: int) -> bytes:
-    trouves = (c._memo.get(f"logos:{uid}") or (0, []))[1]
+    trouves = c.logos.get(uid) or []
     if not 0 <= n < len(trouves):
         raise ErreurCarnet("Relance la recherche du logo.")
     return trouves[n]["octets"]

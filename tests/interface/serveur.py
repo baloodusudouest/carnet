@@ -24,6 +24,12 @@ def preparer(dossier: Path) -> tuple[Carnet, FauxICloud]:
     vcf = (DONNEES / "icloud.vcf").read_text(encoding="utf-8") + PAUL
     for i, nom in enumerate(PRENOMS):
         vcf += carte_simple(f"F-{i:02d}", nom, f"TEL;type=CELL:+33 6 {10 + i} 20 30 40\r\n")
+    # 2.8 : des groupes, pour que les attentes produisent des manques (photo, naissance, Immich…)
+    def groupe(uid, nom, membres):
+        return ("BEGIN:VCARD\r\nVERSION:3.0\r\nN:" + nom + "\r\nFN:" + nom + "\r\nX-ADDRESSBOOKSERVER-KIND:group\r\n"
+                + "".join(f"X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:{m}\r\n" for m in membres) + f"UID:{uid}\r\nEND:VCARD\r\n")
+    vcf += groupe("GGGG-AMIS", "Amis", [f"F-{i:02d}" for i in range(0, 12)])
+    vcf += groupe("GGGG-CLIENTS", "Clients", ["CCCC-3333", "F-20", "F-21"])
     ic = FauxICloud(vcf)
     services = {"icloud": ic, "immich": FauxImmich(), "treemich": FauxTreemich(),
                 "synology": FauxICloud("", utilisateur="carnet", mot_de_passe="syno")}

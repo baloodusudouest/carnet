@@ -157,11 +157,42 @@ def ha_personnes(c: Carnet) -> dict:
 
 
 def ha_anniversaires(c: Carnet) -> dict:
+    """Naissances, et depuis la 2.8 les mariages (clé « mariages »). Une personne décédée n'est
+    plus annoncée ; un couple divorcé non plus."""
+    from . import attentes, famille
+    morts, divorces = attentes.decedes(c), famille.divorces(c)
+    personnes = [p for p in contacts_ha(c) if p["carnet_id"] not in morts]
     entrees = [{"nom": p["nom"], "jour": p["jour"], "mois": p["mois"], "annee": p["annee"], "immich": bool(p["immich_id"])}
-               for p in contacts_ha(c) if p["jour"]]
+               for p in personnes if p["jour"]]
     liste = anniversaires.assembler(entrees)
-    log.info("HA anniversaires : %d entrée(s)", len(liste))
-    return {"genere_le": iso(maintenant()), "nombre": len(liste), "anniversaires": liste}
+    fiches = c.fiches()
+    mariages = []
+    for p in personnes:
+        lue = anniversaires.analyser(fiches[p["carnet_id"]].get("mariage"))
+        if lue and p["carnet_id"] not in divorces:
+            mariages.append({"nom": p["nom"], "jour": lue[0], "mois": lue[1], "annee": lue[2], "immich": bool(p["immich_id"])})
+    mariages = anniversaires.assembler(mariages)
+    log.info("HA anniversaires : %d naissance(s), %d mariage(s)", len(liste), len(mariages))
+    return {"genere_le": iso(maintenant()), "nombre": len(liste), "anniversaires": liste, "mariages": mariages}
+
+
+def ha_fetes(c: Carnet) -> dict:
+    """Fêtes des contacts dont un groupe attend la fête (case du tableau des attentes). La date
+    est celle de la carte, sinon celle du calendrier : l'annonce n'attend pas l'écriture dans iCloud."""
+    from . import attentes
+    morts, tableau, fiches = attentes.decedes(c), attentes.par_groupe(c), c.fiches()
+    entrees = []
+    for p in contacts_ha(c):
+        f = fiches[p["carnet_id"]]
+        if p["carnet_id"] in morts or "fete" not in attentes.attendues(f, tableau):
+            continue
+        lue = anniversaires.analyser(attentes.fete_de(f)[0])
+        if lue:
+            entrees.append({"nom": p["nom"], "prenom": p["prenom"], "jour": lue[0], "mois": lue[1], "annee": None,
+                            "immich": bool(p["immich_id"])})
+    liste = anniversaires.assembler(entrees)
+    log.info("HA fêtes : %d entrée(s)", len(liste))
+    return {"genere_le": iso(maintenant()), "nombre": len(liste), "fetes": liste}
 
 
 def ha_invite(c: Carnet, nom: str) -> dict:

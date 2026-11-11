@@ -10,8 +10,10 @@ from .normalisation import CLES, cle_texte
 LIBELLES = {"prenom": "Prénom", "nom": "Nom", "surnom": "Surnom", "societe": "Société", "fonction": "Fonction",
             "anniversaire": "Anniversaire", "notes": "Notes", "telephones": "Téléphones", "courriels": "Courriels",
             "adresses": "Adresses", "sites": "Sites", "noms_associes": "Noms associés", "groupes": "Groupes",
-            "photo": "Photo"}
-CHAMPS = ["prenom", "nom", "surnom", "societe", "fonction", "anniversaire", "telephones", "courriels",
+            "photo": "Photo", "service": "Service", "prononciation_prenom": "Prononciation du prénom",
+            "prononciation_nom": "Prononciation du nom", "fete": "Fête", "mariage": "Mariage", "deces": "Décès"}
+CHAMPS = ["prenom", "nom", "prononciation_prenom", "prononciation_nom", "surnom", "societe", "service", "fonction",
+          "anniversaire", "fete", "mariage", "deces", "telephones", "courriels",
           "adresses", "sites", "noms_associes", "notes", "groupes"]
 
 
@@ -48,7 +50,7 @@ def date_lisible(valeur: str) -> str:
 
 def valeurs(fiche: dict, champ: str) -> list[str]:
     v = fiche.get(champ)
-    if champ == "anniversaire":
+    if champ in ("anniversaire", "fete", "mariage", "deces"):
         return [date_lisible(v)] if v else []
     if champ in CHAMPS_MULTIPLES:
         return [_texte_item(champ, x) for x in v or []]

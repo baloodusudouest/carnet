@@ -729,13 +729,12 @@ from app import completude, reseaux, telegram
 
 
 def test_completude_et_validation(c, services):
+    # 2.8 : ce qui manque dépend des groupes (détail dans test_28_attentes_et_manques)
     r = completude.resume(c)
-    assert set(r["BBBB-2222"]["manques"]) == {"annee", "adresse"}          # date sans année = manquante
-    assert r["CCCC-3333"]["manques"] == ["annee", "adresse"]
-    assert completude.compteurs(c)["annee"] >= 2
+    assert r["BBBB-2222"]["manques"] == [] and r["BBBB-2222"]["total"] == 0     # sans groupe : rien d'attendu
     completude.valider(c, "BBBB-2222")
     assert completude.resume(c)["BBBB-2222"]["statut"] == "valide"
-    assert completude.resume(c)["BBBB-2222"]["score"] == 4
+    assert completude.resume(c)["BBBB-2222"]["score"] == completude.resume(c)["BBBB-2222"]["total"]
     # Une écriture de carnet sur un champ non audité garde la validation
     f = c.fiche("BBBB-2222")
     f["notes"] = "note"
@@ -1453,3 +1452,400 @@ def test_essai_28_une_seule_carte_et_rapport_sans_nom(c, services, tmp_path):
     base_avant = c.cfg.db_path.read_bytes()
     assert isinstance(essai28.fiches_sans_photo(c.cfg.db_path), list)
     assert c.cfg.db_path.read_bytes() == base_avant
+
+
+# ================================================================ 2.8 : champs nouveaux de la carte
+
+CARTE_ESSAI = """BEGIN:VCARD
+VERSION:3.0
+N:Essai;Carnet;;;
+FN:Carnet Essai
+X-PHONETIC-FIRST-NAME:Karnè
+X-PHONETIC-LAST-NAME:Essè
+ORG:Société d'essai;Service d'essai
+item1.X-ABDATE:2010-06-12
+item1.X-ABLabel:_$!<Anniversary>!$_
+item2.X-ABDATE:2011-07-13
+item2.X-ABLabel:Mariage
+item3.X-ABDATE;X-APPLE-OMIT-YEAR=1604:1604-08-15
+item3.X-ABLabel:Fête
+item4.X-ABDATE:2020-01-02
+item4.X-ABLabel:Décès
+NOTE:Carte d'essai.
+UID:carnet-essai-28
+END:VCARD
+"""
+# La même carte après le changement d'une seule date sur l'iPhone (relevé de l'essai du 11/11/2026)
+CARTE_ESSAI_IPHONE = """BEGIN:VCARD
+VERSION:3.0
+N:Essai;Carnet;;;
+FN:Carnet Essai
+X-PHONETIC-FIRST-NAME:Karnè
+X-PHONETIC-LAST-NAME:Essè
+ORG:Société d'essai;Service d'essai
+NOTE:Carte d'essai.
+item1.X-ABDATE;type=pref:2010-06-12
+item1.X-ABLabel:_$!<Anniversary>!$_
+item2.X-ABDATE:2011-07-16
+item2.X-ABLabel:Mariage
+item3.X-ABDATE:1604-08-15
+item3.X-ABLabel:Fête
+item4.X-ABDATE:2020-01-02
+item4.X-ABLabel:Décès
+UID:carnet-essai-28
+END:VCARD
+"""
+
+
+def test_28_champs_nouveaux_lus_par_valeur():
+    from app import fiches as F
+    a, _ = F.lire(CARTE_ESSAI, [])
+    assert (a["service"], a["prononciation_prenom"], a["prononciation_nom"]) == ("Service d'essai", "Karnè", "Essè")
+    assert (a["fete"], a["mariage"], a["deces"]) == ("--08-15", "2011-07-13", "2020-01-02")
+    # Le libellé natif d'Apple (affiché « fête » en français) n'est lu comme rien
+    assert "2010-06-12" not in (a["fete"], a["mariage"], a["deces"], a["anniversaire"])
+    # Après la retouche sur l'iPhone (ordre changé, type=pref, paramètre de l'année retiré) :
+    # seule la date modifiée est vue comme un changement
+    b, _ = F.lire(CARTE_ESSAI_IPHONE, [])
+    assert [d["champ"] for d in F.differences(a, b)] == ["mariage"]
+
+
+def test_28_ecriture_ne_touche_que_le_champ_modifie():
+    from app import export, fiches as F, synchro
+    avant, _ = F.lire(CARTE_ESSAI_IPHONE, [])
+    apres = dict(avant, fete="--12-06", service="Atelier")
+    champs = {d["champ"] for d in F.differences(avant, apres)}
+    assert champs == {"fete", "service"}
+    texte = synchro.remplacer_dates(
+        synchro.assembler_partiel(export.vcard(apres, "carnet-essai-28"), CARTE_ESSAI_IPHONE, champs), apres, champs)
+    relue, _ = F.lire(texte, [])
+    assert (relue["fete"], relue["service"], relue["societe"]) == ("--12-06", "Atelier", "Société d'essai")
+    assert (relue["mariage"], relue["deces"]) == ("2011-07-16", "2020-01-02")
+    # La date au libellé d'Apple, que carnet ne lit pas, est restée dans la carte avec son libellé
+    assert "X-ABDATE;type=pref:2010-06-12" in texte and "_$!<Anniversary>!$_" in texte
+    assert texte.count("X-ABLabel:Fête") == 1 and "1604-08-15" not in texte
+    # Retirer une date la retire de la carte, sans toucher aux autres
+    sans = dict(relue, deces="")
+    texte2 = synchro.remplacer_dates(texte, sans, {"deces"})
+    assert "Décès" not in texte2 and "X-ABLabel:Mariage" in texte2
+    # Une carte neuve porte les champs nouveaux
+    neuve = export.vcard(apres, "X")
+    assert "ORG:Société d'essai;Atelier" in neuve and "X-PHONETIC-FIRST-NAME:Karnè" in neuve
+    assert F.lire(neuve, [])[0]["mariage"] == "2011-07-16"
+
+
+# ================================================================ 2.8 : attentes par groupe et manques
+
+def test_28_attentes_et_manques(c, services):
+    from app import attentes
+    # Tableau de départ inscrit à la première lecture ; jamais réinscrit ensuite
+    t = attentes.tableau(c)
+    urgence = next(g for g in t["groupes"] if g["nom"] == "Urgence")
+    assert urgence["attentes"] == ["telephone"] and urgence["nombre"] == 1
+    assert next(g for g in t["groupes"] if g["nom"] == "Famille")["attentes"] == \
+        ["telephone", "jour", "annee", "photo", "immich", "treemich", "liens", "fete"]
+    assert not next(g for g in t["groupes"] if g["nom"] == "Moi")["attentes"]
+    attentes.regler(c, "Urgence", "telephone", False)
+    assert not attentes.semer(c) and not attentes.par_groupe(c).get("Urgence")
+    # Les attentes des groupes s'additionnent ; l'aperçu ne modifie rien
+    assert attentes.tout(c)["AAAA-1111"]["attendues"] == []
+    vu = attentes.apercu(c, "Urgence", "treemich", True)
+    assert (vu["avant"], vu["apres"]) == (0, 1) and attentes.tout(c)["AAAA-1111"]["attendues"] == []
+    attentes.regler(c, "Urgence", "treemich", True)
+    attentes.regler(c, "Urgence", "immich", True)
+    b = attentes.tout(c)["AAAA-1111"]
+    assert b["manques"] == ["immich", "treemich"] and (b["score"], b["total"]) == (0, 2)
+    assert [(l["cle"], l["nombre"]) for l in attentes.lignes(c)][:2] == [("immich", 1), ("treemich", 1)]
+    assert any(l["cle"] == "sans_groupe" and l["nombre"] >= 2 for l in attentes.lignes(c))
+    # « Normal pour ce contact » : le manque se tait, la jauge monte, et on peut revenir en arrière
+    attentes.excepter(c, "AAAA-1111", "immich")
+    b = attentes.tout(c)["AAAA-1111"]
+    assert b["manques"] == ["treemich"] and b["exceptees"] == ["immich"] and b["score"] == 1
+    assert [(e["uid"], e["info"]) for e in attentes.liste_exceptions(c)] == [("AAAA-1111", "immich")]
+    attentes.excepter(c, "AAAA-1111", "immich", False)
+    assert attentes.tout(c)["AAAA-1111"]["manques"] == ["immich", "treemich"]
+    # Une fiche validée ne manque de rien
+    completude.valider(c, "AAAA-1111")
+    assert attentes.tout(c)["AAAA-1111"]["manques"] == [] and attentes.total(c)["incompletes"] == 0
+    completude.devalider(c, "AAAA-1111")
+    # Une personne décédée non plus
+    c.base.executer("INSERT INTO deces(uid, date, origine, le) VALUES ('AAAA-1111', NULL, 'main', '2026-11-11')")
+    c.oublier()
+    assert attentes.tout(c)["AAAA-1111"]["manques"] == [] and "AAAA-1111" in attentes.decedes(c)
+    # Une fiche d'entreprise n'attend ni naissance, ni fête, ni arbre
+    assert attentes.attendues({"societe": "X", "groupes": ["Famille"]}, attentes.par_groupe(c)) == ["telephone", "photo"]
+    # La fête : celle du calendrier tant que rien n'est écrit ; une date saisie à la main l'emporte
+    assert attentes.fete_de({"prenom": "Claire"}) == ("--08-11", "calendrier")
+    assert attentes.fete_de({"prenom": "Claire", "fete": "--08-11"}) == ("--08-11", "carte")
+    assert attentes.fete_de({"prenom": "Claire", "fete": "--02-03"}) == ("--02-03", "main")
+    assert attentes.fete_de({"prenom": "Zorglub"}) == ("", "")
+
+
+def test_28_memes_nombres_que_la_sonde(c, services):
+    """Le calcul de carnet et celui de la sonde (qui a mesuré les vraies données) concordent."""
+    from app import attentes, sonde28
+    nuit.passer(c, "test")
+    for g, infos in sonde28.ATTENTES.items():           # tableau de la sonde : sans fête ni groupe personnel
+        for k in attentes.INFOS:
+            c.base.executer("DELETE FROM attentes WHERE groupe = ? AND info = ?", (g, k))
+        for k in infos:
+            c.base.executer("INSERT INTO attentes(groupe, info) VALUES (?, ?)", (g, k))
+    c.base.executer("DELETE FROM attentes WHERE groupe NOT IN (%s)" % ",".join("?" * len(sonde28.ATTENTES)), tuple(sonde28.ATTENTES))
+    c.oublier()
+    b = sonde28.sonder_base(c.cfg.db_path)
+    # La sonde ne connaît pas l'exemption des fiches d'entreprise : on compare sur les personnes
+    personnes = {u for u, f in c.fiches().items() if not attentes.est_entreprise(f)}
+    assert personnes
+    for cle in ("telephone", "photo", "societe"):       # informations sans exemption
+        assert sum(1 for x in attentes.tout(c).values() if cle in x["manques"]) == b["total_manques"].get(cle, 0)
+
+
+# ================================================================ 2.8 : fêtes et dates de famille
+
+def _relier_le_couple(c):
+    liaisons.lier(c, "AAAA-1111", "treemich", "t-claire")
+    liaisons.lier(c, "DDDD-4444", "treemich", "t-paul")
+    return liaisons.donnees(c, rafraichir=True)
+
+
+def _ecrire_champ(c, uid, **champs):
+    f = c.fiche(uid)
+    f.update(champs)
+    return actions.valider(c, uid, f, etag_vu=actions._etag(c, uid))
+
+
+def test_28_fetes_eteintes_puis_ecrites(c, services):
+    from app import attentes, famille
+    attentes.regler(c, "Urgence", "fete", True)                       # Claire est dans Urgence
+    prevues = famille.fetes_a_ecrire(c)
+    assert [(a["uid"], a["apres"]) for a in prevues] == [("AAAA-1111", "--08-11")]
+    assert famille.apercu(c)["fetes"]["actif"] is False
+    # Interrupteur éteint : la nuit n'écrit aucune fête
+    avant = len(services["icloud"].ecritures)
+    nuit.passer(c, "test")
+    assert not c.fiche("AAAA-1111").get("fete")
+    assert not any("Fête" in t for _, t in services["icloud"].ecritures[avant:])
+    # Home Assistant l'annonce quand même, d'après le calendrier
+    assert [(e["prenom"], e["jour"], e["mois"]) for e in sorties.ha_fetes(c)["fetes"]] == [("Claire", 11, 8)]
+    # Allumé : écrite avec le libellé « Fête », sans année, et inscrite au journal des écritures automatiques
+    famille.regler(c, "fetes", True)
+    nuit.passer(c, "test")
+    assert c.fiche("AAAA-1111")["fete"] == "--08-11"
+    texte = services["icloud"].texte("AAAA-1111")
+    assert "X-ABLabel:Fête" in texte and "X-APPLE-OMIT-YEAR=1604:1604-08-11" in texte
+    assert "X-ABRELATEDNAMES" in texte and "PHOTO" in texte             # le reste de la carte n'a pas bougé
+    j = famille.journal(c)
+    assert [(x["sujet"], x["service"], x["apres"]) for x in j] == [("fete", "icloud", "--08-11")]
+    assert famille.fetes_a_ecrire(c) == []
+    # Une fête saisie à la main n'est jamais remplacée
+    _ecrire_champ(c, "AAAA-1111", fete="12/08")
+    assert c.fiche("AAAA-1111")["fete"] == "--08-12" and famille.fetes_a_ecrire(c) == []
+    # Défaire coupe l'interrupteur, et refuse si la valeur a changé depuis
+    with pytest.raises(ErreurCarnet):
+        famille.defaire(c, j[0]["id"])
+    _ecrire_champ(c, "AAAA-1111", fete="11/08")
+    famille.defaire(c, j[0]["id"])
+    assert not c.fiche("AAAA-1111").get("fete") and not famille.actif(c, "fetes")
+    assert "Fête" not in services["icloud"].texte("AAAA-1111")
+
+
+def test_28_mariage_rempli_jamais_ecrase(c, services):
+    from app import famille
+    tm = services["treemich"]
+    d = _relier_le_couple(c)
+    # Aucune date nulle part : un point « date manquante », aucune écriture prévue
+    assert famille.examiner(c, d)["actions"] == []
+    assert [p["donnees"]["couple"] for p in points(c, "mariage")] == ["Claire MARTIN et Paul MARTIN"]
+    # « Pas de mariage ni PACS » : la question n'est plus posée, et le filtre retrouve les deux fiches
+    actions.repondre(c, points(c, "mariage")[0]["id"], "sans")
+    assert not points(c, "mariage") and famille.sans_union_declaree(c) == {"AAAA-1111", "DDDD-4444"}
+    famille.sans_union(c, "t-claire", "t-paul", False)
+    # Date saisie sur une seule carte : carnet prévoit de remplir l'autre carte et Treemich
+    _ecrire_champ(c, "AAAA-1111", mariage="12/06/2010")
+    prevues = famille.examiner(c, d)["actions"]
+    assert sorted((a["service"], a["sujet"], a["apres"]) for a in prevues) == \
+        [("icloud", "mariage", "2010-06-12"), ("treemich", "mariage", "2010-06-12")]
+    assert not points(c, "mariage")
+    # Interrupteur éteint : rien ne part
+    nuit.passer(c, "test")
+    assert not tm.mariages and not c.fiche("DDDD-4444").get("mariage")
+    # Allumé : l'autre carte et Treemich sont remplis, avec le libellé « Mariage »
+    famille.regler(c, "famille", True)
+    nuit.passer(c, "test")
+    assert tm.mariages == {("t-claire", "t-paul"): "2010-06-12"}
+    assert c.fiche("DDDD-4444")["mariage"] == "2010-06-12"
+    assert "X-ABLabel:Mariage" in services["icloud"].texte("DDDD-4444") and "X-PERSO:garder" in services["icloud"].texte("DDDD-4444")
+    assert {(x["service"], x["sujet"]) for x in famille.journal(c)} == {("icloud", "mariage"), ("treemich", "mariage")}
+    assert [m["nom"] for m in sorties.ha_anniversaires(c)["mariages"]] != []
+    # Une date effacée d'un côté n'est jamais effacée de l'autre : elle est remise
+    _ecrire_champ(c, "DDDD-4444", mariage="")
+    d = liaisons.donnees(c, rafraichir=True)
+    assert [(a["service"], a["uid"]) for a in famille.examiner(c, d)["actions"]] == [("icloud", "DDDD-4444")]
+    # Deux dates différentes : un point, aucune écriture ; « Ignorer » ne repose pas la question
+    _ecrire_champ(c, "DDDD-4444", mariage="13/06/2010")
+    assert famille.examiner(c, d)["actions"] == []
+    p = points(c, "mariage_different")
+    assert len(p) == 1 and len(p[0]["donnees"]["valeurs"]) == 3
+    actions.repondre(c, p[0]["id"], "ignorer")
+    assert not points(c, "mariage_different")
+    nuit.passer(c, "test")
+    assert c.fiche("DDDD-4444")["mariage"] == "2010-06-13" and tm.mariages[("t-claire", "t-paul")] == "2010-06-12"
+    # Une date change : la question revient ; la réponse écrit la date choisie partout
+    _ecrire_champ(c, "DDDD-4444", mariage="14/06/2010")
+    p = points(c, "mariage_different")
+    actions.repondre(c, p[0]["id"], "ecrire", "12/06/2010")
+    assert c.fiche("DDDD-4444")["mariage"] == c.fiche("AAAA-1111")["mariage"] == "2010-06-12"
+    assert not points(c, "mariage_different")
+    # Divorce lu dans Treemich : l'anniversaire de mariage n'est plus annoncé
+    tm.divorces[("t-claire", "t-paul")] = "2020-01-01"
+    liaisons.donnees(c, rafraichir=True)
+    assert famille.divorces(c) == {"AAAA-1111", "DDDD-4444"} and sorties.ha_anniversaires(c)["mariages"] == []
+
+
+def test_28_treemich_qui_ne_garde_pas_coupe_l_interrupteur(c, services):
+    from app import famille
+    d = _relier_le_couple(c)
+    _ecrire_champ(c, "AAAA-1111", mariage="12/06/2010")
+    _ecrire_champ(c, "DDDD-4444", mariage="12/06/2010")
+    famille.regler(c, "famille", True)
+    services["treemich"].oublie = True
+    nuit.passer(c, "test")
+    assert not famille.actif(c, "famille")
+    assert any("coupé" in x["message"] for x in c.base.journal("automatique"))
+
+
+def test_28_deces_croix_et_silence(c, services):
+    from app import attentes, famille
+    tm = services["treemich"]
+    d = _relier_le_couple(c)
+    attentes.regler(c, "Urgence", "treemich", True)
+    attentes.regler(c, "Urgence", "courriel", True)
+    # Date de décès saisie sur l'iPhone (libellé « Décès ») : la fiche est décédée dès la lecture
+    ic = services["icloud"]
+    ic.modifier_sur_iphone("DDDD-4444", ic.texte("DDDD-4444").replace(
+        "UID:", "item9.X-ABDATE:2024-02-03\r\nitem9.X-ABLabel:Décès\r\nUID:"))
+    with c.ecriture():
+        icloud.relire(c)
+    assert c.fiche("DDDD-4444")["deces"] == "2024-02-03" and "DDDD-4444" in attentes.decedes(c)
+    assert completude.resume(c)["DDDD-4444"]["decede"] is True
+    assert "Paul MARTIN" not in [a["nom"] for a in sorties.ha_anniversaires(c)["anniversaires"]]
+    # Prévu vers Treemich ; écrit seulement interrupteur allumé, et une fiche en relecture n'est pas touchée
+    assert [(a["service"], a["sujet"], a["apres"]) for a in famille.examiner(c, d)["actions"]
+            if a["sujet"] == "deces"] == [("treemich", "deces", "2024-02-03")]
+    famille.regler(c, "famille", True)
+    nuit.passer(c, "test")
+    assert tm.deces == {"t-paul": "2024-02-03"}
+    # Dans l'autre sens : un décès de l'arbre rejoint la carte iCloud
+    tm.deces["t-claire"] = "2025-05-06"
+    nuit.passer(c, "test")
+    assert c.fiche("AAAA-1111")["deces"] == "2025-05-06" and "X-ABLabel:Décès" in ic.texte("AAAA-1111")
+    assert attentes.tout(c)["AAAA-1111"]["manques"] == []
+    # Treemich muet : le dernier état connu est gardé
+    tm.muet = True
+    c.treemich().connecte = True
+    liaisons.donnees(c, rafraichir=True)
+    assert "AAAA-1111" in attentes.decedes(c)
+    tm.muet = False
+    # Case « décédé(e) » sans date, propre à carnet
+    assert famille.marquer_decede(c, "BBBB-2222", True)["decede"] is True
+    assert attentes.decedes(c)["BBBB-2222"] == ""
+    assert famille.marquer_decede(c, "BBBB-2222", False)["decede"] is False
+
+
+# ================================================================ 2.8 : Photos, logo déposé, import unique
+
+def _png(cote=200, couleur=(200, 60, 40)):
+    import io
+    from PIL import Image
+    s = io.BytesIO()
+    Image.new("RGB", (cote, cote), couleur).save(s, "PNG")
+    return s.getvalue()
+
+
+def test_28_logo_depose_et_files_photos(c, services):
+    import base64
+    from app import galerie
+    f = galerie.files(c)
+    assert [x["uid"] for x in f["files"]["logos"]] == ["CCCC-3333"]            # société sans photo
+    assert f["files"]["logos"][0]["domaine"] is False and "google.com/search?tbm=isch" in f["files"]["logos"][0]["google"]
+    # Fichier déposé : il devient le candidat n° 0, rien n'est écrit tant qu'on ne l'a pas choisi
+    avant = len(services["icloud"].ecritures)
+    r = galerie.deposer_logo(c, "CCCC-3333", contenu=_png())
+    assert r["n"] == 0 and r["largeur"] == 200 and len(services["icloud"].ecritures) == avant
+    assert photos.apercu_logo(c, "CCCC-3333", 0)[:4] == b"\x89PNG"
+    # Image glissée depuis une recherche d'images : souvent une adresse « data: »
+    galerie.deposer_logo(c, "CCCC-3333", url="data:image/png;base64," + base64.b64encode(_png()).decode())
+    # Refus : pas une image, trop petite, adresse du réseau local, autre protocole
+    for mauvais in (dict(contenu=b"<html>pas une image</html>"), dict(contenu=_png(20)),
+                    dict(url="data:text/html;base64,PGI+"), dict(url="ftp://exemple.fr/logo.png")):
+        with pytest.raises(ErreurCarnet):
+            galerie.deposer_logo(c, "CCCC-3333", **mauvais)
+    for locale in ("http://127.0.0.1/logo.png", "http://192.168.1.10:8096/api/etat", "http://localhost/x.png"):
+        with pytest.raises(ErreurCarnet):
+            galerie.telecharger_image(locale)
+    # Une redirection vers le réseau local est refusée elle aussi
+    def repond(r):
+        return httpx.Response(302, headers={"location": "http://192.168.1.1/secret.png"})
+    def verifier(url):
+        if "192.168" in url:
+            raise ErreurCarnet("réseau local")
+    with pytest.raises(ErreurCarnet):
+        galerie.telecharger_image("https://exemple.fr/logo.png", transport=httpx.MockTransport(repond), verifier=verifier)
+    # Lot : le logo coché est posé en photo, la fiche quitte la file
+    galerie.deposer_logo(c, "CCCC-3333", contenu=_png())
+    bilan = galerie.poser_logos(c, [{"uid": "CCCC-3333", "n": 0}])
+    assert bilan["faits"] == 1 and c.fiches()["CCCC-3333"]["a_photo"]
+    assert galerie.files(c)["files"]["logos"] == []
+
+
+def test_28_lots_photos_refuses_en_lecture_seule(c, services):
+    from app import galerie
+    from app.garde import LectureSeule
+    import dataclasses
+    c.cfg = dataclasses.replace(c.cfg, lecture_seule=True)
+    for lot in (lambda: galerie.poser_portraits(c, ["AAAA-1111"]), lambda: galerie.poser_logos(c, [{"uid": "CCCC-3333", "n": 0}]),
+                lambda: galerie.preparer_affiches(c, ["AAAA-1111"])):
+        with pytest.raises(LectureSeule):
+            lot()
+
+
+def test_28_passage_de_version_relit_les_cartes_en_base(c, services):
+    """Une date « Mariage » posée sur l'iPhone avant la 2.8 est connue dès le démarrage, sans point
+    « modifiée sur l'iPhone », et carnet ne la remplace donc jamais par une autre."""
+    texte = services["icloud"].texte("DDDD-4444").replace("UID:", "item7.X-ABDATE:2009-09-19\r\nitem7.X-ABLabel:Mariage\r\nUID:")
+    ancienne = {k: v for k, v in c.fiche("DDDD-4444").items() if k not in ("a_photo", "mariage", "fete", "deces", "service",
+                                                                        "prononciation_prenom", "prononciation_nom")}
+    c.base.executer("UPDATE fiches SET texte = ?, fiche = ? WHERE uid = 'DDDD-4444'", (texte, json.dumps(ancienne)))
+    c.oublier()
+    assert not c.fiche("DDDD-4444").get("mariage")
+    avant = len(points(c))
+    assert icloud.reanalyser(c) >= 1 and c.fiche("DDDD-4444")["mariage"] == "2009-09-19"
+    assert len(points(c)) == avant and icloud.reanalyser(c) == 0            # une seule fois, rien de signalé
+
+
+def test_28_supprimer_une_fiche_toujours_confirmee(c, services):
+    ic = services["icloud"]
+    liaisons.lier(c, "DDDD-4444", "treemich", "t-paul")
+    etag = actions._etag(c, "DDDD-4444")
+    texte = ic.texte("DDDD-4444")
+    # Sans confirmation, ou avec une version dépassée : rien n'est supprimé
+    for confirmation, version in ((False, etag), (None, etag), ("oui", etag), (True, "ancien"), (True, None)):
+        with pytest.raises(ErreurCarnet):
+            actions.supprimer(c, "DDDD-4444", version, confirmation)
+    assert ic.texte("DDDD-4444") == texte and "DDDD-4444" in c.fiches()
+    # Confirmée : la carte quitte iCloud et carnet, ses liaisons sont oubliées
+    res = actions.supprimer(c, "DDDD-4444", etag, True)
+    assert res["nom"] == "Paul MARTIN" and ic.texte("DDDD-4444") is None and "DDDD-4444" not in c.fiches()
+    assert not c.base.un("SELECT 1 FROM liaisons WHERE uid = 'DDDD-4444'")
+    assert not services["treemich"].ecrits                                   # rien n'est supprimé dans Treemich
+    # « Annuler » dans les 10 secondes : la carte revient à l'identique, avec sa liaison
+    actions.annuler(c, res["jeton"])
+    assert "X-PERSO:garder" in ic.texte("DDDD-4444") and c.fiche("DDDD-4444")["nom"] == "MARTIN"
+    assert c.liaisons()["DDDD-4444"]["treemich"] == "t-paul"
+    # En lecture seule, la suppression est refusée
+    import dataclasses
+    from app.garde import LectureSeule
+    c.cfg = dataclasses.replace(c.cfg, lecture_seule=True)
+    with pytest.raises(LectureSeule):
+        actions.supprimer(c, "DDDD-4444", actions._etag(c, "DDDD-4444"), True)
+    assert ic.texte("DDDD-4444")

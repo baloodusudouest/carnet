@@ -28,8 +28,8 @@
     { cle: 'reseaux', nom: 'Réseaux', icone: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.9l7.6-3.8M8.2 13.1l7.6 3.8"/>',
       resume: (e) => `${Object.values(e.reseaux).reduce((n, r) => n + r.liees, 0)} fiche(s) liée(s)`,
       alerte: (e) => ['telegram', 'linkedin'].some((k) => e.sante?.[k]?.etat === 'erreur') },
-    { cle: 'completude', nom: 'Complétude', icone: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 8 8h-8z"/>',
-      resume: (e) => `${e.statut.completude?.validees ?? 0} validée(s), ${e.statut.completude?.a_revoir ?? 0} à revoir`,
+    { cle: 'completude', nom: 'Manques', icone: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 8 8h-8z"/>',
+      resume: (e) => `${e.statut.completude?.incompletes ?? 0} fiche(s) incomplète(s)`,
       alerte: (e) => !!e.statut.completude?.a_revoir },
     { cle: 'services', nom: 'Services', icone: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>',
       resume: (e) => {
@@ -364,12 +364,10 @@
 
     {#if section === 'completude'}
     <div class="feuille bloc">
-      <h2 class="titre">Complétude</h2>
+      <h2 class="titre">Manques</h2>
+      <p class="discret">Ce que les groupes attendent et qui n'est pas sur la fiche. Les attentes se règlent dans <a class="lien" href="#/reglages">Réglages</a> ; les lignes s'ouvrent depuis « À traiter ».</p>
       <dl>
-        <dt>Sans année</dt><dd>{e.statut.completude.annee}</dd>
-        <dt>Sans adresse</dt><dd>{e.statut.completude.adresse}</dd>
-        <dt>Sans téléphone</dt><dd>{e.statut.completude.telephone}</dd>
-        <dt>Sans moyen de contact</dt><dd>{e.statut.completude.contact}</dd>
+        {#each e.statut.completude.lignes || [] as l}<dt>{l.libelle}</dt><dd>{l.nombre}</dd>{/each}
         <dt>Validées</dt><dd>{e.statut.completude.validees}</dd>
         <dt>À revoir</dt><dd>{e.statut.completude.a_revoir}</dd>
       </dl>
@@ -428,6 +426,7 @@
 </section>
 
 <style>
+  .lien { text-decoration: underline; text-underline-offset: 3px; }
   /* Tuiles bento : la taille dit l'importance. « iCloud et la nuit » occupe deux colonnes. */
   .tuiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
   .tuiles .tuile:first-child { grid-column: span 2; }
