@@ -135,7 +135,7 @@
   .sommaire { position: sticky; top: 1rem; max-height: calc(100dvh - 9rem); overflow-y: auto; display: grid; gap: 2px; }
   .sommaire button { width: 100%; display: grid; text-align: left; padding: 0.5rem 0.75rem; border-radius: 8px; }
   .sommaire button:hover { background: var(--color-reliure); }
-  .sommaire button[aria-current] { background: var(--color-reliure); }
+  .sommaire button[aria-current] { background: var(--color-reliure); box-shadow: inset 3px 0 0 var(--color-onglet); }
   .sommaire .titre { font-size: 0.95rem; }
   .sommaire .motif { color: var(--color-mine); font-size: 0.82rem; }
   .detail { position: sticky; top: 1rem; }

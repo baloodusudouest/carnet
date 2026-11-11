@@ -1,17 +1,18 @@
 @import "tailwindcss";
 
-/* Habillage du socle (2.7.0) : minimalisme. Du texte, des filets fins, de l'espace ; l'ocre de
-   carnet ne sert qu'à ce qui demande l'attention (compteur, motif d'un point, valeur modifiée).
+/* Habillage du socle (2.7.0) : minimalisme chaleureux. Du texte, des filets fins, de l'espace,
+   sur des neutres teintés vers l'ocre de carnet. L'ocre porte l'action attendue (bouton plein),
+   le filtre actif et ce qui demande l'attention (compteur, motif d'un point, valeur modifiée).
    Sombre par défaut, clair quand l'appareil le demande. Les noms des couleurs sont ceux de
    l'ancien thème (cuir, papier…) pour ne toucher qu'à leurs valeurs. */
 @theme {
-  --color-cuir: #0f0f10;        /* fond */
-  --color-reliure: #19191b;     /* surfaces discrètes (survol, sélection, rail) */
-  --color-couture: #2a2a2d;     /* filets */
-  --color-tranche: #404045;     /* bordures actives */
-  --color-champ: #73737a;       /* bord des champs (contraste ≥ 3:1 sur le fond) */
-  --color-papier: #f2f2f0;      /* texte principal */
-  --color-mine: #9c9ca3;        /* texte secondaire */
+  --color-cuir: #151311;        /* fond : anthracite chaud */
+  --color-reliure: #1f1c19;     /* surfaces discrètes (survol, sélection) */
+  --color-couture: #312c27;     /* filets */
+  --color-tranche: #4b443c;     /* bordures actives */
+  --color-champ: #82776b;       /* bord des champs (contraste ≥ 3:1 sur le fond) */
+  --color-papier: #f2ece2;      /* texte principal */
+  --color-mine: #a89e91;        /* texte secondaire */
   --color-onglet: #d9a441;      /* accent : l'ocre de carnet */
   --color-sur-onglet: #23190a;  /* texte posé sur l'ocre */
   --color-valide: #7fc493;
@@ -28,9 +29,9 @@
      assombri pour rester lisible sur fond clair. */
   @media (prefers-color-scheme: light) {
     :root {
-      --color-cuir: #fcfcfb; --color-reliure: #f3f3f1; --color-couture: #e3e3df; --color-tranche: #c6c6c1;
-      --color-champ: #85858a; --color-papier: #161617; --color-mine: #68686e;
-      --color-onglet: #a8760f; --color-sur-onglet: #ffffff;
+      --color-cuir: #faf7f2; --color-reliure: #f1ece3; --color-couture: #e3dbcd; --color-tranche: #cabfad;
+      --color-champ: #8c8275; --color-papier: #1e1a16; --color-mine: #6f665b;
+      --color-onglet: #96690c; --color-sur-onglet: #ffffff;
       --color-valide: #2f7d4a; --color-alerte: #c0392b; --color-ombre: rgb(30 30 40 / 0.16);
     }
     html { color-scheme: light; }
@@ -62,16 +63,17 @@
   }
   .bouton:hover { background: var(--color-reliure); }
   .bouton:disabled { opacity: 0.45; cursor: not-allowed; }
-  /* Le bouton plein est neutre (texte sur fond inversé) : un seul par bloc, l'action attendue */
-  .bouton-principal { background: var(--color-papier); border-color: var(--color-papier); color: var(--color-cuir); font-weight: 600; }
-  .bouton-principal:hover { background: color-mix(in srgb, var(--color-papier) 86%, var(--color-cuir)); border-color: transparent; }
+  /* Le bouton plein est en ocre : un seul par bloc, l'action attendue */
+  .bouton-principal { background: var(--color-onglet); border-color: var(--color-onglet); color: var(--color-sur-onglet); font-weight: 600; }
+  .bouton-principal:hover { background: color-mix(in srgb, var(--color-onglet) 88%, var(--color-papier)); border-color: transparent; }
   .bouton-danger { border-color: color-mix(in srgb, var(--color-alerte) 60%, transparent); color: var(--color-alerte); }
   .pastille {
     display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2rem; padding: 0 0.85rem;
     border-radius: 9999px; border: 1px solid var(--color-couture); color: var(--color-mine); font-size: 0.875rem;
     transition: background-color 0.15s ease, color 0.15s ease;
   }
-  .pastille[aria-pressed="true"] { border-color: var(--color-papier); color: var(--color-cuir); background: var(--color-papier); }
+  .pastille[aria-pressed="true"] { border-color: var(--color-onglet); color: var(--color-papier);
+    background: color-mix(in srgb, var(--color-onglet) 16%, transparent); }
   /* Titres : fins et serrés en grand (signature du socle), plus fermes en petit */
   .titre { font-family: var(--font-sans); font-weight: 600; letter-spacing: -0.015em; }
   h1.titre { font-weight: 300; letter-spacing: -0.035em; }
