@@ -347,7 +347,8 @@ def test_28_manques_dans_a_traiter_ouvrent_la_liste(page):
 def test_28_reglages_une_case_annonce_puis_change_les_manques(page):
     ouvrir_service(page, "Attentes")                                 # 2.9 : le tableau est dans Connexion
     page.wait_for_selector("text=Ce que chaque groupe doit avoir")
-    if page.locator("details.groupe").count():                                  # iPhone : un groupe à la fois
+    page.wait_for_selector("details.groupe, input[aria-label='Clients : Adresse']", state="attached")   # tableau chargé
+    if page.viewport_size["width"] < 900:                                       # iPhone : un groupe à la fois
         page.locator("details.groupe", has_text="Clients").locator("summary").click()
         case = page.locator("details.groupe", has_text="Clients").get_by_label("Adresse")
     else:
