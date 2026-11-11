@@ -404,3 +404,19 @@ def test_28_supprimer_une_fiche_demande_toujours_confirmation(page):
     page.wait_for_selector(".message >> text=Annulé")
     page.goto(base + "#/contacts/F-18")
     page.wait_for_selector("h1:has-text('Sophie')")
+
+
+def test_282_societe_ecrite_de_plusieurs_facons(page):
+    page.wait_for_selector("article.point")
+    point = page.locator("article.point", has_text="Société écrite de plusieurs façons")
+    if not point.count():
+        if page.locator(".sommaire button", has_text="Société écrite de plusieurs façons").count():   # PC : sommaire à gauche
+            page.locator(".sommaire button", has_text="Société écrite de plusieurs façons").click()
+            point = page.locator("article.point", has_text="Société écrite de plusieurs façons")
+        else:
+            pytest.skip("déjà harmonisée par l'autre appareil (serveur partagé)")
+    assert point.get_by_label("Atelier Dupont", exact=False).count() >= 2
+    bouton = point.get_by_role("button", name="Écrire sur 1 fiche")
+    assert bouton.is_enabled()
+    bouton.click()
+    page.wait_for_selector(".message >> text=écrit sur 1 fiche")

@@ -24,7 +24,7 @@ TITRES = {
     "emoji": "Groupe par émoji", "liaison": "Liaison à confirmer", "date": "Date de naissance à trancher",
     "nom": "Nom à reporter", "relations": "Liens familiaux", "reseau": "Réseau à rattacher",
     "mariage": "Date de mariage manquante", "mariage_different": "Dates de mariage différentes",
-    "deces_different": "Dates de décès différentes",
+    "deces_different": "Dates de décès différentes", "societe": "Société écrite de plusieurs façons",
 }
 ORDRE = list(TITRES)
 ENREGISTRES = {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit", "import", "linkedin", "reseau"}
@@ -69,6 +69,9 @@ def calcules(c) -> list[dict]:
             point("forme", uid, f"{uid}|{empreinte(ecarts)}", {"ecarts": ecarts})
         for m in normalisation.emojis_sans_groupe(f):
             point("emoji", uid, f"{uid}|{m['groupe']}", m)
+    from . import societes
+    for p in societes.points(c):
+        point(p["motif"], p["uid"], p["cle"], p["donnees"])
     d = c.memo_present("liens", liaisons.DUREE_CACHE)
     if d:
         for p in liaisons.propositions(c, d):
@@ -97,6 +100,8 @@ def liste(c) -> list[dict]:
         elif p["motif"] == "import":
             f = p["donnees"].get("fiche")
         p["nom"] = nom_affiche(f) if f else "(contact inconnu)"
+        if p["motif"] == "societe":
+            p["nom"] = p["donnees"]["variantes"][0]["nom"]     # le point porte le nom de la société, pas d'une fiche
         p["titre"] = TITRES.get(p["motif"], p["motif"])
         p["id"] = f"{p['motif']}:{p['cle']}"
         if p["motif"] == "doublon":

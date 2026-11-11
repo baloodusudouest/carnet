@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.8.2 — 11 novembre 2026
+- **Sociétés écrites de plusieurs façons** : « aquitaineenergie », « aquitaineÉnergie », « AQUITAINEENERGIE », « Aquitaine Énergie SA »… carnet les rapproche et ajoute un point dans « À traiter » (famille Sociétés). Tu choisis l'écriture à garder, ou tu en tapes une autre ; le bouton dit combien de fiches changeront, puis carnet l'écrit dans iCloud, 20 fiches au plus par réponse (le point revient s'il en reste). Seul le nom de la société change : le service et le reste de la carte ne bougent pas.
+- Le rapprochement ignore majuscules, accents, espaces, traits d'union, points et formes juridiques en fin de nom (SA, SAS, SARL…). Quand les écritures diffèrent par plus que les majuscules et les accents, le point demande de vérifier que c'est bien la même société. « Pas la même société » ne repose plus la question.
+- Rien n'est écrit sans ta réponse. Tests : 100 du back, 25 d'interface.
+
 ## 2.8.1 — 11 novembre 2026
 - **Logo par société** : dans Photos, la file Logos montre une ligne par société, avec le nombre de fiches sans photo. Le logo choisi (glissé, collé, ou trouvé sur le site) est posé sur **toutes les fiches sans photo de la société**, par lots de 20, et gardé : une fiche de la même société créée plus tard le retrouve, prêt à poser sans nouveau dépôt.
 - **Une photo n'est jamais remplacée par un logo** : une fiche qui a déjà une photo, ou qui est reliée à Immich (elle aura un portrait), n'entre pas dans la file.

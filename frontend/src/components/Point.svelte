@@ -11,6 +11,12 @@
   let date = $state(FAMILLE.includes(point.motif) ? (point.donnees.valeurs?.[0]?.date || '')
     : Object.values(point.donnees.valeurs || {}).find((v) => v) || '')
   let saisie = $state('')   // date de mariage tapée (JJ/MM/AAAA)
+  // Société écrite de plusieurs façons : l'écriture la plus fréquente est proposée, on peut en taper une autre
+  let ecriture = $state(point.donnees.variantes?.[0]?.nom || '')
+  let autre = $state('')
+  const retenue = $derived(ecriture === '__autre' ? autre.trim() : ecriture)
+  const aChanger = $derived(point.motif === 'societe'
+    ? d.fiches - (d.variantes.find((v) => v.nom === retenue)?.nombre || 0) : 0)
   const d = point.donnees
 
   const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -44,8 +50,8 @@
     try {
       const res = await api.post(`/api/a-traiter/${encodeURIComponent(point.id)}`, { action, valeur })
       ontraite(point)
-      if (res?.jeton || res?.etag || res?.uid) await apresEcriture(res, messageOk || 'Écrit dans iCloud.')
-      else dire(messageOk || 'C\'est noté.')
+      if (res?.jeton || res?.etag || res?.uid) await apresEcriture(res, res?.message || messageOk || 'Écrit dans iCloud.')
+      else dire(res?.message || messageOk || 'C\'est noté.')
     } catch (e) { erreur(e) } finally { attente = false }
   }
 </script>
@@ -110,6 +116,16 @@
       <p class="discret">Raison : {d.raison}.{#if d.telephone} Numéro absent de la fiche : {d.telephone}.{/if}</p>
     {:else if point.motif === 'relations'}
       <ul class="ecarts">{#each d.ajouts as a}<li><span class="apres">{a.valeur}</span> <span class="discret">({a.type})</span></li>{/each}</ul>
+    {:else if point.motif === 'societe'}
+      <p>{d.fiches} fiches portent ce nom de société, écrit de {d.variantes.length} façons.{#if !d.sur}{' '}<span class="discret">Vérifie que c'est bien la même société : les écritures diffèrent par plus que les majuscules et les accents.</span>{/if}</p>
+      <fieldset class="choix">
+        <legend class="discret">Écriture à garder partout</legend>
+        {#each d.variantes as v}
+          <label><input type="radio" name={'soc-' + point.id} value={v.nom} bind:group={ecriture} /> {v.nom} <span class="discret">({v.nombre} fiche{v.nombre > 1 ? 's' : ''})</span></label>
+        {/each}
+        <label><input type="radio" name={'soc-' + point.id} value="__autre" bind:group={ecriture} /> Autre écriture
+          {#if ecriture === '__autre'}<input class="autre" bind:value={autre} aria-label="Autre écriture" autocomplete="off" />{/if}</label>
+      </fieldset>
     {:else if point.motif === 'mariage'}
       <p>{d.couple} forment un couple dans Treemich, sans date de mariage.</p>
       <label class="saisie-date"><span class="discret">Date du mariage ou du PACS</span>
@@ -164,6 +180,10 @@
     {:else if point.motif === 'relations'}
       <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('ajouter', null, 'Liens familiaux ajoutés.')}>Ajouter à la fiche</button>
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Ignorer</button>
+    {:else if point.motif === 'societe'}
+      <button class="bouton bouton-principal" disabled={attente || !retenue || !aChanger} onclick={() => faire('choisir', retenue)}>
+        {attente ? 'Écriture…' : `Écrire sur ${aChanger} fiche${aChanger > 1 ? 's' : ''}`}</button>
+      <button class="bouton" disabled={attente} onclick={() => faire('ignorer', null, 'Noté : ces écritures ne seront plus rapprochées.')}>Pas la même société</button>
     {:else if point.motif === 'mariage'}
       <button class="bouton bouton-principal" disabled={attente || !saisie.trim()} onclick={() => faire('ecrire', saisie, 'Date de mariage écrite partout.')}>Écrire la date</button>
       <button class="bouton" disabled={attente} onclick={() => faire('sans', null, 'Noté : la question ne sera plus posée pour ce couple.')}>Pas de mariage ni PACS</button>
@@ -179,6 +199,7 @@
 </article>
 
 <style>
+  .autre { display: inline-block; width: 14rem; max-width: 100%; margin-left: 0.4rem; }
   .saisie-date { display: grid; gap: 0.2rem; max-width: 16rem; }
   .point { padding: 1rem 1.1rem; display: grid; gap: 0.75rem; }
   header { display: flex; gap: 0.7rem; align-items: center; }

@@ -1886,3 +1886,39 @@ def test_281_logo_par_societe_sans_toucher_aux_photos(c, services, tmp_path):
         icloud.relire(c)
     r = galerie.poser_logos(c, [{"uid": "S-5", "n": 0}])
     assert r["faits"] == 0 and r["erreurs"] and not c.fiches()["S-5"]["a_photo"]
+
+
+def test_282_societes_ecrites_de_plusieurs_facons(c, services):
+    from app import societes
+    assert len({societes.cle_large(x) for x in ("aquitaineenergie", "aquitaineEnergie", "aquitaineÉnergie", "AQUITAINEENERGIE", "Aquitaine Énergie",
+                                                 "aquitaine-énergie SA", "Aquitaine Énergie S.A.", "AQUITAINE ENERGIE SAS")}) == 1
+    assert societes.cle_large("Bio Rad") != societes.cle_large("aquitaineÉnergie") and societes.cle_large("SA") == "sa"
+    ic = services["icloud"]
+    ecritures = ["aquitaineenergie", "aquitaineÉnergie", "aquitaineÉnergie", "AQUITAINEENERGIE", "Aquitaine Énergie SA"]
+    for i, soc in enumerate(ecritures):
+        ic.cartes[f"{CARNET}B-{i}.vcf"] = [ic._etag(), carte_simple(f"B-{i}", f"Personne Numero{i}", f"ORG:{soc};Qualité\r\nX-PERSO:garder\r\n")]
+    with c.ecriture():
+        icloud.relire(c)
+    p = points(c, "societe")
+    assert len(p) == 1 and p[0]["nom"] == "aquitaineÉnergie" and p[0]["donnees"]["fiches"] == 5
+    assert [(v["nom"], v["nombre"]) for v in p[0]["donnees"]["variantes"]][0] == ("aquitaineÉnergie", 2)
+    assert p[0]["donnees"]["sur"] is False                       # « Aquitaine Énergie SA » diffère par plus que la casse
+    # Rien n'est écrit tant qu'on n'a pas choisi ; une écriture d'une autre société est refusée
+    with pytest.raises(ErreurCarnet):
+        actions.repondre(c, p[0]["id"], "choisir", "Sanofi")
+    avant = len(ic.ecritures)
+    res = actions.repondre(c, p[0]["id"], "choisir", "aquitaineÉnergie")
+    assert res["faits"] == 3 and res["restants"] == 0 and len(ic.ecritures) == avant + 3
+    assert {c.fiche(f"B-{i}")["societe"] for i in range(5)} == {"aquitaineÉnergie"}
+    # Le service et le reste de la carte n'ont pas bougé
+    assert c.fiche("B-0")["service"] == "Qualité" and "X-PERSO:garder" in ic.texte("B-0")
+    assert "ORG:aquitaineÉnergie;Qualité" in ic.texte("B-4")
+    assert not points(c, "societe")
+    # « Pas la même société » : plus proposé, tant que les écritures ne changent pas
+    ic.cartes[f"{CARNET}B-9.vcf"] = [ic._etag(), carte_simple("B-9", "Autre Personne", "ORG:Aquitaineénergie;\r\n")]
+    with c.ecriture():
+        icloud.relire(c)
+    p = points(c, "societe")
+    assert p[0]["donnees"]["sur"] is True
+    actions.repondre(c, p[0]["id"], "ignorer")
+    assert not points(c, "societe") and c.fiche("B-9")["societe"] == "Aquitaineénergie"
