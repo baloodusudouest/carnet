@@ -1997,3 +1997,112 @@ def test_285_verification_de_l_accord_avec_treemich(c, services):
     tm.muet = True
     v = famille.verifier(c)
     assert v["treemich"] is False and v["raison"]
+
+
+# ================================================================ 2.9 : groupes
+
+def test_29_groupes_creer_renommer_supprimer_et_lots(c, services):
+    from app import attentes, groupes
+    ic = services["icloud"]
+    noms = {g["nom"]: g for g in groupes.liste(c)}
+    assert noms["Urgence"]["nombre"] == 1 and noms["Urgence"]["integre"] and noms["Urgence"]["dans_icloud"]
+    # Créer : une carte de groupe vide dans iCloud ; pas deux groupes du même nom
+    groupes.creer(c, "  Club  de lecture ")
+    assert any("FN:Club de lecture" in t for _, t in [(k, v[1]) for k, v in ic.cartes.items()])
+    with pytest.raises(ErreurCarnet):
+        groupes.creer(c, "club de LECTURE")
+    # Ajouter par lot, puis retirer
+    r = groupes.changer_membres(c, "Club de lecture", ["AAAA-1111", "BBBB-2222"], "ajouter")
+    assert r["faits"] == 2 and [m["uid"] for m in groupes.membres(c, "Club de lecture")] == ["AAAA-1111", "BBBB-2222"]
+    assert groupes.changer_membres(c, "Club de lecture", ["BBBB-2222"], "retirer")["faits"] == 1
+    carte = next(v[1] for v in ic.cartes.values() if "FN:Club de lecture" in v[1])
+    assert "urn:uuid:AAAA-1111" in carte and "BBBB-2222" not in carte
+    # Renommer : la carte de groupe, les fiches et les attentes suivent
+    attentes.regler(c, "Club de lecture", "courriel", True)
+    r = groupes.renommer(c, "Club de lecture", "Lecteurs")
+    assert r["fiches"] == 1 and "Lecteurs" in c.fiche("AAAA-1111")["groupes"]
+    assert attentes.par_groupe(c).get("Lecteurs") == {"courriel"} and "Club de lecture" not in attentes.par_groupe(c)
+    assert any("FN:Lecteurs" in v[1] and "urn:uuid:AAAA-1111" in v[1] for v in ic.cartes.values())
+    # Les groupes d'origine ne se renomment pas et ne se suppriment pas
+    for interdit in (lambda: groupes.renommer(c, "Urgence", "Secours"), lambda: groupes.supprimer(c, "Urgence", True)):
+        with pytest.raises(ErreurCarnet):
+            interdit()
+    # Supprimer : toujours confirmé ; aucune fiche n'est supprimée ; « Annuler » le remet avec ses membres
+    with pytest.raises(ErreurCarnet):
+        groupes.supprimer(c, "Lecteurs", False)
+    nb = len(c.fiches())
+    res = groupes.supprimer(c, "Lecteurs", True)
+    assert len(c.fiches()) == nb and "Lecteurs" not in c.fiche("AAAA-1111")["groupes"]
+    assert not any("FN:Lecteurs" in v[1] for v in ic.cartes.values()) and ic.texte("AAAA-1111")
+    actions.annuler(c, res["jeton"])
+    assert "Lecteurs" in c.fiche("AAAA-1111")["groupes"] and attentes.par_groupe(c).get("Lecteurs") == {"courriel"}
+    assert any("FN:Lecteurs" in v[1] for v in ic.cartes.values())
+    # Une relecture d'iCloud retrouve le même état
+    with c.ecriture():
+        icloud.relire(c)
+    assert "Lecteurs" in c.fiche("AAAA-1111")["groupes"]
+
+
+# ================================================================ 2.9 : tuiles et Connexion
+
+def test_29_tuiles_d_a_traiter(c, services):
+    from app import attentes
+    liaisons.donnees(c, rafraichir=True)
+    t = {x["cle"]: x for x in traiter.tuiles(c)}
+    assert t["sans_groupe"]["nombre"] >= 2 and t["sans_groupe"]["compte"] is True
+    assert t["incomplet"]["compte"] is False
+    # « Pas de groupe » compte dans le chiffre de l'onglet ; « Contact incomplet » non
+    attentes.regler(c, "Urgence", "courriel", True)
+    attentes.regler(c, "Urgence", "treemich", True)
+    compte = traiter.compte(c)
+    assert compte["total"] == compte["points"] + compte["sans_groupe"] and compte["sans_groupe"] == t["sans_groupe"]["nombre"]
+    assert {x["cle"]: x for x in traiter.tuiles(c)}["incomplet"]["nombre"] == 1
+    # Chaque point a sa tuile ; un nom ou une date à trancher va au service concerné
+    assert all(p["tuile"] in dict((k, 1) for k, _, _ in traiter.TUILES) for p in traiter.liste(c))
+    assert traiter.tuile_de({"motif": "nom", "donnees": {"service": "treemich"}}) == "treemich"
+    assert traiter.tuile_de({"motif": "date", "donnees": {"valeurs": {"carnet": "", "immich": "1990-01-01"}}}) == "immich"
+    assert traiter.tuile_de({"motif": "mariage_different", "donnees": {}}) == "treemich"
+
+
+def test_29_connexion_verifier_n_ecrit_rien_synchroniser_ecrit_le_sur(c, services):
+    from app import connexion, famille
+    from app.main import sante
+    from app import reseaux
+    tm, im = services["treemich"], services["immich"]
+    liaisons.lier(c, "AAAA-1111", "treemich", "t-claire")
+    liaisons.lier(c, "AAAA-1111", "immich", "im-claire")
+    liaisons.lier(c, "DDDD-4444", "treemich", "t-paul")
+    _ecrire_champ(c, "AAAA-1111", mariage="12/06/2010")
+    etat = {s["cle"]: s for s in connexion.etat(c, sante(c), reseaux.bilan(c))}
+    assert list(etat) == list(connexion.SERVICES) and etat["treemich"]["nuit"]["actif"] is False
+    assert etat["immich"]["nuit"]["actif"] is True and etat["sauvegardes"]["nuit"] is None
+    # Vérifier : un rapport par service, aucune écriture
+    avant = (len(services["icloud"].ecritures), len(tm.ecrits), len(im.ecrits))
+    r = connexion.verifier(c, "treemich")
+    assert r["ok"] and [l["libelle"] for l in r["lignes"]] == ["Nom", "Naissance", "Mariage", "Décès", "Liens familiaux"]
+    assert any(e["libelle"] == "Mariage" and e["carnet"] == "12/06/2010" for e in r["ecarts"])
+    r = connexion.verifier(c, "immich")
+    assert r["ok"] and [l["libelle"] for l in r["lignes"]] == ["Nom", "Naissance", "Photo"]
+    assert connexion.verifier(c, "icloud")["ok"]
+    assert (len(services["icloud"].ecritures), len(tm.ecrits), len(im.ecrits)) == avant
+    # Synchroniser Treemich : la date de mariage part, même interrupteur de nuit éteint
+    b = connexion.synchroniser(c, "treemich")
+    assert tm.mariages == {("t-claire", "t-paul"): "2010-06-12"} and "Treemich" in b["message"]
+    assert c.fiche("DDDD-4444")["mariage"] == "2010-06-12"
+    assert not any(e["libelle"] == "Mariage" for e in connexion.verifier(c, "treemich")["ecarts"])
+    # Interrupteur de nuit par service ; Immich éteint : la nuit ne lie plus rien
+    connexion.regler_nuit(c, "immich", False)
+    assert not connexion.nuit_active(c, "immich")
+    connexion.regler_nuit(c, "treemich", True)
+    assert famille.actif(c, "famille")
+    with pytest.raises(ErreurCarnet):
+        connexion.regler_nuit(c, "sauvegardes", True)
+    b = nuit.passer(c, "test")
+    assert any("Immich : synchronisation de nuit éteinte" in x for x in b["details"])
+    # Lecture seule : synchroniser est refusé
+    import dataclasses
+    from app.garde import LectureSeule
+    c.cfg = dataclasses.replace(c.cfg, lecture_seule=True)
+    for s in ("icloud", "immich", "treemich"):
+        with pytest.raises(LectureSeule):
+            connexion.synchroniser(c, s)

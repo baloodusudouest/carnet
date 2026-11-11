@@ -71,24 +71,30 @@ def _suite_de_nuit(c: Carnet, lecture: dict, bilan: dict) -> None:
         d = liaisons.donnees(c, rafraichir=True)
         for e in d["erreurs"]:
             bilan["details"].append(e)
-        for s in liaisons.sures(c, d):
-            liaisons.lier(c, s["uid"], "immich", s["immich"], statut="auto")
-            if s.get("treemich"):
-                try:
-                    liaisons.lier(c, s["uid"], "treemich", s["treemich"], statut="auto")
-                except ErreurCarnet:
-                    pass
-            bilan["liaisons"] += 1
-        c.tache.update(message="Écritures sûres…", progression=0.6)
-        _ecritures_sures(c, d, bilan)
+        from . import connexion
+        if connexion.nuit_active(c, "immich"):
+            for s in liaisons.sures(c, d):
+                liaisons.lier(c, s["uid"], "immich", s["immich"], statut="auto")
+                if s.get("treemich"):
+                    try:
+                        liaisons.lier(c, s["uid"], "treemich", s["treemich"], statut="auto")
+                    except ErreurCarnet:
+                        pass
+                bilan["liaisons"] += 1
+            c.tache.update(message="Écritures sûres…", progression=0.6)
+            _ecritures_sures(c, d, bilan)
+        else:
+            bilan["details"].append("Immich : synchronisation de nuit éteinte (Connexion).")
         # 2.8 : fêtes et dates de famille, seulement si leur interrupteur est allumé (Réglages)
         from . import famille
         famille.appliquer(c, d, bilan, PLAFOND)
-    c.tache.update(message="Synology Contacts…", progression=0.85)
-    syno = sorties.copier_synology(c)
-    if syno.get("erreur"):
-        bilan["details"].append(f"Synology : {syno['erreur']}")
-    if any(True for _ in c.base.tous("SELECT 1 FROM fiches LIMIT 1")):
+    from . import connexion
+    if connexion.nuit_active(c, "synology"):
+        c.tache.update(message="Synology Contacts…", progression=0.85)
+        syno = sorties.copier_synology(c)
+        if syno.get("erreur"):
+            bilan["details"].append(f"Synology : {syno['erreur']}")
+    if connexion.nuit_active(c, "kit") and any(True for _ in c.base.tous("SELECT 1 FROM fiches LIMIT 1")):
         try:
             if c.cfg.kit_config and c.cfg.kit_config.is_dir():
                 sorties.envoyer_kit(c)

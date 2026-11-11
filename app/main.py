@@ -13,7 +13,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .temps import maintenant
-from . import (__version__, actions, attentes, completude, famille, galerie, icloud, liaisons, linkedin, nuit, photos, reseaux, sorties,
+from . import (__version__, actions, attentes, completude, connexion, famille, galerie, groupes as groupes_, icloud, liaisons, linkedin, nuit, photos, reseaux, sorties,
                telegram, traiter, vcard)
 from .auth import COOKIE, DUREE, Sessions
 from .carddav import ErreurICloud
@@ -546,6 +546,66 @@ def _bilan_lot(r: dict, quoi: str) -> dict:
     if r["erreurs"]:
         message += f" ; {len(r['erreurs'])} refus : " + " ; ".join(r["erreurs"][:3])
     return {**r, "message": message + "."}
+
+
+# ---------------------------------------------------------------- Connexion et Groupes (2.9)
+
+@app.get("/api/connexion")
+def connexion_etat():
+    c = carnet()
+    return {"services": connexion.etat(c, sante(c), reseaux.bilan(c)), "lecture_seule": c.cfg.lecture_seule,
+            "nuit": c.cfg.veille_heure if c.cfg.nuit_active else None}
+
+
+@app.post("/api/connexion/{service}/verifier")
+def connexion_verifier(service: str):
+    return connexion.verifier(carnet(), service)
+
+
+@app.post("/api/connexion/{service}/synchroniser")
+def connexion_synchroniser(service: str):
+    c = carnet()
+    return _fond("synchro", lambda: connexion.synchroniser(c, service))
+
+
+@app.post("/api/connexion/{service}/nuit")
+def connexion_nuit(service: str, corps: dict = Body(...)):
+    return connexion.regler_nuit(carnet(), service, bool(corps.get("actif")))
+
+
+@app.get("/api/a-traiter-tuiles")
+def a_traiter_tuiles():
+    return traiter.tuiles(carnet())
+
+
+@app.get("/api/groupes-detail")
+def groupes_detail():
+    return groupes_.liste(carnet())
+
+
+@app.get("/api/groupes/{nom}/membres")
+def groupe_membres(nom: str):
+    return groupes_.membres(carnet(), nom)
+
+
+@app.post("/api/groupes-creer")
+def groupe_creer(corps: dict = Body(...)):
+    return groupes_.creer(carnet(), str(corps.get("nom", "")))
+
+
+@app.post("/api/groupes/{nom}/renommer")
+def groupe_renommer(nom: str, corps: dict = Body(...)):
+    return groupes_.renommer(carnet(), nom, str(corps.get("nouveau", "")))
+
+
+@app.post("/api/groupes/{nom}/supprimer")
+def groupe_supprimer(nom: str, corps: dict = Body(...)):
+    return groupes_.supprimer(carnet(), nom, corps.get("confirmation"))
+
+
+@app.post("/api/groupes/{nom}/membres")
+def groupe_changer(nom: str, corps: dict = Body(...)):
+    return groupes_.changer_membres(carnet(), nom, [str(u) for u in corps.get("uids") or []], str(corps.get("action", "")))
 
 
 # ---------------------------------------------------------------- réglages et manques (2.8)

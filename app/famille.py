@@ -394,19 +394,19 @@ def _ecrire_cartes(c: Carnet, actions: list[dict], bilan: dict, plafond: int, mo
             bilan["details"].append(str(exc))
 
 
-def accorder_maintenant(c: Carnet) -> dict:
+def accorder_maintenant(c: Carnet, forcer: bool = False) -> dict:
     """Dates de famille accordées tout de suite, sans attendre la nuit (2.8.3) : après une date
     saisie sur une fiche dans carnet, ou depuis le bouton de Réglages. Ne fait rien si
     l'interrupteur est éteint. Treemich est relu juste avant, pour ne jamais écraser."""
     from . import liaisons
     from .nuit import PLAFOND
     bilan = {"ecrites": 0, "reportees": 0, "details": [], "treemich": 0}
-    if not actif(c, "famille"):
+    if not forcer and not actif(c, "famille"):
         return {**bilan, "message": "L'accord des dates de famille est éteint (Réglages) : rien n'a été écrit."}
     c.exiger_ecriture("Treemich")
     with c.ecriture(attendre=5):
         d = liaisons.donnees(c, rafraichir=True)
-        appliquer(c, d, bilan, PLAFOND, fetes_aussi=False)
+        appliquer(c, d, bilan, PLAFOND, fetes_aussi=False, forcer=forcer)
     c.oublier()
     message = f"Dates de famille : {bilan['ecrites']} fiche(s) écrite(s) dans iCloud, {bilan['treemich']} écriture(s) dans Treemich"
     if bilan["details"]:
@@ -417,13 +417,13 @@ def accorder_maintenant(c: Carnet) -> dict:
     return {**bilan, "message": message + ("" if message.endswith(".") else ".")}
 
 
-def appliquer(c: Carnet, d: dict | None, bilan: dict, plafond: int, fetes_aussi: bool = True) -> None:
+def appliquer(c: Carnet, d: dict | None, bilan: dict, plafond: int, fetes_aussi: bool = True, forcer: bool = False) -> None:
     """La nuit, après les écritures sûres : fêtes puis dates de famille, si leur interrupteur est
     allumé. Verrou d'écriture déjà pris."""
     memoriser(c, d)
     if fetes_aussi and actif(c, "fetes"):
         _ecrire_cartes(c, fetes_a_ecrire(c), bilan, plafond, "fête")
-    if not actif(c, "famille") or not _treemich_parle(d):
+    if not (forcer or actif(c, "famille")) or not _treemich_parle(d):
         return
     actions = examiner(c, d)["actions"]
     _ecrire_cartes(c, [a for a in actions if a["service"] == "icloud"], bilan, plafond, "date de famille")
@@ -537,7 +537,10 @@ def journal(c: Carnet, limite: int = 200) -> list[dict]:
     res = []
     for l in c.base.tous("SELECT * FROM automatiques ORDER BY id DESC LIMIT ?", (limite,)):
         f = fiches.get(l["cible"])
-        quoi = {"fete": "Fête", "mariage": "Mariage", "deces": "Décès"}.get(l["sujet"], l["sujet"])
+        quoi = {"fete": "Fête", "mariage": "Mariage", "deces": "Décès", "naissance": "Naissance"}.get(l["sujet"], l["sujet"])
+        if not f and l["sujet"] == "naissance":       # écrite dans Immich ou Treemich : retrouver la fiche reliée
+            uid = next((u for u, v in c.liaisons().items() if v.get(l["service"]) == l["cible"]), None)
+            f = fiches.get(uid) if uid else None
         res.append({"id": l["id"], "le": l["le"], "service": l["service"], "sujet": l["sujet"],
                     "nom": nom_affiche(f) if f else ("un couple de l'arbre" if "|" in l["cible"] else "une personne de l'arbre"),
                     "uid": l["cible"] if f else None, "avant": l["avant"] or "", "apres": l["apres"] or "",
@@ -554,6 +557,25 @@ def defaire(c: Carnet, ident: int) -> dict:
     if not l or l["defaite"]:
         raise ErreurCarnet("Cette écriture a déjà été défaite.")
     sujet, avant, apres = l["sujet"], l["avant"] or "", l["apres"] or ""
+    if sujet == "naissance":
+        # Naissance écrite dans Immich ou Treemich par « Synchroniser » : la date y est retirée
+        from . import liaisons
+        c.exiger_ecriture("Immich" if l["service"] == "immich" else "Treemich")
+        try:
+            if l["service"] == "immich":
+                im = c.immich()
+                try:
+                    im.maj_naissance(l["cible"], None)
+                finally:
+                    im.fermer()
+            else:
+                c.treemich().maj_naissance(l["cible"], None)
+        except ErreurLien as exc:
+            raise ErreurCarnet(str(exc))
+        liaisons._maj_cache(c, l["service"], l["cible"], naissance="")
+        c.base.executer("UPDATE automatiques SET defaite = ? WHERE id = ?", (iso(maintenant()), ident))
+        c.oublier()
+        return {"ok": True}
     if l["service"] == "icloud":
         with c.ecriture(attendre=5):
             f = c.fiche(l["cible"])
