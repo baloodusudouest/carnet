@@ -87,7 +87,10 @@ async def garde(request: Request, appel):
         attendu = f"Bearer {jeton}"
         if not jeton or request.headers.get("authorization", "") != attendu:
             return JSONResponse({"detail": "Jeton Home Assistant manquant ou invalide."}, status_code=401)
-    elif chemin.startswith("/api/") and chemin not in ("/api/connexion", "/api/session"):
+    # Sans session : seulement l'envoi du mot de passe et la question « suis-je connecté ? ».
+    # La lecture de /api/connexion (l'état des services, 2.9) exige une session comme le reste.
+    elif chemin.startswith("/api/") and not (chemin == "/api/session"
+                                             or (chemin == "/api/connexion" and request.method == "POST")):
         if not ETAT["sessions"].valide(request.cookies.get(COOKIE)):
             return JSONResponse({"detail": "Connexion nécessaire."}, status_code=401)
     reponse = await appel(request)
@@ -151,7 +154,7 @@ def session(request: Request):
 
 
 @app.post("/api/connexion")
-async def connexion(corps: dict = Body(...)):
+async def ouvrir_session(corps: dict = Body(...)):
     s = ETAT["sessions"]
     await asyncio.sleep(s.attente())
     if not s.verifier_mot_de_passe(str(corps.get("mot_de_passe", ""))):

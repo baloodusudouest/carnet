@@ -1,5 +1,19 @@
 # Journal des versions
 
+## 2.9.0 — 11 novembre 2026
+carnet est réorganisé autour de son rôle : faire le lien entre iCloud, Immich, Treemich et les autres outils. Les bases ne changent pas (mêmes règles d'écriture, même base, mêmes adresses pour Home Assistant).
+- **Six onglets** : À traiter, Contacts, Groupes, Photos, Connexion, Réglages. « État » disparaît (son ancienne adresse ouvre Connexion). Sur iPhone, six icônes sans nom ; sur PC, le rail garde les noms.
+- **À traiter s'ouvre sur une grille de tuiles**, une par type : Changé sur l'iPhone, Pas de groupe, Immich non synchronisé, Treemich non synchronisé, Doublons, Sociétés, Mise en forme, Réseaux, Imports, Contact incomplet. Seules les tuiles qui ont quelque chose s'affichent ; toucher une tuile ouvre sa liste. Le chiffre de l'onglet compte maintenant aussi les fiches sans groupe ; « Contact incomplet » n'y compte pas.
+- **Connexion : une icône par service** — iCloud, Immich, Treemich, Copies (Synology), Sauvegardes, Import, LinkedIn, Telegram, Facebook, Instagram, Home Assistant, Kit d'urgence — avec son voyant et le nombre de différences qui attendent dans « À traiter ». Une icône « Attentes » ouvre le tableau de ce que chaque groupe doit avoir.
+  - **Vérifier** relit le service et compare sans rien écrire : Immich (nom, date de naissance, photo de la fiche, personnes nommées sans fiche reliée), Treemich (nom, naissance, mariage, décès, liens familiaux), iCloud (relecture).
+  - **Synchroniser** écrit ce qui est sûr — remplir un côté vide, jamais écraser — et envoie le reste dans « À traiter ». 20 fiches au plus par appui.
+  - **Interrupteur « la nuit » par service** : la nuit ne fait que les services allumés. Celui de Treemich est l'ancien « dates de famille », celui d'iCloud l'ancien « fêtes » : leur état est repris tel quel. Les autres (Immich, Copies, Kit) sont allumés, comme avant.
+- **Groupes** : la liste des groupes et leurs membres ; ajouter un contact par la recherche, retirer par lot (20 au plus) ; créer, renommer, supprimer un groupe. Supprimer demande toujours confirmation, ne supprime aucune fiche et peut s'annuler pendant 10 secondes. Les groupes d'origine de carnet ne se renomment pas et ne se suppriment pas.
+- **Réglages** garde ce qui n'est pas un service : la nuit (heure, dernière nuit, lancer maintenant), l'analyse globale, ce que carnet a écrit tout seul (avec « Défaire »), les exceptions, le journal, la déconnexion.
+- Corrigé en route : le rapport de vérification n'annonce plus « Aucun écart » quand rien n'est relié.
+- Sécurité, vu par un test avant la livraison : la nouvelle adresse qui donne l'état des services partageait le chemin de l'envoi du mot de passe et aurait répondu sans session. Elle exige une session comme le reste.
+- Tests : 106 du back, 28 d'interface (sur PC et sur iPhone).
+
 ## 2.8.5 — 11 novembre 2026
 - **Vérifier l'accord avec Treemich** (Réglages) : un bouton relit Treemich et compare, date par date, les naissances, les mariages et les décès des fiches reliées à l'arbre. Un tableau donne, par sorte de date, le nombre de dates vues, égales, vides et en écart ; chaque écart est listé avec les deux valeurs et ce qui va se passer (écriture prévue, point dans « À traiter », accord éteint, date à compléter à la main).
 - La vérification n'écrit rien. Si Treemich ne répond pas, elle le dit au lieu d'annoncer que tout est accordé. Les personnes de l'arbre sans fiche reliée sont comptées à part : elles ne sont pas comparées.

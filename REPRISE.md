@@ -4,12 +4,17 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **2.8.5 sur `main`** : la 2.8 complète (vérification de l'accord avec Treemich en 2.8.5 ; attentes et manques, Photos, champs nouveaux, fêtes et dates de famille, import unique, suppression confirmée, logo par société, noms de société, accord immédiat avec Treemich, Réseaux dans Réglages). Julien a une 2.8 en service.
+- **2.9.0 sur `main`** (11/11/2026) : réorganisation en six onglets (À traiter en tuiles, Contacts, Groupes, Photos, Connexion avec une icône par service, Réglages). Faite sans dossier ni conseil préalables, à la demande de Julien ; le dossier tel que construit a été mis à jour après le code.
+- 2.8.5 avant elle : la 2.8 complète (vérification de l'accord avec Treemich en 2.8.5 ; attentes et manques, Photos, champs nouveaux, fêtes et dates de famille, import unique, suppression confirmée, logo par société, noms de société, accord immédiat avec Treemich, Réseaux dans Réglages). Julien a une 2.8 en service.
 - Interrupteurs : Julien a allumé « dates de famille » le 11/11 ; « fêtes » est éteint à la livraison.
 - Conseil : [`docs/2.8-conseil.md`](docs/2.8-conseil.md). Essai sur le vrai iCloud : [`docs/essai-2.8.md`](docs/essai-2.8.md).
-- Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md), à jour pour la 2.8.4.
+- Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md), à jour pour la 2.9.0.
 
 ## Prochaine étape
+
+0. **2.9.0** : Julien la met en service (`CARNET_VERSION=2.9.0`, copie de `/state` avant) et dit ce qui gêne à l'usage. À regarder avec lui : la tuile « Pas de groupe » compte maintenant dans le chiffre de l'onglet (il sera plus haut) ; « Synchroniser » sur Immich et Treemich n'a été essayé que sur des services simulés ; les logos des réseaux dans les tuiles.
+
+Restes de la 2.8, toujours valables :
 
 1. Julien met la 2.8.0 en service **en lecture seule un jour** (`CARNET_LECTURE_SEULE=oui`), copie de `/state` avant. Il vérifie : les nombres de la famille « Manques » (la sonde donnait 437 fiches incomplètes, 406 sans photo, 59 sans téléphone, avant l'exemption des fiches d'entreprise et sans la colonne Fête), le tableau des attentes, la liste « ce que carnet écrirait ».
 2. Il enlève la lecture seule, puis allume « fêtes » ; une semaine plus tard, « dates de famille ». Relire « Écrit par carnet tout seul » après chaque première nuit.
@@ -23,7 +28,8 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 - iCloud est la source maître ; toute modification faite sur l'iPhone repasse par « À traiter ».
 - Aucune suppression automatique ; la nuit n'écrit que les mises à jour sûres.
 - Suppression d'une fiche : seulement à la demande de Julien, depuis la modification de la fiche, et toujours après confirmation (2.8.0). Le serveur refuse sans `confirmation` vraie.
-- Trois onglets jusqu'à la 2.7 ; cinq à partir de la 2.8.0 (Photos, Réglages).
+- Trois onglets jusqu'à la 2.7 ; cinq à partir de la 2.8.0 (Photos, Réglages) ; **six à partir de la 2.9.0** : À traiter, Contacts, Groupes, Photos, Connexion, Réglages. État n'existe plus.
+- 2.9.0 (réponses de Julien) : À traiter en grille de tuiles ; « pas de groupe » compte dans le chiffre de l'onglet, « contact incomplet » non ; Connexion porte tous les services, les réseaux, Home Assistant, le kit et le tableau des attentes ; « Synchroniser » écrit le sûr et envoie le reste dans À traiter ; la nuit est gardée, avec un interrupteur par service ; six icônes sans nom sur iPhone.
 - Le nouvel habillage (minimalisme, tuiles bento pour État, sombre par défaut et clair selon l'appareil, shadcn-svelte, ocre conservé) **remplace** l'actuel, sans version en parallèle (décision du 11/11/2026).
 - L'habillage ne change aucune route de l'API ni le schéma de la base, ni les textes, ni la navigation ; les tests d'interface ne sont pas réécrits.
 - L'anneau de progression, la jauge autour de l'avatar et l'index en tranche sont gardés et reteintés.
@@ -35,6 +41,11 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## Pièges
 
+- 2.9 : l'écran « Connexion » (les services) est `frontend/src/pages/Services.svelte`. `pages/Connexion.svelte` est la page du mot de passe : ne pas la remplacer.
+- 2.9 : `POST /api/connexion` (mot de passe) est la seule route d'`/api/` ouverte sans session avec `/api/session` ; `GET /api/connexion` (état des services) est protégée. L'exemption se fait sur le chemin **et** la méthode : ne pas l'élargir.
+- 2.9 : dans `app/main.py`, ne jamais nommer une route comme un module importé (`connexion`, `groupes`…) : la fonction masque le module et la route casse à l'appel. Un test du back passe par l'API pour le voir.
+- 2.9 : les interrupteurs de nuit d'iCloud et de Treemich sont les anciens `auto_fetes` et `auto_famille` ; les autres sont des clés `nuit_<service>`, allumées par défaut.
+- 2.9 : plusieurs écrans ont une grille `nav.tuiles` ; dans les tests, viser la grille par son nom (`nav[aria-label='Services']`…), sinon on attrape celle de l'écran précédent.
 - 2.8 : toute écriture automatique nouvelle passe par `famille.appliquer` (interrupteur, plafond de nuit, table `automatiques`). Une réponse de Julien dans « À traiter » écrit tout de suite et n'est pas journalisée comme automatique.
 - Le logo se choisit par société (`logos_societes`) et ne remplace jamais une photo : `galerie.fiches_de_la_societe` ne rend que des fiches sans photo et non reliées à Immich.
 - Les logos en attente d'un choix sont dans `c.logos`, pas dans le cache `c._memo` (vidé à chaque écriture).
@@ -45,7 +56,7 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 - carnet écrit dans le vrai compte iCloud : Watchtower est désactivé, toute mise à jour est manuelle dans Portainer.
 - Treemich limite les connexions et le rythme des requêtes : une seule session réutilisée.
 - Pousser sur `main` reconstruit et republie l'image `latest`.
-- Les 19 tests d'interface s'appuient sur des textes, des rôles d'accessibilité et quelques noms internes (`.ligne`, `.message`, `nav.onglets`, `.tranche`, `.jauge`, `.volet-liste`) : les conserver pendant l'habillage.
+- Les tests d'interface s'appuient sur des textes, des rôles d'accessibilité et quelques noms internes (`.ligne`, `.message`, `nav.onglets`, `.tranche`, `.jauge`, `.volet-liste`) : les conserver pendant l'habillage.
 - Tant que l'ancien et le nouvel habillage coexistent, un écran pas encore refait peut se dégrader sans qu'un test le voie : regarder les captures de tous les écrans à chaque étape.
 - Mode lecture seule : toute nouvelle écriture vers un service extérieur doit appeler `c.exiger_ecriture(...)` et passer par un client gardé (`_garde`).
 

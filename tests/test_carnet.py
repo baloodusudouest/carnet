@@ -2106,3 +2106,23 @@ def test_29_connexion_verifier_n_ecrit_rien_synchroniser_ecrit_le_sur(c, service
     for s in ("icloud", "immich", "treemich"):
         with pytest.raises(LectureSeule):
             connexion.synchroniser(c, s)
+
+
+def test_29_routes_par_l_api(c):
+    """Les routes de la 2.9 répondent par l'API (une route nommée comme un module le masquerait)."""
+    from fastapi.testclient import TestClient
+    from app import main
+    main.ETAT["carnet"] = c
+    with TestClient(main.app) as client:
+        assert client.get("/api/connexion").status_code == 401
+        assert client.post("/api/connexion", json={"mot_de_passe": "secret"}).status_code == 200
+        cx = client.get("/api/connexion").json()
+        assert {"icloud", "immich", "treemich", "ha", "kit"} <= {s["cle"] for s in cx["services"]}
+        assert client.post("/api/connexion/immich/verifier").status_code == 200
+        assert client.post("/api/connexion/immich/nuit", json={"actif": False}).status_code == 200
+        assert not next(s for s in client.get("/api/connexion").json()["services"] if s["cle"] == "immich")["nuit"]["actif"]
+        tuiles = client.get("/api/a-traiter-tuiles").json()
+        assert [t["cle"] for t in tuiles][0] == "icloud" and not next(t for t in tuiles if t["cle"] == "incomplet")["compte"]
+        assert client.get("/api/groupes-detail").status_code == 200
+        assert client.post("/api/groupes/Amis/supprimer", json={}).status_code == 400      # confirmation exigée
+    main.ETAT.clear()

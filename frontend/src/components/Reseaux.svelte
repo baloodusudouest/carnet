@@ -9,6 +9,7 @@
   import { absents, logoReseau } from '../lib/logos.svelte.js'
   import { de, envoyer, occupe, resumeImport } from '../lib/suivi.svelte.js'
 
+  let { seul = null } = $props()   // 2.9 : un seul réseau affiché (icône de Connexion)
   let e = $state(null)
   let attente = $state('')
   let adresseLinkedin = $state('')
@@ -81,6 +82,7 @@
   <div class="feuille bloc"><h2 class="titre">Réseaux</h2><p class="discret">Chargement…</p></div>
 {:else}
 <div class="feuille bloc">
+{#if !seul}
   <h2 class="titre">Réseaux</h2>
   <dl>
     {#each Object.entries(e.reseaux) as [s, r]}
@@ -91,6 +93,8 @@
   </dl>
   <p class="discret">Chaque rapprochement arrive dans « À traiter » (Réseaux) : rien n'est lié sans toi. Les personnes lues mais jamais liées sont effacées au bout de 90 jours.</p>
 
+{/if}
+{#if !seul || seul === 'linkedin'}
   <h3 class="titre-reseau" id="reseau-linkedin">{#if !absents.linkedin}<img class="logo-reseau" src={logoReseau('linkedin')} alt="" onerror={() => (absents.linkedin = true)} />{/if}LinkedIn</h3>
   <p class="discret">Tes relations par l'API de portabilité, ou le fichier Connections.csv de l'export LinkedIn. Seuls les changements de poste ou de société remontent dans « À traiter ».</p>
   <BoutonAnneau icone="envoyer" libelle="Déposer Connections.csv" enCours="Envoi du fichier…" {...de('linkedin_csv')}
@@ -108,6 +112,8 @@
                 detail={(r) => [r.fonction, r.societe].filter(Boolean).join(', ')}
                 rattacher={(r, uid) => linkedinRattacher(r.url, uid)} detacher={(r) => linkedinRattacher(r.url, null)} />
 
+{/if}
+{#if !seul || seul === 'telegram'}
   <h3 class="titre-reseau" id="reseau-telegram">{#if !absents.telegram}<img class="logo-reseau" src={logoReseau('telegram')} alt="" onerror={() => (absents.telegram = true)} />{/if}Telegram</h3>
   {#if !e.telegram.configure}
     <p class="discret">Ajoute CARNET_TELEGRAM_API_ID et CARNET_TELEGRAM_API_HASH dans la stack (my.telegram.org, « API development tools »).</p>
@@ -126,6 +132,8 @@
                 detail={(x) => [x.pseudo && x.pseudo !== x.nom && '@' + x.pseudo, x.telephone].filter(Boolean).join(', ')}
                 rattacher={(x, uid) => rattacherReseau('telegram', x, uid)} />
 
+{/if}
+{#if !seul || seul === 'facebook'}
   <h3 class="titre-reseau" id="reseau-facebook">{#if !absents.facebook}<img class="logo-reseau" src={logoReseau('facebook')} alt="" onerror={() => (absents.facebook = true)} />{/if}Facebook</h3>
   <p class="discret">Compte Meta › Vos informations et autorisations › Exporter vos informations : choisis seulement Contacts › <strong>Ami(e)s</strong> (et Followers si tu veux), format <strong>JSON</strong>. Dépose le .zip tel quel, ou seulement <strong>your_friends.json</strong> si tu l'as décompressé (les autres fichiers sont des suggestions ou des demandes, ils ne sont pas lus). Facebook ne donne que les noms : un ami est proposé quand son nom désigne une seule fiche. « Lier » pose la pastille Facebook ; pour écrire le lien du profil dans iCloud, colle son adresse sur la fiche.</p>
   <BoutonAnneau icone="envoyer" libelle="Déposer l'export Facebook" enCours="Envoi de l'archive…" {...de('facebook')}
@@ -136,6 +144,8 @@
                 detail={(x) => [x.pseudo && x.pseudo !== x.nom && '@' + x.pseudo, x.telephone].filter(Boolean).join(', ')}
                 rattacher={(x, uid) => rattacherReseau('facebook', x, uid)} />
 
+{/if}
+{#if !seul || seul === 'instagram'}
   <h3 class="titre-reseau" id="reseau-instagram">{#if !absents.instagram}<img class="logo-reseau" src={logoReseau('instagram')} alt="" onerror={() => (absents.instagram = true)} />{/if}Instagram</h3>
   <p class="discret">Dans Instagram : Paramètres, Espace Comptes, Télécharger tes informations, format JSON, « Abonnés et abonnements ». Seuls les pseudos sont lus.</p>
   <BoutonAnneau icone="envoyer" libelle="Déposer l'export Instagram" enCours="Envoi de l'archive…" {...de('instagram')}
@@ -146,11 +156,16 @@
                 detail={(x) => [x.pseudo && x.pseudo !== x.nom && '@' + x.pseudo, x.telephone].filter(Boolean).join(', ')}
                 rattacher={(x, uid) => rattacherReseau('instagram', x, uid)} />
 
+{/if}
+{#if !seul || seul === 'x'}
   <h3 class="titre-reseau" id="reseau-x">{#if !absents.x}<img class="logo-reseau" src={logoReseau('x')} alt="" onerror={() => (absents.x = true)} />{/if}X (Twitter)</h3>
   <p class="discret">L'archive de X ne donne que des numéros de compte, sans pseudo ni nom : rien à rapprocher. Sur la fiche, colle le pseudo (@…) ou l'adresse x.com dans Plateformes ; les profils Twitter déjà présents sur tes cartes iCloud sont reconnus.</p>
 
+{/if}
+{#if !seul || seul === 'whatsapp'}
   <h3 class="titre-reseau" id="reseau-whatsapp">{#if !absents.whatsapp}<img class="logo-reseau" src={logoReseau('whatsapp')} alt="" onerror={() => (absents.whatsapp = true)} />{/if}WhatsApp</h3>
   <p class="discret">Pas d'export des contacts : sur la fiche, choisis le numéro WhatsApp (section Plateformes).</p>
+{/if}
 </div>
 {/if}
 

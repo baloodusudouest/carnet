@@ -1,6 +1,6 @@
-# Dossier de carnet — tel que construit (version 2.8.4)
+# Dossier de carnet — tel que construit (version 2.9.0)
 
-Rédigé le 11/11/2026 pour la 2.6.4 à partir du code ; remis à jour le même jour pour la 2.8.4. Six sections, puis les écarts par rapport au socle commun (`baloodusudouest/socle`).
+Rédigé le 11/11/2026 pour la 2.6.4 à partir du code ; remis à jour le même jour pour la 2.8.4, puis pour la 2.9.0 (réorganisation en six onglets, codée sans dossier préalable à la demande de Julien). Six sections, puis les écarts par rapport au socle commun (`baloodusudouest/socle`).
 
 Ce dossier décrit ce qui existe. Le détail de conception de la 2.8 est dans `docs/2.8-dossier.md`, l'avis du conseil dans `docs/2.8-conseil.md`, l'essai sur le vrai iCloud dans `docs/essai-2.8.md`.
 
@@ -76,9 +76,13 @@ Adresses de la forme `#/page/…`. Largeur de 900 px et plus : mode PC (liste et
 flowchart TD
   C[Connexion] -->|mot de passe juste| T[À traiter]
   T <-->|onglets| L[Contacts]
-  L <-->|onglets| P[Photos]
-  P <-->|onglets| E[État]
-  E <-->|onglets| R[Réglages]
+  L <-->|onglets| G[Groupes]
+  G <-->|onglets| P[Photos]
+  P <-->|onglets| X[Connexion : les services]
+  X <-->|onglets| R[Réglages]
+  T -->|tuile| TL[Liste de la tuile]
+  T -->|tuile Pas de groupe| L
+  X -->|différences| T
   T -->|nom du contact| F[Fiche]
   T -->|ligne de manque| L
   T -->|Comparer et réunir| U[Fusion]
@@ -90,11 +94,11 @@ flowchart TD
   R -->|Se déconnecter| C
 ```
 
-**Navigation permanente.** Cinq onglets : À traiter (compteur des points), Contacts, Photos, État (roue si une opération tourne, point rouge si un problème), Réglages. Sur iPhone : pilule flottante en bas, icônes seules, l'onglet actif s'élargit avec son nom. Sur PC : rail à gauche.
+**Navigation permanente.** Six onglets depuis la 2.9.0 : À traiter (compteur : points à décider et fiches sans groupe), Contacts, Groupes, Photos, Connexion (roue si une opération tourne, point rouge si un service est en erreur), Réglages. Sur iPhone : pilule flottante en bas, six icônes sans nom (le nom est le titre de l'écran). Sur PC : rail à gauche, avec les noms.
 
 **Message bref.** Après chaque écriture, un message apparaît en bas 4 secondes ; il porte un bouton « Annuler » pendant 10 secondes quand l'écriture est réversible ; une erreur reste 8 secondes.
 
-### Connexion
+### Mot de passe (écran d'entrée)
 
 | Geste | Effet | Écran suivant |
 |---|---|---|
@@ -105,8 +109,10 @@ flowchart TD
 
 | Geste | Effet | Écran suivant |
 |---|---|---|
-| Pastille de filtre (Tout, puis une par famille de motifs) | Réduit la liste | À traiter |
-| Bouton de lot, visible quand un filtre est actif | Demande confirmation, puis traite tous les points visibles | À traiter |
+| Tuile (une par type, affichée seulement si elle a quelque chose) | Ouvre la liste de ce type | Liste de la tuile |
+| Tuile « Pas de groupe » | Ouvre Contacts, filtré sur les fiches sans groupe | Contacts |
+| « ‹ Toutes les tuiles » | Revient à la grille | À traiter |
+| Bouton de lot, dans une tuile qui le permet (Réseaux, Mise en forme, Immich, Imports) | Annonce l'effet, puis traite tous les points visibles | À traiter |
 | PC : clic sur un point du sommaire | Affiche le point à droite | À traiter |
 | Nom du contact dans un point | Ouvre la fiche | Fiche |
 | Bouton plein d'un point | Applique la réponse attendue (voir tableau suivant) | À traiter, point retiré |
@@ -132,7 +138,9 @@ flowchart TD
 | Dates de mariage ou de décès différentes | Écrire partout (après choix) ; Ignorer |
 | Société écrite de plusieurs façons | Écrire sur N fiches (après choix de l'écriture) ; Pas la même société |
 
-**Manques.** Le filtre « Manques » montre une ligne par information manquante avec son nombre de fiches ; une ligne ouvre Contacts filtré. Les manques ne comptent pas dans le compteur de l'onglet.
+**Tuiles (2.9.0).** Changé sur l'iPhone (modifiée, nouvelle, supprimée, conflit) ; Pas de groupe ; Immich non synchronisé (liaison à confirmer, nom ou naissance qui diffère d'Immich) ; Treemich non synchronisé (liens familiaux, mariage, décès, nom ou naissance qui diffère de l'arbre) ; Doublons ; Sociétés ; Mise en forme ; Réseaux ; Imports ; Contact incomplet.
+
+**Contact incomplet.** La tuile montre une ligne par information manquante avec son nombre de fiches ; une ligne ouvre Contacts filtré. Elle ne compte pas dans le compteur de l'onglet ; « Pas de groupe » y compte.
 
 ### Contacts (`#/contacts`)
 
@@ -189,29 +197,50 @@ Quatre tuiles, une par file ; la file choisie s'affiche dessous, avec un filtre 
 | Affiches à préparer | Cocher, « Préparer les affiches » |
 | Affiches à poser | Cocher, « Marquer comme posées » |
 
+### Groupes (`#/groupes`)
+
+Liste des groupes avec leur nombre de fiches ; sur PC le groupe choisi s'affiche à droite, sur iPhone il remplace la liste.
+
+| Geste | Effet |
+|---|---|
+| Nom d'un groupe | Affiche ses membres |
+| « Nouveau groupe », Créer | Crée le groupe dans iCloud et l'ouvre |
+| Recherche « Ajouter un contact », puis un nom | Ajoute la fiche au groupe |
+| Cocher (20 au plus), « Retirer du groupe » | Retire les fiches cochées ; aucune fiche n'est supprimée |
+| Renommer | Renomme le groupe dans iCloud ; ses attentes le suivent |
+| Supprimer ce groupe…, puis confirmer | Retire le groupe ; les fiches restent ; « Annuler » pendant 10 secondes |
+
+Les groupes d'origine de carnet ne se renomment pas et ne se suppriment pas.
+
+### Connexion (`#/connexion`, les services)
+
+Une tuile par service, avec son voyant, un résumé et le nombre de différences qui attendent dans « À traiter ». Toucher une tuile ouvre le service dessous.
+
+| Service | Vérifier (n'écrit rien) | Synchroniser (écrit le sûr) | La nuit |
+|---|---|---|---|
+| iCloud | Relit iCloud, dit ce qui a changé | Relecture, puis fêtes des fiches dont le groupe l'attend | Fêtes (interrupteur) |
+| Immich | Nom, naissance, photo de la fiche, personnes nommées sans fiche | Liaisons sûres, naissances d'un côté vers l'autre, portraits manquants | Interrupteur |
+| Treemich | Nom, naissance, mariage, décès, liens familiaux | Dates de famille : remplir le côté vide, jamais écraser | Interrupteur (éteint à la livraison) |
+| Copies | — | Copier vers Synology (et Forcer la copie) | Interrupteur |
+| Kit d'urgence | — | Envoyer le groupe Urgence au kit | Interrupteur |
+| Sauvegardes | Choisir une sauvegarde, la télécharger, remettre des fiches ; Exporter tout le carnet | | |
+| Import | Fenêtre d'import unique (carte, LinkedIn, Facebook, Instagram) | | |
+| LinkedIn, Telegram, Facebook, Instagram | Connexion ou dépôt d'archive ; rattacher les personnes sans fiche | | |
+| Home Assistant | Ce que Home Assistant lit dans carnet (contacts, anniversaires, mariages, fêtes) | | |
+| Attentes | Tableau « ce que chaque groupe doit avoir » : cocher, lire l'annonce, Enregistrer | | |
+
+Ce que « Synchroniser » ne peut pas trancher (deux valeurs différentes, liaison douteuse) devient un point dans « À traiter ».
+
 ### Réglages (`#/reglages`)
 
 | Section | Gestes |
 |---|---|
-| Ce que chaque groupe doit avoir | Cocher une case : carnet annonce l'effet, puis Enregistrer ou Annuler. Tableau sur PC, un groupe à la fois sur iPhone |
-| Ce que carnet écrit tout seul | Deux interrupteurs ; liste de ce qui serait écrit ; « Accorder maintenant » ; ce qui empêche une date de partir ; journal avec « Défaire » |
+| La nuit | Heure, bilan de la dernière nuit ; Lancer la nuit maintenant |
+| Analyse globale | Relancer l'analyse ; Remettre les validations à zéro (en tapant REMETTRE) |
+| Écrit par carnet tout seul | Journal des écritures automatiques, avec « Défaire » |
 | Exceptions | Retirer une exception |
-| Réseaux | LinkedIn (fichier, connexion, adresse de retour), Telegram (numéro, code, import), Facebook et Instagram (archives) ; rattacher les personnes sans fiche |
-| Pied de page | Se déconnecter |
-
-### État (`#/etat`)
-
-Un bandeau de bilan, puis six tuiles ; un clic sur une tuile ouvre sa section en dessous.
-
-| Section | Gestes |
-|---|---|
-| iCloud et la nuit | Relire iCloud ; Lancer la nuit maintenant ; forcer la lecture après un coupe-circuit |
-| Sauvegardes | Choisir une sauvegarde, la télécharger, cocher des fiches et les remettre ; Exporter tout le carnet |
-| Copies | Copier vers Synology (et Forcer la copie) ; Envoyer au kit |
-| Manques | Les lignes de manques, en lecture ; Relancer l'analyse globale ; Remettre les validations à zéro (en tapant REMETTRE) |
-| Services | Voyant par service ; Relire Immich et Treemich |
 | Journal | Lecture seule |
-| Pied de page | Se déconnecter |
+| Pied de page | Version ; Se déconnecter |
 
 ### Points de friction
 
@@ -229,7 +258,7 @@ Reste : **la fiche empile toujours six blocs** ; sur iPhone, les liaisons et la 
 
 **Éléments propres à carnet, gardés :** l'anneau de progression des boutons, la jauge de complétude autour de l'avatar, l'index alphabétique en tranche sur PC.
 
-**État** : un bandeau de bilan, puis des tuiles bento ; « iCloud et la nuit » occupe deux colonnes.
+**Tuiles (2.9.0)** : À traiter, Photos et Connexion s'ouvrent sur une grille de tuiles (deux colonnes sur iPhone, quatre sur PC) : une icône, un chiffre ou un voyant, un nom. La tuile qui ne compte pas dans le chiffre de l'onglet est plus claire.
 
 **Animation.** Transitions courtes sur la barre d'onglets et les boutons ; tout est coupé si l'appareil demande de réduire les animations.
 
@@ -306,6 +335,10 @@ Règles : mêmes textes, même navigation, mêmes rôles d'accessibilité ; les 
 ### 2.8 — parcours et complétude
 
 Faite le 11/11/2026, en cinq versions : 2.8.0 (le dossier `docs/2.8-dossier.md`), 2.8.1 (logo par société), 2.8.2 (noms de société), 2.8.3 (accord immédiat des dates de famille, raisons affichées), 2.8.4 (Réseaux dans Réglages). Détail dans `CHANGELOG.md`.
+
+### 2.9.0 — carnet comme lien entre les outils
+
+Faite le 11/11/2026 en une livraison, sans dossier ni conseil préalables (choix de Julien) : six onglets, À traiter en tuiles, Groupes, Connexion avec une icône par service (Vérifier, Synchroniser, interrupteur de nuit), Réglages allégés. Aucune table nouvelle ; les interrupteurs de nuit sont des clés de la table `kv`. Détail dans `CHANGELOG.md`.
 
 Reste à voir à l'usage : le calendrier des fêtes, l'écriture réelle dans Treemich, le logo glissé depuis un vrai navigateur.
 
