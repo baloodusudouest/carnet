@@ -177,7 +177,7 @@
         </div>
         <dl>
           {#if f.anniversaire}<dt>Anniversaire</dt><dd>{dateLecture(f.anniversaire)}</dd>{/if}
-          {#if donnees.fete?.date && !decede}<dt>Fête</dt><dd>{dateLecture(donnees.fete.date)}{#if ORIGINE_FETE[donnees.fete.origine]}{' '}<span class="discret">({ORIGINE_FETE[donnees.fete.origine]})</span>{/if}</dd>{/if}
+          {#if donnees.fete?.date && !decede && (donnees.fete.attendue || donnees.fete.origine !== 'calendrier')}<dt>Fête</dt><dd>{dateLecture(donnees.fete.date)}{#if ORIGINE_FETE[donnees.fete.origine]}{' '}<span class="discret">({ORIGINE_FETE[donnees.fete.origine]})</span>{/if}</dd>{/if}
           {#if f.mariage}<dt>Mariage</dt><dd>{dateLecture(f.mariage)}</dd>{/if}
           {#if decede}<dt>Décès</dt><dd>{donnees.deces.date ? dateLecture(donnees.deces.date) : 'date inconnue'}</dd>{/if}
           {#if f.surnom}<dt>Surnom</dt><dd>{f.surnom}</dd>{/if}
@@ -199,7 +199,7 @@
         {:else if !comp.total}
           <p class="discret">{f.groupes.length ? "Les groupes de ce contact n'attendent aucune information." : "Ce contact n'est dans aucun groupe : rien n'est attendu de sa fiche."}</p>
         {:else}
-          <p class="discret">{comp.score} sur {comp.total} informations attendues par {f.groupes.length > 1 ? 'ses groupes' : 'son groupe'}.</p>
+          <p class="discret">Informations attendues par {f.groupes.length > 1 ? 'ses groupes' : 'son groupe'} : {comp.score} sur {comp.total}.</p>
           {#if comp.manques?.length}
             <ul class="manques">
               {#each comp.manques as m}

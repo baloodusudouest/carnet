@@ -4,14 +4,18 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **2.7.2 sur `main`** : la 2.7.0 (nouvel habillage), la sonde, et l'essai avant la 2.8.0. Julien a la 2.7.0 en service.
-- **2.8.0** : grill, sonde, dossier en version 2 et conseil faits ([`docs/2.8-dossier.md`](docs/2.8-dossier.md), [`docs/2.8-conseil.md`](docs/2.8-conseil.md)). **Essai fait** ([`docs/essai-2.8.md`](docs/essai-2.8.md), résultats en bas) ; dossier en version 3.
-- Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md).
+- **2.8.0 sur `main`**, pas encore en service chez Julien (il a la 2.7.0). Elle contient tout le dossier [`docs/2.8-dossier.md`](docs/2.8-dossier.md) sauf trois écarts notés dans le journal des versions : Réseaux resté dans État, journal des écritures automatiques dans Réglages, pas de shadcn-svelte.
+- Les deux interrupteurs (fêtes, dates de famille) sont **éteints** : rien n'a encore été écrit tout seul.
+- Conseil : [`docs/2.8-conseil.md`](docs/2.8-conseil.md). Essai sur le vrai iCloud : [`docs/essai-2.8.md`](docs/essai-2.8.md).
+- Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md) (à remettre à jour pour la 2.8 à la prochaine réouverture).
 
 ## Prochaine étape
 
-1. Coder la 2.8.0 en suivant le plan du dossier (étapes 1 à 13), sur une branche `2.8`, en une seule livraison ; l'import unique est la ligne de coupe.
-2. Après une semaine d'usage de la 2.7.0 : document du socle et planche de couleurs.
+1. Julien met la 2.8.0 en service **en lecture seule un jour** (`CARNET_LECTURE_SEULE=oui`), copie de `/state` avant. Il vérifie : les nombres de la famille « Manques » (la sonde donnait 437 fiches incomplètes, 406 sans photo, 59 sans téléphone, avant l'exemption des fiches d'entreprise et sans la colonne Fête), le tableau des attentes, la liste « ce que carnet écrirait ».
+2. Il enlève la lecture seule, puis allume « fêtes » ; une semaine plus tard, « dates de famille ». Relire « Écrit par carnet tout seul » après chaque première nuit.
+3. À voir à l'usage : le calendrier des fêtes (prénoms introuvables dans la ligne « Sans fête »), le logo glissé depuis Google Images sur iPhone et sur PC, l'écriture réelle d'un mariage dans Treemich (jamais essayée sur la vraie installation).
+4. Restes possibles pour une 2.8.1 : déplacer Réseaux d'État vers Réglages ; route unique d'évènements pour Home Assistant.
+5. Après une semaine d'usage : document du socle et planche de couleurs.
 
 ## Décisions tranchées
 
@@ -29,6 +33,9 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## Pièges
 
+- 2.8 : toute écriture automatique nouvelle passe par `famille.appliquer` (interrupteur, plafond de nuit, table `automatiques`). Une réponse de Julien dans « À traiter » écrit tout de suite et n'est pas journalisée comme automatique.
+- Les logos en attente d'un choix sont dans `c.logos`, pas dans le cache `c._memo` (vidé à chaque écriture).
+- Le tableau des attentes n'est inscrit qu'une fois (`attentes_semees`) : un groupe créé plus tard n'attend rien tant que Julien ne coche pas.
 - Dates supplémentaires d'une carte : l'iPhone réécrit (ordre, `type=pref`, paramètre de la date sans année retiré). Comparer des valeurs ; l'an 1604 veut dire « sans année ». Le libellé natif d'Apple pour les dates s'affiche « fête » en français : ne pas l'utiliser pour le mariage.
 - La recherche automatique de logos ne couvre qu'une fiche de société sur dix : le logo glissé est le chemin principal.
 - Treemich range le mariage et le divorce sur le couple, pas sur la personne : lire `GET /relationships`, écrire par `PATCH /people/<id>/relationships`. Les évènements de vie d'une personne ne les contiennent jamais.
@@ -42,7 +49,7 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 ## Retour arrière
 
 - Copier `/state` avant la mise en service de la 2.7.0.
-- Mettre `CARNET_VERSION=2.6.4` dans Portainer pour revenir à l'habillage actuel ; la base est la même.
+- `CARNET_VERSION=2.7.2` dans Portainer pour revenir avant la 2.8 ; la base est la même (les tables de la 2.8 sont ignorées). Ce qui a été écrit dans iCloud ou Treemich par la 2.8 ne revient pas : utiliser « Défaire » avant, ou la sauvegarde d'iCloud.
 
 ## Non-objectifs
 

@@ -161,6 +161,29 @@ def _relire_une(c: Carnet, dav, uid: str, href: str) -> tuple[str, str] | None:
     return brute.etag, brute.texte
 
 
+def reanalyser(c: Carnet) -> int:
+    """Passage à la 2.8 : relit les cartes déjà en base avec la lecture d'aujourd'hui, pour que
+    les champs nouveaux (service, prononciation, fête, mariage, décès) déjà présents dans iCloud
+    soient connus sans attendre que la carte change. Rien n'est signalé, rien n'est écrit dans
+    iCloud. Fait une seule fois."""
+    if c.base.lire("analyse_28"):
+        return 0
+    changees = 0
+    with c.base.transaction() as cx:
+        for l in cx.execute("SELECT uid, texte, fiche FROM fiches").fetchall():
+            avant = json.loads(l["fiche"])
+            try:
+                apres, _ = F.lire(l["texte"], avant.get("groupes", []), c.cfg.region)
+            except Exception:  # noqa: BLE001 — carte illisible : laissée telle quelle
+                continue
+            if apres != avant:
+                cx.execute("UPDATE fiches SET fiche = ? WHERE uid = ?", (json.dumps(apres, ensure_ascii=False), l["uid"]))
+                changees += 1
+    c.base.ecrire("analyse_28", True)
+    c.oublier()
+    return changees
+
+
 # ================================================================ écriture
 
 def _groupes_actuels(c: Carnet) -> dict[str, list[dict]]:

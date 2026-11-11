@@ -42,6 +42,7 @@ def demarrage(c: Carnet) -> None:
                 icloud.relire(c, "démarrage")
         # La reprise des choix de la 1.3 a été retirée en 2.6.5. Si l'ancienne base est là et que
         # la reprise n'a jamais eu lieu, on le dit une fois plutôt que de perdre ces choix en silence.
+        icloud.reanalyser(c)    # passage à la 2.8 : champs nouveaux déjà présents dans les cartes
         if c.fiches():
             attentes.semer(c)   # passage à la 2.8 sur une base déjà lue
         if (c.cfg.state / "carnet.db").is_file() and not c.base.lire("reprise") \
@@ -266,7 +267,8 @@ def contact(uid: str):
             "linkedin": {"url": lk["url"], **json.loads(lk["donnees"])} if lk else None,
             "a_traiter": points, "groupes_connus": [g["nom"] for g in groupes()],
             "completude": completude.resume(c).get(uid, {}), "criteres": completude.CRITERES,
-            "fete": dict(zip(("date", "origine"), attentes.fete_de(f))),
+            "fete": {**dict(zip(("date", "origine"), attentes.fete_de(f))),
+                     "attendue": "fete" in attentes.attendues(f, attentes.par_groupe(c))},
             "deces": {"date": attentes.decedes(c).get(uid), "decede": uid in attentes.decedes(c),
                       "coche": bool(c.base.un("SELECT 1 FROM deces WHERE uid = ? AND origine = 'main'", (uid,)))},
             "google_logo": galerie.recherche_google(f)}

@@ -1807,3 +1807,17 @@ def test_28_lots_photos_refuses_en_lecture_seule(c, services):
                 lambda: galerie.preparer_affiches(c, ["AAAA-1111"])):
         with pytest.raises(LectureSeule):
             lot()
+
+
+def test_28_passage_de_version_relit_les_cartes_en_base(c, services):
+    """Une date « Mariage » posée sur l'iPhone avant la 2.8 est connue dès le démarrage, sans point
+    « modifiée sur l'iPhone », et carnet ne la remplace donc jamais par une autre."""
+    texte = services["icloud"].texte("DDDD-4444").replace("UID:", "item7.X-ABDATE:2009-09-19\r\nitem7.X-ABLabel:Mariage\r\nUID:")
+    ancienne = {k: v for k, v in c.fiche("DDDD-4444").items() if k not in ("a_photo", "mariage", "fete", "deces", "service",
+                                                                        "prononciation_prenom", "prononciation_nom")}
+    c.base.executer("UPDATE fiches SET texte = ?, fiche = ? WHERE uid = 'DDDD-4444'", (texte, json.dumps(ancienne)))
+    c.oublier()
+    assert not c.fiche("DDDD-4444").get("mariage")
+    avant = len(points(c))
+    assert icloud.reanalyser(c) >= 1 and c.fiche("DDDD-4444")["mariage"] == "2009-09-19"
+    assert len(points(c)) == avant and icloud.reanalyser(c) == 0            # une seule fois, rien de signalé

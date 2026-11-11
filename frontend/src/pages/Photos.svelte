@@ -120,8 +120,10 @@
 
       <div class="actions">
         {#if file === 'logos'}
-          <button class="bouton" disabled={attente || !cochees.some((u) => lignes.find((x) => x.uid === u)?.domaine)} onclick={chercherLogos}>
-            {attente ? 'Recherche…' : `Chercher les logos (${cochees.length})`}</button>
+          {#if lignes.some((x) => x.domaine)}
+            <button class="bouton" disabled={attente || !cochees.length} onclick={chercherLogos}>
+              {attente ? 'Recherche…' : `Chercher les logos (${cochees.length})`}</button>
+          {/if}
           <button class="bouton bouton-principal" disabled={attente || !logosChoisis.length}
                   onclick={() => enFond('/api/photos/logos/poser', { choix: logosChoisis })}>Poser les logos ({logosChoisis.length})</button>
         {:else if file === 'portraits'}
