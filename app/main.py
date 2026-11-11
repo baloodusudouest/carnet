@@ -594,6 +594,12 @@ def automatique():
     return {**famille.apercu(c), "journal": famille.journal(c), "lecture_seule": c.cfg.lecture_seule}
 
 
+@app.post("/api/automatique/verifier")
+def automatique_verifier():
+    """Relit Treemich et compare naissances, mariages et décès avec les fiches. N'écrit rien."""
+    return famille.verifier(carnet())
+
+
 @app.post("/api/automatique/accorder")
 def automatique_accorder():
     """Accorde tout de suite mariages et décès avec Treemich (bouton de Réglages)."""

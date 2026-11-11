@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.8.5 — 11 novembre 2026
+- **Vérifier l'accord avec Treemich** (Réglages) : un bouton relit Treemich et compare, date par date, les naissances, les mariages et les décès des fiches reliées à l'arbre. Un tableau donne, par sorte de date, le nombre de dates vues, égales, vides et en écart ; chaque écart est listé avec les deux valeurs et ce qui va se passer (écriture prévue, point dans « À traiter », accord éteint, date à compléter à la main).
+- La vérification n'écrit rien. Si Treemich ne répond pas, elle le dit au lieu d'annoncer que tout est accordé. Les personnes de l'arbre sans fiche reliée sont comptées à part : elles ne sont pas comparées.
+- Tests : 102 du back, 25 d'interface.
+
 ## 2.8.4 — 11 novembre 2026
 Les restes de la 2.8. Rien ne change dans ce que carnet écrit.
 - **Réseaux quitte État pour Réglages** : bilan par réseau, connexions LinkedIn et Telegram, dépôts d'archives, personnes sans fiche. État garde six tuiles.

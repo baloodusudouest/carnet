@@ -1958,3 +1958,42 @@ def test_283_date_de_famille_accordee_tout_de_suite_et_raisons_dites(c, services
     import dataclasses
     c.cfg = dataclasses.replace(c.cfg, lecture_seule=True)
     assert "lecture seule" in famille.pourquoi_rien(c, liaisons.donnees(c))[0]
+
+
+def test_285_verification_de_l_accord_avec_treemich(c, services):
+    from app import famille
+    tm = services["treemich"]
+    liaisons.lier(c, "AAAA-1111", "treemich", "t-claire")     # née le 14/03/1985 des deux côtés
+    liaisons.lier(c, "DDDD-4444", "treemich", "t-paul")       # née le 09/01/1983 des deux côtés
+    avant = (len(services["icloud"].ecritures), len(tm.ecrits))
+    v = famille.verifier(c)
+    assert v["treemich"] and v["personnes"] == 2 and v["couples"] == 1
+    par = {l["sujet"]: l for l in v["bilan"]}
+    assert (par["naissance"]["identiques"], par["naissance"]["ecarts"]) == (2, 0)
+    assert par["deces"]["vides"] == 2 and par["mariage"]["vides"] == 1 and v["ecarts"] == []
+    # Mariage sur une seule fiche, décès dans l'arbre seulement, naissance différente
+    _ecrire_champ(c, "AAAA-1111", mariage="12/06/2010")
+    tm.deces["t-paul"] = "2024-02-03"
+    _ecrire_champ(c, "DDDD-4444", anniversaire="10/01/1983")
+    ecritures = (len(services["icloud"].ecritures), len(tm.ecrits))
+    v = famille.verifier(c)
+    e = {(x["sujet"], x["etat"]): x for x in v["ecarts"]}
+    assert set(e) == {("naissance", "different"), ("mariage", "carnet_seul"), ("deces", "treemich_seul")}
+    assert "À traiter" in e[("naissance", "different")]["suite"]
+    assert "éteint" in e[("mariage", "carnet_seul")]["suite"] and e[("mariage", "carnet_seul")]["carnet"] == "12/06/2010"
+    assert e[("deces", "treemich_seul")]["treemich"] == "03/02/2024"
+    # La vérification n'écrit rien, nulle part
+    assert (len(services["icloud"].ecritures), len(tm.ecrits)) == ecritures
+    # Interrupteur allumé : la suite annonce l'écriture ; après l'accord, plus d'écart sur mariage et décès
+    famille.regler(c, "famille", True)
+    assert "Sera écrit dans Treemich" in {(x["sujet"]): x["suite"] for x in famille.verifier(c)["ecarts"]}["mariage"]
+    famille.accorder_maintenant(c)
+    v = famille.verifier(c)
+    assert {x["sujet"] for x in v["ecarts"]} == {"naissance"}
+    # Date incomplète d'un côté : signalée, sans rien promettre
+    assert famille._comparer("--03-14", "1985-03-14") == "incomplet" and famille._comparer("1985-03-14", "1985") == "incomplet"
+    assert famille._comparer("1985-03-14", "1986") == "different"
+    # Treemich muet : dit, sans faux « tout est accordé »
+    tm.muet = True
+    v = famille.verifier(c)
+    assert v["treemich"] is False and v["raison"]

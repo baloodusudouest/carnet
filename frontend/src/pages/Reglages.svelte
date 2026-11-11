@@ -42,6 +42,12 @@
       auto = await api.get('/api/automatique')
     } catch (e) { erreur(e) } finally { attente = false }
   }
+  // Vérification : Treemich est relu, chaque date est comparée ; rien n'est écrit
+  let verif = $state(null)
+  async function verifier() {
+    attente = true
+    try { verif = await api.post('/api/automatique/verifier') } catch (e) { erreur(e) } finally { attente = false }
+  }
   async function accorder() {
     attente = true
     try {
@@ -164,6 +170,40 @@
         </div>
       {/each}
 
+      <div class="interrupteur verification">
+        <div class="ligne-verif">
+          <strong>Vérifier l'accord avec Treemich</strong>
+          <button class="bouton" disabled={attente} onclick={verifier}>{attente && !verif ? 'Lecture de Treemich…' : verif ? 'Vérifier de nouveau' : 'Vérifier maintenant'}</button>
+        </div>
+        <p class="discret">carnet relit Treemich et compare, date par date, les naissances, les mariages et les décès des fiches reliées à l'arbre. Rien n'est écrit.</p>
+        {#if verif && !verif.treemich}
+          <p class="alerte" role="alert">Treemich n'a pas répondu : {verif.raison}</p>
+        {:else if verif}
+          <table class="verif">
+            <thead><tr><th scope="col"></th><th scope="col">Vues</th><th scope="col">Égales</th><th scope="col">Vides</th><th scope="col">Écarts</th></tr></thead>
+            <tbody>
+              {#each verif.bilan as l}
+                <tr><th scope="row">{l.libelle}</th><td>{l.sur}</td><td>{l.identiques}</td><td>{l.vides}</td><td class:ecart={l.ecarts}>{l.ecarts}</td></tr>
+              {/each}
+            </tbody>
+          </table>
+          <p class="discret">{verif.personnes} fiche(s) reliée(s) à l'arbre, {verif.couples} couple(s). {verif.sans_fiche} personne(s) de l'arbre n'ont pas de fiche reliée : elles ne sont pas comparées.</p>
+          {#if !verif.personnes}
+            <p class="discret" role="status">Aucune fiche n'est reliée à une personne de Treemich : il n'y a rien à comparer. Les liaisons se font sur chaque fiche, bloc Liaisons.</p>
+          {:else if !verif.ecarts.length}
+            <p class="tout-bon" role="status">Tout est accordé.</p>
+          {:else}
+            <ul class="journal ecarts">
+              {#each verif.ecarts as x}
+                <li><span><span class="discret">{x.libelle} · {x.etat_libelle}</span><br />
+                  <a href={'#/contacts/' + encodeURIComponent(x.uid)}>{x.nom}</a> — carnet : {x.carnet || 'rien'} ; Treemich : {x.treemich || 'rien'}<br />
+                  <span class="discret">{x.suite}</span></span></li>
+              {/each}
+            </ul>
+          {/if}
+        {/if}
+      </div>
+
       <h3 class="titre">Écrit par carnet tout seul</h3>
       {#if !auto.journal.length}
         <p class="discret">Rien encore.</p>
@@ -235,6 +275,16 @@
   .bascule input:focus-visible { outline: 2px solid var(--color-onglet); outline-offset: 2px; }
   .raisons { display: grid; gap: 0.35rem; padding: 0.7rem 0.9rem; border-left: 3px solid var(--color-onglet); font-size: 0.92rem; }
   .raisons ul { display: grid; gap: 0.25rem; padding-left: 1.1rem; list-style: disc; color: var(--color-mine); }
+  .ligne-verif { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+  .verif { width: 100%; max-width: 30rem; table-layout: fixed; }
+  .verif th, .verif td { padding: 0.3rem 0.25rem; text-align: right; min-width: 0; position: static; overflow-wrap: anywhere; }
+  .verif thead th:first-child, .verif tbody th { width: 30%; }
+  .verif thead th { background: none; }
+  .verif tbody th { text-align: left; min-width: 6rem; }
+  .verif td.ecart { color: var(--color-onglet); font-weight: 600; }
+  .ecarts { max-height: 26rem; }
+  .tout-bon { color: var(--color-valide); }
+  .alerte { color: var(--color-alerte); }
   .etat-bascule { color: var(--color-mine); font-size: 0.85rem; margin-left: 0.3rem; }
   .etat-bascule.actif { color: var(--color-onglet); }
   .prevu summary { cursor: pointer; min-height: 2.4rem; display: flex; align-items: center; }
