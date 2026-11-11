@@ -1,5 +1,14 @@
 # Journal des versions
 
+## 2.10.0 — 11 novembre 2026
+- **Toucher la photo d'une fiche en modification ouvre une fenêtre de propositions** : jusqu'à 5 pour la photo du contact, jusqu'à 5 pour son affiche.
+  - Contact relié à Immich : ses meilleurs visages, montrés tels qu'ils seraient posés (photo carrée, affiche cadrée). « Chercher d'autres photos dans Immich » relance la recherche. carnet garde maintenant 12 visages par personne au lieu de 6.
+  - Contact non relié, avec une société : le logo de la société (gardé, déposé dans la fenêtre, ou trouvé sur son site) pour la photo, et 5 affiches de ce logo sur 5 couleurs.
+  - Toucher une photo la pose dans iCloud (« Annuler » pendant 10 secondes) ; toucher une affiche la range dans l'album Immich « Affiches de contacts ».
+- **Nouvelle affiche à partir du logo** : la page est à la couleur de la société (la couleur la plus présente du logo, hors blanc, gris et noir), le logo est en haut sur une plaque, le nom de la société est écrit dessous, puis le nom de la personne quand la fiche en a un. Quatre autres couleurs sont proposées : plus sombre, seconde couleur du logo ou version claire, blanc cassé, anthracite.
+- **Affiches par lot** (Photos, file « Affiches à préparer ») : les contacts sans portrait possible dont la société a un logo gardé y entrent, et reçoivent l'affiche du logo à la couleur de la société.
+- Tests : 107 du back, 29 d'interface.
+
 ## 2.9.2 — 11 novembre 2026
 Pour Home Assistant (annonces des mariages et des fêtes).
 - **Mariages par couple** : `/ha/anniversaires` renvoie, dans `mariages`, une entrée par couple (« Prénom NOM et Prénom NOM ») quand le conjoint est connu par l'arbre et a une fiche ; sinon une entrée au nom de la personne. Champs ajoutés : `noms` et `couple`. Un couple divorcé ou dont l'un est décédé n'est pas annoncé.

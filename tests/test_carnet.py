@@ -2134,3 +2134,44 @@ def test_29_routes_par_l_api(c):
         assert client.get("/api/groupes-detail").status_code == 200
         assert client.post("/api/groupes/Amis/supprimer", json={}).status_code == 400      # confirmation exigée
     main.ETAT.clear()
+
+
+def test_210_propositions_de_photo_et_d_affiche(c, services):
+    """Fenêtre ouverte en touchant la photo : visages d'Immich pour une personne reliée, logo et
+    couleurs de la société sinon ; l'affiche du logo porte la couleur choisie."""
+    import io
+    from PIL import Image
+    from app import galerie, logos
+    # Personne reliée à Immich : ses visages, en photo et en affiche
+    liaisons.lier(c, "DDDD-4444", "immich", "im-paul")
+    p = photos.propositions(c, "DDDD-4444")
+    assert p["mode"] == "immich" and [x["cle"] for x in p["photos"]] == ["p1"] and len(p["affiches"]) <= 5
+    assert Image.open(io.BytesIO(photos.apercu_proposition(c, "DDDD-4444", "photo", "p1"))).size[0] > 0
+    # Contact de société, non relié : rien tant qu'il n'y a pas de logo, puis logo et 5 couleurs
+    p = photos.propositions(c, "CCCC-3333")
+    assert p["mode"] == "logo" and p["photos"] == [] and p["affiches"] == []
+    logo = Image.new("RGBA", (300, 300), (0, 0, 0, 0))
+    for x in range(60, 240):
+        for y in range(60, 240):
+            logo.putpixel((x, y), (20, 90, 170, 255))
+    tampon = io.BytesIO()
+    logo.save(tampon, "PNG")
+    galerie.deposer_logo(c, "CCCC-3333", contenu=tampon.getvalue())
+    p = photos.propositions(c, "CCCC-3333")
+    assert [x["origine"] for x in p["photos"]] == ["déposé"] and len(p["affiches"]) == 5
+    assert len({x["couleur"] for x in p["affiches"]}) == 5
+    teintes = logos.couleurs(tampon.getvalue())
+    assert teintes[0][2] > teintes[0][0] + 60                                   # la couleur de la société : le bleu du logo
+    apercu = Image.open(io.BytesIO(photos.apercu_proposition(c, "CCCC-3333", "affiche", "0")))
+    assert apercu.size == (354, 768) and apercu.getpixel((10, 700))[2] > apercu.getpixel((10, 700))[0] + 60
+    assert Image.open(io.BytesIO(photos.apercu_proposition(c, "CCCC-3333", "photo", "0"))).size == (320, 320)
+    # Affiche préparée depuis le logo, sur la couleur n° 3 (blanc cassé) ; le logo devient celui de la société
+    im = services["immich"]
+    avant = len(im.envoyees) if hasattr(im, "envoyees") else None
+    a = photos.preparer_affiche(c, "CCCC-3333", couleur=3)
+    assert a["immich"] and photos.affiches(c)[-1]["source"] == "logo"
+    assert galerie.logo_connu(c, galerie.cle_societe(c.fiche("CCCC-3333"))) == tampon.getvalue()
+    # La file « Affiches à préparer » compte maintenant les contacts de société qui ont un logo gardé
+    c.base.executer("DELETE FROM affiches WHERE uid = ?", ("CCCC-3333",))
+    assert any(x["uid"] == "CCCC-3333" and x.get("logo") for x in galerie.files(c)["files"]["a_preparer"])
+    assert galerie.preparer_affiches(c, ["CCCC-3333"])["faits"] == 1

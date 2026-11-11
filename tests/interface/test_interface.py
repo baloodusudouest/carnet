@@ -501,3 +501,29 @@ def test_29_connexion_verifier_puis_interrupteur_de_nuit(page):
     assert bascule.is_checked() != avant
     bascule.click()                                                              # on remet (serveur partagé)
     page.wait_for_function("(a) => document.querySelector('input[role=switch]').checked === a", arg=avant)
+
+
+# ------------------------------------------------------------------ 2.10 : propositions de photo et d'affiche
+
+def test_210_toucher_la_photo_ouvre_cinq_propositions(page):
+    import io
+    from PIL import Image
+    base = page.url.split("#")[0]
+    page.goto(base + "#/contacts/F-21")                                           # contact d'une société, non relié à Immich
+    page.get_by_role("button", name="Modifier les informations").click()
+    page.get_by_role("button", name="Changer la photo ou l'affiche").click()
+    fenetre = page.locator("dialog[open]")
+    fenetre.get_by_role("heading", name="Photo du contact").wait_for()
+    image = io.BytesIO()
+    Image.new("RGB", (260, 260), (30, 90, 170)).save(image, "PNG")
+    fenetre.locator("input[type=file]").set_input_files({"name": "logo.png", "mimeType": "image/png", "buffer": image.getvalue()})
+    affiches = fenetre.locator("ul[aria-label=\"Propositions d'affiche\"] .proposition")
+    page.wait_for_function("document.querySelectorAll('dialog[open] ul.affiches .proposition').length === 5")
+    assert fenetre.locator("ul[aria-label='Propositions de photo'] .proposition").count() >= 1
+    assert "couleur de la société" in affiches.first.inner_text()
+    page.wait_for_function("[...document.querySelectorAll('dialog[open] ul.affiches img')].every((i) => i.complete && i.naturalWidth > 0)")
+    boite = fenetre.bounding_box()
+    assert boite["x"] >= 0 and boite["x"] + boite["width"] <= page.viewport_size["width"] + 1
+    affiches.first.click()
+    page.wait_for_selector(".message >> text=Affiche prête")
+    page.wait_for_function("!document.querySelector('dialog[open]')")

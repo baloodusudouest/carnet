@@ -141,21 +141,102 @@ def _police(taille: int):
     return ImageFont.load_default(size=taille)
 
 
-def affiche(contenu: bytes, societe: str, largeur: int = 1179, hauteur: int = 2556) -> bytes:
+CASSE, ANTHRACITE = (245, 242, 236), (28, 27, 26)
+
+
+def _distance(a, b) -> int:
+    return sum(abs(x - y) for x, y in zip(a, b))
+
+
+def couleurs(contenu: bytes, nombre: int = 5) -> list[tuple[int, int, int]]:
+    """Couleurs de fond proposées pour l'affiche d'une société, tirées de son logo (2.10) : la
+    couleur la plus présente parmi celles qui ont de la teinte, une version plus sombre, une seconde
+    couleur du logo (ou une version claire de la première), puis blanc cassé et anthracite. La
+    première est « la couleur de la société »."""
+    import colorsys
+    logo = _logo_rgba(contenu).copy()
+    logo.thumbnail((72, 72))
+    compte: dict[tuple[int, int, int], int] = {}
+    for r, v, b, a in logo.getdata():
+        if a < 200:
+            continue
+        _, sat, val = colorsys.rgb_to_hsv(r / 255, v / 255, b / 255)
+        if sat < 0.28 or val < 0.2:
+            continue                                   # gris, blanc, noir : pas une couleur de marque
+        cle = (r // 24 * 24 + 12, v // 24 * 24 + 12, b // 24 * 24 + 12)
+        compte[cle] = compte.get(cle, 0) + 1
+    marques: list[tuple[int, int, int]] = []
+    for coul, _ in sorted(compte.items(), key=lambda x: -x[1]):
+        if all(_distance(coul, m) > 110 for m in marques):
+            marques.append(tuple(min(255, x) for x in coul))
+        if len(marques) == 2:
+            break
+    res: list[tuple[int, int, int]] = []
+
+    def ajouter(c):
+        c = tuple(int(x) for x in c)
+        if all(_distance(c, x) > 45 for x in res):
+            res.append(c)
+    if marques:
+        m = marques[0]
+        ajouter(m)
+        ajouter(tuple(x * 0.55 for x in m))
+        ajouter(marques[1] if len(marques) > 1 else tuple(x + (255 - x) * 0.78 for x in m))
+    ajouter(CASSE)
+    ajouter(ANTHRACITE)
+    for secours in ((58, 72, 92), (226, 222, 212), (92, 44, 52), (60, 84, 70)):
+        if len(res) >= nombre:
+            break
+        ajouter(secours)
+    return res[:nombre]
+
+
+def _lignes(d, texte: str, police, largeur_max: float) -> list[str]:
+    """Le texte sur une ligne, ou coupé en deux à l'espace le plus proche du milieu."""
+    if d.textlength(texte, font=police) <= largeur_max or " " not in texte:
+        return [texte]
+    mots = texte.split(" ")
+    coupe = min(range(1, len(mots)), key=lambda i: abs(len(" ".join(mots[:i])) - len(texte) / 2))
+    return [" ".join(mots[:coupe]), " ".join(mots[coupe:])]
+
+
+def affiche(contenu: bytes, societe: str, largeur: int = 1179, hauteur: int = 2556,
+            couleur: tuple[int, int, int] | None = None, personne: str = "") -> bytes:
+    """Affiche verticale d'une société (2.10) : la page à la couleur de la société, le logo en haut
+    sur une plaque, le nom de la société écrit dessous, puis le nom de la personne s'il y en a un."""
     logo = _logo_rgba(contenu)
-    couleur = _fond(logo)
+    couleur = tuple(couleur) if couleur else couleurs(contenu, 1)[0]
     fond = Image.new("RGBA", (largeur, hauteur), couleur + (255,))
-    l = int(largeur * 0.62)
-    _poser(fond, logo, ((largeur - l) // 2, int(hauteur * 0.17), l, l))
+    d = ImageDraw.Draw(fond)
+    cote = int(largeur * 0.64)
+    x, y = (largeur - cote) // 2, int(hauteur * 0.17)
+    plaque = _fond(logo)                               # la couleur sur laquelle le logo a été dessiné
+    if _distance(plaque, couleur) > 60:
+        d.rounded_rectangle((x, y, x + cote, y + cote), radius=int(cote * 0.12), fill=plaque + (255,))
+        marge = int(cote * 0.13)
+    else:
+        marge = 0
+    _poser(fond, logo, (x + marge, y + marge, cote - 2 * marge, cote - 2 * marge))
+    clair = (couleur[0] * 299 + couleur[1] * 587 + couleur[2] * 114) / 1000 > 150
+    encre = (40, 34, 30) if clair else (245, 242, 236)
+    bas = y + cote + int(hauteur * 0.045)
+    societe = (societe or "").strip()
     if societe:
-        d = ImageDraw.Draw(fond)
-        clair = sum(couleur) / 3 > 140
-        police = _police(int(largeur * 0.075))
-        texte = societe if len(societe) <= 28 else societe[:27] + "…"
-        while d.textlength(texte, font=police) > largeur * 0.86 and police.size > 30:
+        texte = societe if len(societe) <= 44 else societe[:43] + "…"
+        police = _police(int(largeur * 0.085))
+        lignes = _lignes(d, texte, police, largeur * 0.86)
+        while max(d.textlength(l, font=police) for l in lignes) > largeur * 0.86 and police.size > 30:
             police = _police(police.size - 4)
-        d.text((largeur / 2, int(hauteur * 0.17) + l + int(hauteur * 0.05)), texte, anchor="mt", font=police,
-               fill=(40, 34, 30) if clair else (245, 242, 236))
+        for l in lignes:
+            d.text((largeur / 2, bas), l, anchor="mt", font=police, fill=encre)
+            bas += int(police.size * 1.22)
+    personne = (personne or "").strip()
+    if personne and personne.casefold() != societe.casefold():
+        police = _police(int(largeur * 0.052))
+        while d.textlength(personne, font=police) > largeur * 0.86 and police.size > 26:
+            police = _police(police.size - 3)
+        d.text((largeur / 2, bas + int(hauteur * 0.012)), personne, anchor="mt", font=police,
+               fill=encre + (200,))
     sortie = io.BytesIO()
     fond.convert("RGB").save(sortie, "JPEG", quality=90, optimize=True)
     return sortie.getvalue()

@@ -430,7 +430,23 @@ def poser_portrait(uid: str, corps: dict = Body(...)):
 
 @app.post("/api/contacts/{uid}/affiche")
 def preparer_affiche(uid: str, corps: dict = Body(default={})):
-    return photos.preparer_affiche(carnet(), uid, corps.get("asset"))
+    couleur = corps.get("couleur")
+    return photos.preparer_affiche(carnet(), uid, corps.get("asset"),
+                                   couleur=int(couleur) if str(couleur).isdigit() else None)
+
+
+@app.get("/api/contacts/{uid}/propositions")
+def propositions(uid: str, rafraichir: bool = False):
+    """2.10 : 5 propositions de photo et 5 d'affiche (visages d'Immich, sinon logo de la société)."""
+    return photos.propositions(carnet(), uid, rafraichir)
+
+
+@app.get("/api/contacts/{uid}/propositions/{sorte}/{cle}")
+def apercu_proposition(uid: str, sorte: str, cle: str):
+    if sorte not in ("photo", "affiche"):
+        raise HTTPException(404, "Proposition inconnue.")
+    return Response(photos.apercu_proposition(carnet(), uid, sorte, cle), media_type="image/jpeg",
+                    headers={"Cache-Control": "private, max-age=300"})
 
 
 @app.get("/api/contacts/{uid}/affiche")

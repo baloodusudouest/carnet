@@ -1,4 +1,4 @@
-# Dossier de carnet — tel que construit (version 2.9.0)
+# Dossier de carnet — tel que construit (version 2.10.0)
 
 Rédigé le 11/11/2026 pour la 2.6.4 à partir du code ; remis à jour le même jour pour la 2.8.4, puis pour la 2.9.0 (réorganisation en six onglets, codée sans dossier préalable à la demande de Julien). Six sections, puis les écarts par rapport au socle commun (`baloodusudouest/socle`).
 
@@ -176,6 +176,8 @@ Six blocs empilés : points à traiter de cette fiche, informations, complétude
 | Délier une liaison | Retire la liaison | Fiche |
 | Bloc Photo et affiche | Choisir un portrait, préparer l'affiche, chercher un logo, ou le glisser, le coller, le choisir comme fichier | Fiche |
 | Réunir : saisir un nom, choisir la fiche | Ouvre la fusion | Fusion |
+
+**Photo et affiche (2.10.0).** En modification, toucher la photo ouvre une fenêtre : jusqu'à 5 propositions de photo et 5 d'affiche. Contact relié à Immich : ses visages. Sinon : le logo de sa société et 5 couleurs de page tirées du logo (la première est la couleur de la société). Toucher une photo la pose dans iCloud ; toucher une affiche la range dans l'album Immich des affiches.
 
 ### Fusion (`#/fusion/<a>/<b>`)
 

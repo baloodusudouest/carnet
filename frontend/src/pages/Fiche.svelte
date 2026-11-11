@@ -3,6 +3,7 @@
   import { api } from '../lib/api.js'
   import { aller, apresEcriture, erreur, dire, etat, rafraichirContacts } from '../lib/etat.svelte.js'
   import Avatar from '../components/Avatar.svelte'
+  import ChoixPhoto from '../components/ChoixPhoto.svelte'
   import Changements from '../components/Changements.svelte'
   import Editeur from '../components/Editeur.svelte'
   import Point from '../components/Point.svelte'
@@ -14,6 +15,7 @@
   const e = encodeURIComponent(uid)
   let donnees = $state(null)
   let brouillon = $state(null)    // fiche en cours de modification
+  let choixPhoto = $state(false)  // 2.10 : fenêtre des propositions de photo et d'affiche
   let apercu = $state(null)       // { fiche, champs } avant d'écrire
   let attente = $state(false)
   let proches = $state(null)
@@ -136,7 +138,15 @@
     <p class="discret">Chargement…</p>
   {:else}
     <header class="entete">
-      <Avatar {uid} nom={donnees.nom} photo={f.a_photo} taille={84} />
+      {#if brouillon}
+        <!-- 2.10 : en modification, toucher la photo ouvre les propositions de photo et d'affiche -->
+        <button class="changer-photo" onclick={() => (choixPhoto = true)} aria-label="Changer la photo ou l'affiche" title="Changer la photo ou l'affiche">
+          <Avatar {uid} nom={donnees.nom} photo={f.a_photo} taille={84} />
+          <span class="pastille-photo" aria-hidden="true">✎</span>
+        </button>
+      {:else}
+        <Avatar {uid} nom={donnees.nom} photo={f.a_photo} taille={84} />
+      {/if}
       <div>
         <h1 class="titre">{#if decede}<span class="croix" title="Décédé(e)" aria-label="Décédé(e)">†</span>{' '}{/if}{donnees.nom}</h1>
         {#if prononciation}<p class="discret prononciation">{prononciation}</p>{/if}
@@ -349,12 +359,17 @@
       </div>
     {/if}
   {/if}
+  {#if donnees}<ChoixPhoto bind:ouvert={choixPhoto} {uid} nom={donnees.nom} onchange={charger} />{/if}
 </section>
 
 <style>
   .page { max-width: 46rem; display: grid; gap: 1rem; }
   .retour { justify-self: start; min-height: 2.75rem; display: inline-flex; align-items: center; }
   .entete { display: flex; gap: 1rem; align-items: center; }
+  .changer-photo { position: relative; padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; flex: none; }
+  .changer-photo:focus-visible { outline: 2px solid var(--color-onglet); outline-offset: 3px; }
+  .pastille-photo { position: absolute; right: -2px; bottom: -2px; width: 1.7rem; height: 1.7rem; display: grid; place-items: center;
+                    border-radius: 50%; background: var(--color-onglet); color: var(--color-reliure); font-size: 0.85rem; border: 2px solid var(--color-reliure); }
   .entete > div { flex: 1; min-width: 0; }
   .stylo {
     flex: none; align-self: flex-start; display: grid; place-items: center; width: 2.75rem; height: 2.75rem;

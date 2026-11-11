@@ -4,7 +4,8 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **2.9.2 sur `main`** (11/11/2026) : mariages par couple dans `/ha/anniversaires` ; côté Home Assistant, `maison/anniversaires.yaml` v2 lit les mariages et `/ha/fetes` (master doc HA 1.50).
+- **2.10.0 sur `main`** (11/11/2026) : fenêtre de propositions (5 photos, 5 affiches) ouverte en touchant la photo d'une fiche en modification ; affiche du logo à la couleur de la société.
+- 2.9.2 (11/11/2026) : mariages par couple dans `/ha/anniversaires` ; côté Home Assistant, `maison/anniversaires.yaml` v2 lit les mariages et `/ha/fetes` (master doc HA 1.50).
 - 2.9.1 (11/11/2026) : liste des couples dans Connexion › Treemich, messages corrigés. Vérifié sur l'installation de Julien le 11/11 : l'écriture d'un mariage dans Treemich fonctionne (lue dans l'arbre) ; « Vérifier » sur Treemich prend environ 50 secondes.
 - 2.9.0 (11/11/2026) : réorganisation en six onglets (À traiter en tuiles, Contacts, Groupes, Photos, Connexion avec une icône par service, Réglages). Faite sans dossier ni conseil préalables, à la demande de Julien ; le dossier tel que construit a été mis à jour après le code.
 - 2.8.5 avant elle : la 2.8 complète (vérification de l'accord avec Treemich en 2.8.5 ; attentes et manques, Photos, champs nouveaux, fêtes et dates de famille, import unique, suppression confirmée, logo par société, noms de société, accord immédiat avec Treemich, Réseaux dans Réglages). Julien a une 2.8 en service.
@@ -43,6 +44,8 @@ Restes de la 2.8, toujours valables :
 
 ## Pièges
 
+- 2.10 : la « couleur de la société » est calculée depuis le logo (`logos.couleurs`), elle n'est pas enregistrée. L'affiche du logo n'est faite que pour un contact non relié à Immich ; une personne reliée garde une affiche en photo.
+- 2.10 : l'affiche du logo n'a été vue que sur des logos d'essai ; à juger sur de vrais logos (fond blanc opaque, logo très large, logo monochrome).
 - Treemich n'affiche pas le mariage dans « Life events » : il est sur le lien du couple (Profile › Relatives › crayon du conjoint). Ne pas conclure qu'une date n'est pas partie sans regarder là, ou la liste des couples de Connexion › Treemich.
 - 2.9 : l'écran « Connexion » (les services) est `frontend/src/pages/Services.svelte`. `pages/Connexion.svelte` est la page du mot de passe : ne pas la remplacer.
 - 2.9 : `POST /api/connexion` (mot de passe) est la seule route d'`/api/` ouverte sans session avec `/api/session` ; `GET /api/connexion` (état des services) est protégée. L'exemption se fait sur le chemin **et** la méthode : ne pas l'élargir.

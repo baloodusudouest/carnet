@@ -64,6 +64,9 @@ def files(c: Carnet) -> dict:
                                            google=recherche_google(f)))
         elif immich and uid not in affiches:
             res["a_preparer"].append(_ligne(uid, f))
+        # 2.10 : sans portrait possible, l'affiche se fait depuis le logo gardé pour la société
+        if not immich and f.get("societe") and cle_societe(f) in connus and uid not in affiches:
+            res["a_preparer"].append(_ligne(uid, f, logo=True))
         if uid in affiches and not affiches[uid]:
             res["a_poser"].append(_ligne(uid, f))
     for liste in res.values():
