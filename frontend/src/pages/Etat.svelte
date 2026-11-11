@@ -428,10 +428,13 @@
 </section>
 
 <style>
-  .tuiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: 0.6rem; }
+  /* Tuiles bento : la taille dit l'importance. « iCloud et la nuit » occupe deux colonnes. */
+  .tuiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+  .tuiles .tuile:first-child { grid-column: span 2; }
+  @media (min-width: 900px) { .tuiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.75rem; } }
   .tuile {
     position: relative; display: grid; gap: 0.2rem; justify-items: start; text-align: left; padding: 0.9rem;
-    border: 1px solid var(--color-couture); border-radius: 10px; background: var(--color-reliure); min-height: 6.5rem;
+    border: 1px solid var(--color-couture); border-radius: 14px; background: var(--color-reliure); min-height: 6.5rem;
   }
   .tuile svg { color: var(--color-onglet); margin-bottom: 0.2rem; }
   .tuile[aria-pressed='true'] { border-color: var(--color-onglet); background: color-mix(in srgb, var(--color-onglet) 10%, var(--color-reliure)); }

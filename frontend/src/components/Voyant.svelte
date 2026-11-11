@@ -33,7 +33,7 @@
   [data-etat='ok'] .disque { fill: color-mix(in srgb, var(--color-valide) 22%, transparent); }
   [data-etat='ok'] path { stroke: var(--color-valide); }
   [data-etat='erreur'] .disque { fill: var(--color-alerte); }
-  [data-etat='erreur'] path { stroke: #2a1514; }
+  [data-etat='erreur'] path { stroke: var(--color-cuir); }
   [data-etat='off'] path { stroke: var(--color-tranche); }
   @media (prefers-reduced-motion: reduce) { .arc { animation: none; } }
 </style>

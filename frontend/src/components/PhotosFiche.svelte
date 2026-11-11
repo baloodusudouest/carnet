@@ -136,7 +136,7 @@
   .ligne-titre { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.6rem; }
   .grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); gap: 0.6rem; }
   figure { display: grid; gap: 0.35rem; }
-  figure img { aspect-ratio: 1; width: 100%; object-fit: cover; border-radius: 8px; background: #302622; }
+  figure img { aspect-ratio: 1; width: 100%; object-fit: cover; border-radius: 8px; background: var(--color-reliure); }
   figure.choisi img { outline: 2px solid var(--color-onglet); outline-offset: 2px; }
   img.logo { object-fit: contain; padding: 0.75rem; background: #efe6d8; }
   .actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }

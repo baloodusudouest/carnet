@@ -250,8 +250,8 @@
   .tranche { display: flex; flex-direction: column; overflow-y: auto; scrollbar-width: none; }
   .tranche button {
     width: 2rem; min-height: 1.6rem; font-family: var(--font-livre); font-weight: 600; font-size: 0.85rem;
-    color: #23190a; background: var(--color-onglet); border-radius: 0 6px 6px 0; margin-bottom: 2px;
+    color: var(--color-sur-onglet); background: var(--color-onglet); border-radius: 0 6px 6px 0; margin-bottom: 2px;
     box-shadow: inset 3px 0 0 rgb(0 0 0 / 0.18);
   }
-  .tranche button:nth-child(even) { background: #c8953a; }
+  .tranche button:nth-child(even) { background: color-mix(in srgb, var(--color-onglet) 86%, var(--color-cuir)); }
 </style>

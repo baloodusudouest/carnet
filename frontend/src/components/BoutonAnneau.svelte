@@ -142,7 +142,7 @@
   [data-etat='echec'] { border-color: color-mix(in srgb, var(--color-alerte) 70%, transparent); }
   [data-etat='echec'] .champ { fill: var(--color-alerte); }
   [data-etat='echec'] .rail, [data-etat='echec'] .arc { stroke: var(--color-alerte); }
-  [data-etat='echec'] .dessin { color: #2a1514; }
+  [data-etat='echec'] .dessin { color: var(--color-cuir); }
 
   .texte { display: grid; line-height: 1.25; }
   .detail { font-size: 0.8rem; color: var(--color-mine); }

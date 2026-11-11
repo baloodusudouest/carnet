@@ -189,11 +189,17 @@ Un bandeau de bilan, puis sept tuiles ; un clic sur une tuile ouvre sa section e
 
 ## 4. Design
 
-**Aujourd'hui.** Un carnet d'adresses en cuir sombre : fond brun, texte couleur papier, ocre comme seule couleur d'accent. Titres en Spectral (à empattements), texte en Instrument Sans. Sombre uniquement. Élément marquant : l'index alphabétique taillé comme la tranche d'un carnet. Composants faits main : bouton, bouton à anneau de progression, pastille, feuille, voyant, jauge autour de l'avatar.
+**Depuis la 2.7.0.** Minimalisme chaleureux, base du socle commun : fonds neutres teintés vers l'ocre (anthracite chaud en sombre, blanc cassé en clair), filets fins, peu de surfaces pleines. Texte en Inter ; titres d'écran grands et fins, noms plus fermes. Sombre par défaut, clair quand l'appareil le demande.
 
-**Animation.** Transitions courtes sur la barre d'onglets ; tout est coupé si l'appareil demande de réduire les animations.
+**L'ocre** est la couleur de carnet. Il porte l'action attendue (un seul bouton plein par bloc), le filtre actif, le compteur d'À traiter, le motif d'un point et la valeur modifiée.
 
-**Cible décidée le 11/11/2026.** Base commune du socle : minimalisme, tuiles bento pour État, sombre par défaut et clair selon l'appareil, composants shadcn-svelte, ocre conservé comme couleur de carnet. Le nouvel habillage **remplace** l'actuel.
+**Éléments propres à carnet, gardés :** l'anneau de progression des boutons, la jauge de complétude autour de l'avatar, l'index alphabétique en tranche sur PC.
+
+**État** : un bandeau de bilan, puis des tuiles bento ; « iCloud et la nuit » occupe deux colonnes.
+
+**Animation.** Transitions courtes sur la barre d'onglets et les boutons ; tout est coupé si l'appareil demande de réduire les animations.
+
+**Avant la 2.7.0** : un carnet d'adresses en cuir sombre, titres en Spectral, sombre uniquement.
 
 ---
 
@@ -242,6 +248,8 @@ Trois livraisons, décidées le 11/11/2026 après le passage au conseil. Chacune
 
 ### 2.7.0 — nouvel habillage seul
 
+Étapes 1 à 6 faites le 11/11/2026 ; l'étape 2 s'est faite sans shadcn-svelte (les classes de carnet portent l'habillage). Reste l'étape 7, côté NAS.
+
 Règles : mêmes textes, même navigation, mêmes rôles d'accessibilité ; les 19 tests d'interface ne sont pas réécrits ; les noms internes dont ils dépendent sont conservés ; deux reprises au plus par écran. L'anneau de progression, la jauge autour de l'avatar et l'index en tranche sont gardés et reteintés.
 
 | # | Étape | Vérification |
@@ -272,8 +280,8 @@ Règles : mêmes textes, même navigation, mêmes rôles d'accessibilité ; les 
 
 | # | Écart | Constat | Gravité | Proposition |
 |---|---|---|---|---|
-| 1 | Habillage | Thème cuir propre à carnet, composants faits main, pas de shadcn-svelte | Voulu | 2.7.0 |
-| 2 | Thème clair | Sombre uniquement (`color-scheme: dark`) | Moyen | 2.7.0 |
+| 1 | Habillage | Thème cuir propre à carnet, composants faits main, pas de shadcn-svelte | Voulu | **Fait en 2.7.0** (habillage porté par les classes de carnet ; shadcn-svelte non introduit) |
+| 2 | Thème clair | Sombre uniquement (`color-scheme: dark`) | Moyen | **Fait en 2.7.0** |
 | 3 | Mot de passe | `CARNET_PASSWORD` propre à carnet, sans longueur minimale ; le socle prévoit `APPS_PASSWORD` commun, 12 caractères au moins | Moyen | **Laissé tel quel** (décision du 11/11/2026) : à revoir avec la connexion unique, quand toutes les applis seront prêtes pour l'Anneau unique |
 | 4 | Reste de la 1.3 | `sqlcipher3-wheels`, `app/reprise.py` et `CARNET_DB_KEY` toujours présents alors que la reprise est faite | Faible | **Fait en 2.6.5** |
 | 5 | Versions du front | 7 dépendances avec `^` dans `package.json` (le fichier de verrouillage les fige quand même) | Faible | **Fait en 2.6.5** |

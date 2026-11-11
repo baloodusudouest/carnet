@@ -1,5 +1,15 @@
 # Journal des versions
 
+## 2.7.0 — 11 novembre 2026
+Nouvel habillage, seul. Deuxième des trois livraisons (voir `docs/dossier.md`). Mêmes écrans, mêmes textes, même navigation ; aucune route de l'API ni la base ne changent.
+- **Habillage du socle, réchauffé** : fonds neutres teintés vers l'ocre, filets fins, titres en caractères sans empattements (grands et fins pour les écrans, fermes pour les noms). Le thème « cuir » disparaît ; l'ocre reste la couleur de carnet et porte l'action attendue, le filtre actif et ce qui demande l'attention.
+- **Mode clair** quand l'appareil le demande ; sombre sinon. Pas de bouton dans l'appli.
+- **État en tuiles bento** : « iCloud et la nuit » occupe deux colonnes, les six autres sections se rangent autour.
+- **Gardés et reteintés** : l'anneau de progression des boutons, la jauge de complétude autour de l'avatar, l'index alphabétique en tranche.
+- Polices : Inter remplace Spectral et Instrument Sans. Couleurs écrites en dur remplacées par des rôles.
+- Les classes de carnet (`.bouton`, `.pastille`, `.feuille`) portent l'habillage ; les composants shadcn-svelte ne sont pas introduits dans cette version (aucun écran n'en a besoin et le rendu est le même).
+- Tests : aucun test d'interface réécrit. Retour à la 2.6.5 par `CARNET_VERSION=2.6.5`.
+
 ## 2.6.5 — 11 novembre 2026
 Ménage, sans changement d'apparence. Première des trois livraisons décidées après le passage au conseil (voir `docs/dossier.md`).
 - **Mode lecture seule** (`CARNET_LECTURE_SEULE=oui`) : carnet lit et calcule tout, mais n'écrit ni dans iCloud, ni dans Immich, Treemich, Synology Contacts ou le kit d'urgence. Le refus est posé deux fois : à l'entrée de chaque opération, et dans les accès réseau eux-mêmes. Un bandeau le rappelle ; la nuit relit sans rien lier ni écrire.

@@ -4,16 +4,15 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **En service sur le NAS : 2.6.5** (branche `main`). Refus d'écriture en lecture seule, retour à la 2.6.4 et remise en écriture vérifiés par Julien.
-- **2.7.0 en cours** sur la branche `habillage-2.7` : étape 1 faite (thème du socle, navigation et écran À traiter), en attente de la validation de Julien sur captures. Tests d'interface verts, aucun réécrit.
+- **2.7.0 prête** (branche `main`) : nouvel habillage sur tous les écrans, mode clair, État en tuiles bento. Direction validée par Julien sur captures de l'écran À traiter (second essai, réchauffé). Les autres écrans ont été relus par Claude sur captures, pas encore par Julien.
+- En service sur le NAS : 2.6.5.
 - Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md). Premier tour du grill de la 2.8.0 : [`docs/2.8-grill.md`](docs/2.8-grill.md).
 
 ## Prochaine étape
 
-1. Validation par Julien de l'écran À traiter (sombre et clair, PC et iPhone).
-2. Étapes 2 à 6 de la 2.7.0 : composants de base, connexion, fusion, contacts et fiche, État en tuiles. Les couleurs encore écrites en dur dans `Contacts.svelte`, `Etat.svelte`, `PhotosFiche.svelte`, `Plateformes.svelte`, `Voyant.svelte` et `BoutonAnneau.svelte` sont à passer en rôles.
-3. Mise en service de la 2.7.0, en lecture seule le premier jour.
-4. 2.8.0 : finir le grill, écrire le dossier, passer au conseil.
+1. **Julien met la 2.7.0 en service**, en lecture seule le premier jour, et l'essaie sur iPhone (clavier, défilement, mode clair en plein jour). Retour arrière : `CARNET_VERSION=2.6.5`.
+2. Une semaine d'usage avant de généraliser l'habillage aux autres applis ; écrire alors le document du socle et la planche de couleurs.
+3. **2.8.0, parcours et complétude** : finir le grill, écrire le dossier, passer au conseil.
 
 ## Décisions tranchées
 
@@ -25,7 +24,8 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 - L'anneau de progression, la jauge autour de l'avatar et l'index en tranche sont gardés et reteintés.
 - Le mot de passe reste `CARNET_PASSWORD` ; connexion unique plus tard, avec l'Anneau unique.
 - Conseil du 11/11/2026 : ménage, habillage et parcours sont trois livraisons séparées.
-- Habillage 2.7.0 : les couleurs gardent leurs noms d'origine (`--color-cuir`, `--color-papier`…), seules leurs valeurs changent ; le clair se fait par `prefers-color-scheme`, sans bouton. Le bouton plein est neutre ; l'ocre est réservé à ce qui demande l'attention.
+- Habillage 2.7.0 : les couleurs gardent leurs noms d'origine (`--color-cuir`, `--color-papier`…), seules leurs valeurs changent ; le clair se fait par `prefers-color-scheme`, sans bouton. Julien a trouvé le premier essai (neutres froids, bouton plein neutre) trop froid : les neutres sont teintés vers l'ocre et le bouton plein est en ocre.
+- shadcn-svelte n'est pas introduit dans carnet en 2.7.0 : les classes maison portent l'habillage. Il viendra avec le premier composant qui en a besoin (fenêtre, menu), sans doute en 2.8.0.
 
 ## Pièges
 
