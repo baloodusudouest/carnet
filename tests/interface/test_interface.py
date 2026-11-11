@@ -224,10 +224,12 @@ def test_a_traiter_famille_reseaux(page):
 
 
 def test_etat_reseaux_et_remise_a_zero_confirmee(page):
-    page.click("nav.onglets a[aria-label='État']")
-    page.locator(".tuile", has_text="Réseaux").click()
+    page.click("nav.onglets a[aria-label='Réglages']")              # 2.8.4 : Réseaux est dans Réglages
+    page.wait_for_selector("h3:has-text('Telegram')")
     page.wait_for_selector("h3:has-text('Telegram')")
     assert page.locator("text=CARNET_TELEGRAM_API_ID").count() == 1          # non configuré dans la démo
+    page.click("nav.onglets a[aria-label='État']")
+    assert page.locator(".tuile", has_text="Réseaux").count() == 0           # la tuile a quitté État
     page.locator(".tuile", has_text="Manques").click()             # 2.8 : la tuile Complétude s'appelle Manques
     page.get_by_role("button", name="Remettre les validations à zéro…").click()
     bouton = page.get_by_role("button", name="Remettre à zéro et analyser")
@@ -272,8 +274,8 @@ def test_export_vcf_par_le_bouton_a_anneau(page):
 def test_glisser_deposer_un_export_instagram(page):
     if page.viewport_size["width"] < 900:
         pytest.skip("glisser-déposer : PC seulement")
-    page.click("nav.onglets a[aria-label='État']")
-    page.locator(".tuile", has_text="Réseaux").click()
+    page.click("nav.onglets a[aria-label='Réglages']")              # 2.8.4 : Réseaux est dans Réglages
+    page.wait_for_selector("h3:has-text('Telegram')")
     cible = page.locator("label.bouton-anneau", has_text="Déposer l'export Instagram")
     assert "ou glisse le fichier ici" in cible.inner_text()
     contenu = '{"relationships_following": [{"title": "glisse.depot", "string_list_data": [{"value": "glisse.depot"}]}]}'
@@ -288,8 +290,8 @@ def test_glisser_deposer_un_export_instagram(page):
 
 
 def test_reseaux_aller_a_la_partie_et_rattacher_un_importe(page):
-    page.click("nav.onglets a[aria-label='État']")
-    page.locator(".tuile", has_text="Réseaux").click()
+    page.click("nav.onglets a[aria-label='Réglages']")              # 2.8.4 : Réseaux est dans Réglages
+    page.wait_for_selector("h3:has-text('Telegram')")
     page.locator("button.reseau", has_text="Telegram").click()
     page.wait_for_timeout(700)
     assert page.locator("#reseau-telegram").is_visible()

@@ -3,6 +3,7 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import { dire, erreur, etat, rafraichirAccueil, rafraichirContacts } from '../lib/etat.svelte.js'
+  import Reseaux from '../components/Reseaux.svelte'
 
   let tableau = $state(null)
   let auto = $state(null)
@@ -193,10 +194,7 @@
       {/if}
     </div>
 
-    <div class="feuille bloc">
-      <h2 class="titre">Réseaux</h2>
-      <p class="discret">Les fichiers (cartes, LinkedIn, Facebook, Instagram) se déposent par « Importer », dans Contacts. Les connexions LinkedIn et Telegram et les personnes sans fiche sont dans <a href="#/etat">État</a>, section Réseaux.</p>
-    </div>
+    <Reseaux />
 
     <p class="pied discret"><span>Session ouverte sur cet appareil.</span> <button class="bouton" onclick={deconnecter}>Se déconnecter</button></p>
   {/if}

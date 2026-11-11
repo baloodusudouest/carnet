@@ -4,16 +4,13 @@
   import { dire, erreur, etat as global, rafraichirAccueil, rafraichirContacts } from '../lib/etat.svelte.js'
   import BoutonAnneau from '../components/BoutonAnneau.svelte'
   import Voyant from '../components/Voyant.svelte'
-  import ListeNonLies from '../components/ListeNonLies.svelte'
-  import { absents, logoReseau } from '../lib/logos.svelte.js'
-  import { appel, de, envoyer, occupe, resumeImport, tache, telecharger } from '../lib/suivi.svelte.js'
+  import { appel, de, occupe, tache, telecharger } from '../lib/suivi.svelte.js'
 
   let e = $state(null)
   let attente = $state('')
   let sauvegarde = $state(null)     // { nom, cartes }
   let choisies = $state([])
   let filtreSauvegarde = $state('')
-  let adresseLinkedin = $state('')
   let section = $state(null)
 
   const court = (iso) => iso ? new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'jamais'
@@ -25,9 +22,6 @@
       resume: (e) => `${e.sauvegardes.length} copie(s)`, alerte: () => false },
     { cle: 'copies', nom: 'Copies', icone: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
       resume: (e) => `Synology : ${e.synology ? court(e.synology.le) : 'jamais'}`, alerte: (e) => !!e.synology?.erreur },
-    { cle: 'reseaux', nom: 'Réseaux', icone: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.9l7.6-3.8M8.2 13.1l7.6 3.8"/>',
-      resume: (e) => `${Object.values(e.reseaux).reduce((n, r) => n + r.liees, 0)} fiche(s) liée(s)`,
-      alerte: (e) => ['telegram', 'linkedin'].some((k) => e.sante?.[k]?.etat === 'erreur') },
     { cle: 'completude', nom: 'Manques', icone: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 8 8h-8z"/>',
       resume: (e) => `${e.statut.completude?.incompletes ?? 0} fiche(s) incomplète(s)`,
       alerte: (e) => !!e.statut.completude?.a_revoir },
@@ -44,7 +38,7 @@
 
   // Voyants : roue pendant l'opération qui concerne la tuile, coche si tout va bien, croix sinon
   const TACHES = { icloud: ['relecture', 'nuit', 'demarrage'], completude: ['analyse'], services: ['liens'],
-                   reseaux: [], sauvegardes: [], copies: ['synology'] }
+                   sauvegardes: [], copies: ['synology'] }
   const tacheEnCours = $derived(global.accueil?.tache?.etat === 'en_cours' ? global.accueil.tache : null)
   function voyantTuile(s) {
     if (tacheEnCours && (TACHES[s.cle] || []).includes(tacheEnCours.nom)) return 'en_cours'
@@ -88,9 +82,6 @@
     } catch (err) { erreur(err) }
     charger()
   }
-  async function importerFichier(cle, f) {
-    try { dire(resumeImport(await envoyer(cle, f, cle))); rafraichirAccueil(); charger() } catch (err) { erreur(err) }
-  }
   // Copie vers Synology : tâche de fond, l'anneau suit les fiches copiées
   async function copierSynology(cle, forcer) {
     await fond(cle, '/api/synology', forcer ? { forcer: true } : {}, 'synology')
@@ -111,49 +102,6 @@
   const cartesVisibles = $derived((sauvegarde?.cartes || []).filter((c) =>
     c.etat !== 'identique' && (!filtreSauvegarde || c.nom.toLowerCase().includes(filtreSauvegarde.toLowerCase()))))
 
-  async function linkedinConnecter() {
-    const r = await lancer('linkedin', '/api/linkedin/autorisation', {})
-    if (r) window.open(r.url, '_blank', 'noopener')
-  }
-  async function linkedinCode() {
-    await lancer('linkedin', '/api/linkedin/code', { adresse: adresseLinkedin },
-      (r) => `LinkedIn : ${r.rattachees} relations reconnues, ${r.proposees} changement(s) à traiter.`)
-    adresseLinkedin = ''
-  }
-  // Bilan des réseaux : un clic amène à la partie du réseau
-  function allerReseau(s) {
-    const cible = document.getElementById(`reseau-${s}`)
-    cible?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
-    cible?.classList.add('repere'); setTimeout(() => cible?.classList.remove('repere'), 1600)
-  }
-  async function rattacherReseau(service, x, uid) {
-    try {
-      const r = await api.post(`/api/reseaux/${service}/rattacher`, { ext_id: x.ext_id, uid })
-      dire(`${x.nom} rattaché.`, { jeton: r?.jeton || null }); charger(); rafraichirContacts()
-    } catch (err) { erreur(err); throw err }
-  }
-  async function linkedinRattacher(url, uid) {
-    try { await api.post('/api/linkedin/rattacher', { url, uid }); dire(uid ? 'Relation rattachée.' : 'Relation détachée.'); charger() }
-    catch (err) { erreur(err) }
-  }
-  // Telegram : numéro → code reçu dans Telegram → mot de passe si la double vérification est active.
-  // La session n'existe qu'en mémoire le temps de l'import, puis carnet se déconnecte.
-  let tg = $state({ telephone: '', code: '', mdp: '', etape: 'telephone' })
-  async function telegramCode() {
-    const r = await lancer('telegram', '/api/telegram/code', { telephone: tg.telephone }, 'Code envoyé dans Telegram.')
-    if (r) tg.etape = 'code'
-  }
-  async function telegramImport() {
-    const r = await lancer('telegram', '/api/telegram/import', { code: tg.code, mot_de_passe: tg.mdp })
-    if (!r) return
-    if (r.mot_de_passe) { tg.etape = 'mdp'; dire('Telegram demande ton mot de passe de double vérification.'); return }
-    dire(`Telegram : ${r.lues} contact(s) lu(s), ${r.proposees} rattachement(s) proposé(s) dans « À traiter ».`)
-    tg = { telephone: '', code: '', mdp: '', etape: 'telephone' }
-  }
-  async function telegramAbandon() {
-    await lancer('telegram', '/api/telegram/abandon', {}, 'Connexion à Telegram abandonnée.')
-    tg = { telephone: '', code: '', mdp: '', etape: 'telephone' }
-  }
   // Analyse globale ; la remise à zéro des validations se confirme deux fois (bouton, puis mot à taper)
   let zero = $state({ ouvert: false, mot: '' })
   async function analyser(remettre) {
@@ -161,9 +109,6 @@
     zero = { ouvert: false, mot: '' }
     await fond('analyse', '/api/analyse', corps, 'analyse')
   }
-  const NOMS_RESEAUX = { linkedin: 'LinkedIn', telegram: 'Telegram', instagram: 'Instagram', facebook: 'Facebook',
-                         x: 'X (Twitter)', whatsapp: 'WhatsApp' }
-
   async function deconnecter() { await api.post('/api/deconnexion'); global.connecte = false }
 
   onMount(charger)
@@ -284,81 +229,6 @@
                         disabled={bloque} onclick={() => action('kit', '/api/kit', {}, (r) => `${r.nb} contact(s) envoyé(s) au kit.`)} />
         {/if}
       </div>
-    </div>
-    {/if}
-
-    {#if section === 'reseaux'}
-    <div class="feuille bloc">
-      <h2 class="titre">Réseaux</h2>
-      <dl>
-        {#each Object.entries(e.reseaux) as [s, r]}
-          <dt><button class="reseau" onclick={() => allerReseau(s)} title={'Aller à ' + NOMS_RESEAUX[s]}>
-            {#if !absents[s]}<img class="logo-reseau" src={logoReseau(s)} alt="" onerror={() => (absents[s] = true)} />{/if}{NOMS_RESEAUX[s]}</button></dt>
-          <dd>{r.liees} fiche(s) liée(s){#if r.lues}, {r.lues} personne(s) lue(s){/if}{#if r.importe_le}{" "}<span class="discret">(import du {date(r.importe_le)})</span>{/if}</dd>
-        {/each}
-      </dl>
-      <p class="discret">Chaque rapprochement arrive dans « À traiter » (Réseaux) : rien n'est lié sans toi. Les personnes lues mais jamais liées sont effacées au bout de 90 jours.</p>
-
-      <h3 class="titre-reseau" id="reseau-linkedin">{#if !absents.linkedin}<img class="logo-reseau" src={logoReseau('linkedin')} alt="" onerror={() => (absents.linkedin = true)} />{/if}LinkedIn</h3>
-      <p class="discret">Tes relations par l'API de portabilité, ou le fichier Connections.csv de l'export LinkedIn. Seuls les changements de poste ou de société remontent dans « À traiter ».</p>
-      <BoutonAnneau icone="envoyer" libelle="Déposer Connections.csv" enCours="Envoi du fichier…" {...de('linkedin_csv')}
-                    fichier=".csv,text/csv" disabled={bloque} onfichier={(f) => importerFichier('linkedin_csv', f)} />
-      {#if e.linkedin.api}
-        <div class="boutons">
-          <button class="bouton" disabled={!!attente} onclick={linkedinConnecter}>Se connecter à LinkedIn</button>
-          {#if e.linkedin.en_attente}<button class="bouton" disabled={!!attente} onclick={() => lancer('linkedin', '/api/linkedin/reessayer', {}, (r) => `${r.rattachees} relations reconnues.`)}>Réessayer</button>{/if}
-        </div>
-        <label class="colle"><span class="discret">Adresse de retour de LinkedIn, collée ici</span>
-          <span class="rangee"><input bind:value={adresseLinkedin} placeholder="https://localhost/carnet-linkedin?code=…" />
-            <button class="bouton" disabled={!adresseLinkedin || !!attente} onclick={linkedinCode}>Importer</button></span></label>
-      {/if}
-      <ListeNonLies titre="Relations sans fiche" items={e.linkedin.sans_contact} cle={(r) => r.url}
-                    detail={(r) => [r.fonction, r.societe].filter(Boolean).join(', ')}
-                    rattacher={(r, uid) => linkedinRattacher(r.url, uid)} detacher={(r) => linkedinRattacher(r.url, null)} />
-
-      <h3 class="titre-reseau" id="reseau-telegram">{#if !absents.telegram}<img class="logo-reseau" src={logoReseau('telegram')} alt="" onerror={() => (absents.telegram = true)} />{/if}Telegram</h3>
-      {#if !e.telegram.configure}
-        <p class="discret">Ajoute CARNET_TELEGRAM_API_ID et CARNET_TELEGRAM_API_HASH dans la stack (my.telegram.org, « API development tools »).</p>
-      {:else if tg.etape === 'telephone'}
-        <span class="rangee"><input type="tel" bind:value={tg.telephone} placeholder="+33 6 12 34 56 78" aria-label="Ton numéro Telegram" autocomplete="tel" />
-          <button class="bouton" disabled={!tg.telephone || !!attente} onclick={telegramCode}>Recevoir le code</button></span>
-      {:else}
-        <span class="rangee"><input inputmode="numeric" bind:value={tg.code} placeholder="Code reçu dans Telegram" aria-label="Code Telegram" autocomplete="one-time-code" />
-          {#if tg.etape === 'mdp'}<input type="password" bind:value={tg.mdp} placeholder="Mot de passe Telegram" aria-label="Mot de passe Telegram" autocomplete="off" />{/if}
-          <button class="bouton bouton-principal" disabled={!tg.code || (tg.etape === 'mdp' && !tg.mdp) || !!attente} onclick={telegramImport}>Importer</button>
-          <button class="bouton" disabled={!!attente} onclick={telegramAbandon}>Abandonner</button></span>
-      {/if}
-      {#if e.telegram.configure}<p class="discret">Import ponctuel : carnet lit tes contacts Telegram puis se déconnecte. La session n'est ni gardée ni sauvegardée.</p>{/if}
-
-      <ListeNonLies titre="Importés de Telegram sans fiche" charger={() => api.get('/api/reseaux/telegram/non-lies')}
-                    detail={(x) => [x.pseudo && x.pseudo !== x.nom && '@' + x.pseudo, x.telephone].filter(Boolean).join(', ')}
-                    rattacher={(x, uid) => rattacherReseau('telegram', x, uid)} />
-
-      <h3 class="titre-reseau" id="reseau-facebook">{#if !absents.facebook}<img class="logo-reseau" src={logoReseau('facebook')} alt="" onerror={() => (absents.facebook = true)} />{/if}Facebook</h3>
-      <p class="discret">Compte Meta › Vos informations et autorisations › Exporter vos informations : choisis seulement Contacts › <strong>Ami(e)s</strong> (et Followers si tu veux), format <strong>JSON</strong>. Dépose le .zip tel quel, ou seulement <strong>your_friends.json</strong> si tu l'as décompressé (les autres fichiers sont des suggestions ou des demandes, ils ne sont pas lus). Facebook ne donne que les noms : un ami est proposé quand son nom désigne une seule fiche. « Lier » pose la pastille Facebook ; pour écrire le lien du profil dans iCloud, colle son adresse sur la fiche.</p>
-      <BoutonAnneau icone="envoyer" libelle="Déposer l'export Facebook" enCours="Envoi de l'archive…" {...de('facebook')}
-                    fichier=".zip,.json,application/zip,application/json" disabled={bloque}
-                    onfichier={(f) => importerFichier('facebook', f)} />
-
-      <ListeNonLies titre="Importés de Facebook sans fiche" charger={() => api.get('/api/reseaux/facebook/non-lies')}
-                    detail={(x) => [x.pseudo && x.pseudo !== x.nom && '@' + x.pseudo, x.telephone].filter(Boolean).join(', ')}
-                    rattacher={(x, uid) => rattacherReseau('facebook', x, uid)} />
-
-      <h3 class="titre-reseau" id="reseau-instagram">{#if !absents.instagram}<img class="logo-reseau" src={logoReseau('instagram')} alt="" onerror={() => (absents.instagram = true)} />{/if}Instagram</h3>
-      <p class="discret">Dans Instagram : Paramètres, Espace Comptes, Télécharger tes informations, format JSON, « Abonnés et abonnements ». Seuls les pseudos sont lus.</p>
-      <BoutonAnneau icone="envoyer" libelle="Déposer l'export Instagram" enCours="Envoi de l'archive…" {...de('instagram')}
-                    fichier=".zip,.json,application/zip,application/json" disabled={bloque}
-                    onfichier={(f) => importerFichier('instagram', f)} />
-      <p class="discret">Les archives sont lues en mémoire puis oubliées : rien n'est gardé sur le NAS.</p>
-      <ListeNonLies titre="Importés d'Instagram sans fiche" charger={() => api.get('/api/reseaux/instagram/non-lies')}
-                    detail={(x) => [x.pseudo && x.pseudo !== x.nom && '@' + x.pseudo, x.telephone].filter(Boolean).join(', ')}
-                    rattacher={(x, uid) => rattacherReseau('instagram', x, uid)} />
-
-      <h3 class="titre-reseau" id="reseau-x">{#if !absents.x}<img class="logo-reseau" src={logoReseau('x')} alt="" onerror={() => (absents.x = true)} />{/if}X (Twitter)</h3>
-      <p class="discret">L'archive de X ne donne que des numéros de compte, sans pseudo ni nom : rien à rapprocher. Sur la fiche, colle le pseudo (@…) ou l'adresse x.com dans Plateformes ; les profils Twitter déjà présents sur tes cartes iCloud sont reconnus.</p>
-
-      <h3 class="titre-reseau" id="reseau-whatsapp">{#if !absents.whatsapp}<img class="logo-reseau" src={logoReseau('whatsapp')} alt="" onerror={() => (absents.whatsapp = true)} />{/if}WhatsApp</h3>
-      <p class="discret">Pas d'export des contacts : sur la fiche, choisis le numéro WhatsApp (section Plateformes).</p>
     </div>
     {/if}
 

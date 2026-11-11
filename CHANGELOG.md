@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 2.8.4 — 11 novembre 2026
+Les restes de la 2.8. Rien ne change dans ce que carnet écrit.
+- **Réseaux quitte État pour Réglages** : bilan par réseau, connexions LinkedIn et Telegram, dépôts d'archives, personnes sans fiche. État garde six tuiles.
+- **Dossier « tel que construit » remis à jour** pour la 2.8 (`docs/dossier.md`).
+- **Tests sur GitHub** : si les serveurs de paquets d'Ubuntu ne répondent pas, le navigateur de test est installé seul et les tests d'écran tournent quand même.
+- Tests : 101 du back, 25 d'interface.
+
 ## 2.8.3 — 11 novembre 2026
 Après le retour de Julien : une date de mariage saisie sur une fiche n'apparaissait pas dans Treemich, sans que carnet dise pourquoi.
 - **La date part tout de suite** : quand l'accord avec Treemich est allumé, une date de mariage ou de décès saisie sur une fiche dans carnet est accordée une douzaine de secondes après l'écriture (le temps laissé à « Annuler »), sans attendre la nuit. Avant, seule la nuit le faisait ; « Relire iCloud » et « Relire Immich et Treemich » n'écrivent rien.

@@ -1,10 +1,8 @@
-# Dossier de carnet — tel que construit (version 2.6.4), mis à jour pour la 2.6.5
+# Dossier de carnet — tel que construit (version 2.8.4)
 
-> **Depuis la 2.8.0**, ce dossier n'est plus à jour sur trois points : la complétude (remplacée par les attentes par groupe), la navigation (cinq onglets : Photos et Réglages s'ajoutent) et le schéma (version 3). Voir `docs/2.8-dossier.md`, qui fait foi pour ces sujets jusqu'à la prochaine mise à jour de ce document.
+Rédigé le 11/11/2026 pour la 2.6.4 à partir du code ; remis à jour le même jour pour la 2.8.4. Six sections, puis les écarts par rapport au socle commun (`baloodusudouest/socle`).
 
-Rédigé le 11/11/2026 à partir du code, sans modifier celui-ci. Six sections, puis la liste des écarts par rapport au socle commun (`baloodusudouest/socle`).
-
-Ce dossier décrit ce qui existe. Ce qui doit changer est dans « Écarts » et dans le plan de la section 6.
+Ce dossier décrit ce qui existe. Le détail de conception de la 2.8 est dans `docs/2.8-dossier.md`, l'avis du conseil dans `docs/2.8-conseil.md`, l'essai sur le vrai iCloud dans `docs/essai-2.8.md`.
 
 ---
 
@@ -14,7 +12,7 @@ Ce dossier décrit ce qui existe. Ce qui doit changer est dans « Écarts » et 
 
 **Pour qui.** Un seul utilisateur, sur iPhone et sur PC, par le réseau local ou Tailscale.
 
-**Ce que fait la version 2.6.4.**
+**Ce que fait la version 2.8.4.**
 
 | Fonction | Ce qu'elle fait |
 |---|---|
@@ -22,15 +20,19 @@ Ce dossier décrit ce qui existe. Ce qui doit changer est dans « Écarts » et 
 | À traiter | Boîte unique des points à trancher : fiche modifiée, créée ou supprimée sur l'iPhone, conflit, doublon, forme à uniformiser, émoji sans groupe, liaison Immich proposée, date différente selon les services, nom différent, rapprochement réseau, liens familiaux, import |
 | Modification | Édition d'une fiche avec aperçu de « ce qui part dans iCloud » avant écriture ; annulation possible pendant 10 secondes |
 | Fusion | Réunir deux fiches en une ; liaisons, photo, affiche et relation LinkedIn suivent |
-| Complétude | Quatre critères (année de naissance, adresse, téléphone, moyen de contact), validation d'une fiche, filtres « Sans … » |
+| Attentes et manques | Un tableau dit quelles informations chaque groupe doit avoir ; les manques s'affichent par ligne dans À traiter ; exception possible par fiche ; validation d'une fiche entière |
+| Champs de la carte | En plus des champs courants : service, prononciation, fête, mariage, décès (dates aux libellés « Fête », « Mariage », « Décès ») |
+| Fête et dates de famille | Fête d'après un calendrier embarqué ; mariage et décès accordés avec Treemich (remplir, jamais écraser) ; deux interrupteurs, journal et « Défaire » |
+| Sociétés | Logo choisi une fois par société ; noms de société écrits de plusieurs façons proposés à l'harmonisation |
+| Suppression | Une fiche se supprime depuis sa modification, toujours après confirmation, annulable 10 secondes |
 | Liaisons | Une personne Immich et une personne Treemich par contact ; liaisons sûres faites seules la nuit |
 | Réseaux | LinkedIn (API ou fichier), Telegram (import ponctuel), Facebook et Instagram (archives), X et WhatsApp (saisie sur la fiche) |
-| Photos | Portrait recadré depuis les visages Immich, affiche plein écran pour l'iPhone, logo de société |
+| Photos | Portrait recadré depuis les visages Immich, affiche plein écran pour l'iPhone, logo de société ; onglet Photos pour les traiter par lots, logo glissé ou collé |
 | Nuit | Chaque nuit : sauvegarde, relecture d'iCloud, écritures sûres, liaisons sûres, copie Synology Contacts |
 | Sauvegardes | Copie d'iCloud avant la première écriture du jour et chaque nuit ; comparaison et restauration fiche par fiche ; export `.vcf` |
-| Sorties | Copie vers Synology Contacts, contacts d'urgence vers le kit d'urgence, routes `/ha/…` pour Home Assistant (contacts, anniversaires, invité, portraits) |
+| Sorties | Copie vers Synology Contacts, contacts d'urgence vers le kit d'urgence, routes `/ha/…` pour Home Assistant (contacts, anniversaires et mariages, fêtes, invité, portraits) |
 
-**Non-objectifs constatés.** Pas de multi-utilisateur. Pas d'import Gmail ni Outlook (retirés en 2.0). Pas d'écriture automatique d'une modification faite sur l'iPhone : tout repasse par « À traiter ». Aucune suppression automatique.
+**Non-objectifs constatés.** Pas de multi-utilisateur. Pas d'import Gmail ni Outlook (retirés en 2.0). Pas d'écriture automatique d'une modification faite sur l'iPhone : tout repasse par « À traiter ». Aucune suppression automatique : une fiche n'est supprimée que sur demande confirmée.
 
 ---
 
@@ -38,12 +40,12 @@ Ce dossier décrit ce qui existe. Ce qui doit changer est dans « Écarts » et 
 
 | Élément | Choix |
 |---|---|
-| Back | Python 3.12, FastAPI, Uvicorn ; 32 fichiers dans `app/`, environ 7 300 lignes |
-| Front | Svelte 5, Vite 6, Tailwind 4, JavaScript ; 6 écrans et 10 composants, environ 2 650 lignes ; composants et styles faits main |
+| Back | Python 3.12, FastAPI, Uvicorn ; 39 fichiers dans `app/`, environ 9 800 lignes |
+| Front | Svelte 5, Vite 6, Tailwind 4, JavaScript ; 8 écrans et 13 composants, environ 3 500 lignes ; composants et styles faits main, fenêtre et cases natives du navigateur |
 | Base | SQLite, fichier `carnet2.db` dans `/state` |
 | Image | Dockerfile en 3 étapes, publiée sur `ghcr.io/baloodusudouest/carnet` avec les étiquettes `latest`, version et commit |
 | Déploiement | Service `carnet` de `homelab.yml`, port 8096, Watchtower désactivé (carnet écrit dans iCloud) |
-| Tests | 80 tests du back sur des contacts fictifs, 19 tests d'interface dans un vrai navigateur (PC et iPhone), lancés par GitHub Actions |
+| Tests | 101 tests du back sur des contacts fictifs, 25 tests d'interface dans un vrai navigateur (PC et iPhone), lancés par GitHub Actions |
 
 **Services externes.**
 
@@ -51,7 +53,7 @@ Ce dossier décrit ce qui existe. Ce qui doit changer est dans « Écarts » et 
 |---|---|---|---|
 | iCloud Contacts | CardDAV | lecture et écriture | `CARNET_ICLOUD_USER`, `CARNET_ICLOUD_PASSWORD` (mot de passe d'application) |
 | Immich | API REST | lecture, écriture des noms et dates de naissance, album d'affiches | `CARNET_IMMICH_CLE` |
-| Treemich | API REST, une seule session réutilisée | lecture, écriture des dates et noms | `CARNET_TREEMICH_EMAIL`, `CARNET_TREEMICH_PASSWORD` |
+| Treemich | API REST, une seule session réutilisée | lecture ; écriture des noms, des naissances, des mariages (sur le couple) et des décès | `CARNET_TREEMICH_EMAIL`, `CARNET_TREEMICH_PASSWORD` |
 | Synology Contacts | CardDAV | écriture (copie) | `CARNET_SYNOLOGY_URL`, `CARNET_SYNOLOGY_PASSWORD` |
 | LinkedIn | API de portabilité (OAuth) ou fichier | lecture | `CARNET_LINKEDIN_CLIENT_ID`, `CARNET_LINKEDIN_CLIENT_SECRET` |
 | Telegram | Telethon, session en mémoire | lecture ponctuelle | `CARNET_TELEGRAM_API_ID`, `CARNET_TELEGRAM_API_HASH` |
@@ -60,7 +62,7 @@ Ce dossier décrit ce qui existe. Ce qui doit changer est dans « Écarts » et 
 
 **Connexion.** Un mot de passe (`CARNET_PASSWORD`), cookie de session signé valable 30 jours ; « Se déconnecter » invalide tous les cookies. Délai de 1 seconde par essai, 5 secondes après 5 échecs. Les routes `/ha/…` demandent un jeton distinct.
 
-**Garde-fous d'écriture.** Verrou tenu pendant toute une opération. Contrôle de version de la carte (ETag) avant et après écriture. Coupe-circuit si la lecture d'iCloud est partielle ou si plus de 5 % des fiches disparaissent. Pause de 15 minutes après un refus d'identifiants iCloud. Plafonds de créations et de modifications la nuit.
+**Garde-fous d'écriture.** Verrou tenu pendant toute une opération. Contrôle de version de la carte (ETag) avant et après écriture. Coupe-circuit si la lecture d'iCloud est partielle ou si plus de 5 % des fiches disparaissent. Pause de 15 minutes après un refus d'identifiants iCloud. Plafonds de créations et de modifications la nuit. Mode lecture seule (`CARNET_LECTURE_SEULE`). Écritures automatiques de la 2.8 derrière deux interrupteurs, journalisées avec la valeur d'avant ; Treemich relu juste avant et juste après chaque écriture.
 
 ---
 
@@ -74,17 +76,21 @@ Adresses de la forme `#/page/…`. Largeur de 900 px et plus : mode PC (liste et
 flowchart TD
   C[Connexion] -->|mot de passe juste| T[À traiter]
   T <-->|onglets| L[Contacts]
-  L <-->|onglets| E[État]
-  T <-->|onglets| E
+  L <-->|onglets| P[Photos]
+  P <-->|onglets| E[État]
+  E <-->|onglets| R[Réglages]
   T -->|nom du contact| F[Fiche]
+  T -->|ligne de manque| L
   T -->|Comparer et réunir| U[Fusion]
   L -->|ligne d'un contact| F
+  L -->|Importer| I[Fenêtre d'import]
   F -->|Réunir avec une autre fiche| U
+  F -->|Supprimer, après confirmation| L
   U -->|Réunir en une fiche / Abandonner| T
-  E -->|Se déconnecter| C
+  R -->|Se déconnecter| C
 ```
 
-**Navigation permanente.** Trois onglets : À traiter (pastille du nombre de points), Contacts, État (roue si une opération tourne, point rouge si un problème). Sur iPhone : pilule flottante en bas, l'onglet actif s'élargit avec son nom. Sur PC : rail à gauche.
+**Navigation permanente.** Cinq onglets : À traiter (compteur des points), Contacts, Photos, État (roue si une opération tourne, point rouge si un problème), Réglages. Sur iPhone : pilule flottante en bas, icônes seules, l'onglet actif s'élargit avec son nom. Sur PC : rail à gauche.
 
 **Message bref.** Après chaque écriture, un message apparaît en bas 4 secondes ; il porte un bouton « Annuler » pendant 10 secondes quand l'écriture est réversible ; une erreur reste 8 secondes.
 
@@ -122,6 +128,11 @@ flowchart TD
 | Rapprochement réseau | Lier ; Lier et ajouter le numéro ; Pas lui |
 | Liens familiaux | Ajouter à la fiche ; Ignorer |
 | Forme, émoji, LinkedIn | Appliquer ; Ignorer |
+| Date de mariage manquante | Écrire la date (des deux côtés) ; Pas de mariage ni PACS |
+| Dates de mariage ou de décès différentes | Écrire partout (après choix) ; Ignorer |
+| Société écrite de plusieurs façons | Écrire sur N fiches (après choix de l'écriture) ; Pas la même société |
+
+**Manques.** Le filtre « Manques » montre une ligne par information manquante avec son nombre de fiches ; une ligne ouvre Contacts filtré. Les manques ne comptent pas dans le compteur de l'onglet.
 
 ### Contacts (`#/contacts`)
 
@@ -130,14 +141,14 @@ flowchart TD
 | Champ de recherche | Filtre par nom, société, numéro | Contacts |
 | Prénom / Nom | Change le tri, retenu sur l'appareil | Contacts |
 | Menu Groupes | Filtre par groupe | Contacts |
-| Pastilles « Sans année », « Sans adresse »… | Filtre par manque | Contacts |
-| Importer | Envoie un fichier `.vcf`, `.csv`, `.zip` ou `.json` ; les fiches arrivent dans À traiter | Contacts |
+| Filtres de manque | Un par information du tableau des attentes, plus « Sans groupe », « Sans union déclarée », « Décédés », « À revoir », « Validées » | Contacts |
+| Importer | Ouvre la fenêtre d'import : dépôt du fichier, annonce de ce qui est reconnu, puis « Importer » ; mode opératoire par type de fichier | Contacts |
 | Lettre de l'index (tranche sur PC, index au pouce sur iPhone) | Saute à la lettre | Contacts |
 | Ligne d'un contact | iPhone : ouvre la fiche. PC : l'affiche à droite | Fiche |
 
 ### Fiche (`#/contacts/<identifiant>`)
 
-Six blocs empilés : points à traiter de cette fiche, informations, complétude, plateformes, liaisons, photo et affiche, réunir.
+Six blocs empilés : points à traiter de cette fiche, informations, complétude, plateformes, liaisons, photo et affiche, réunir. Une croix (†) précède le nom d'une personne décédée.
 
 | Geste | Effet | Écran suivant |
 |---|---|---|
@@ -148,11 +159,14 @@ Six blocs empilés : points à traiter de cette fiche, informations, complétude
 | Continuer à modifier / Abandonner | Retour à l'édition / à la lecture | Fiche |
 | Numéro, courriel | Lance l'appel ou le courriel | hors appli |
 | Valider la fiche / Revalider / Retirer la validation | Change le statut de complétude | Fiche |
+| Normal pour ce contact / Signaler de nouveau | Pose ou retire une exception sur un manque | Fiche |
+| Case « Personne décédée, date inconnue » | Marque propre à carnet : plus d'annonce, plus de manques | Fiche |
+| En modification : Supprimer cette fiche…, puis Supprimer définitivement | Retire la carte d'iCloud ; « Annuler » 10 secondes | Contacts |
 | Ajouter un profil (choix du réseau, saisie, Ajouter) | Écrit le profil dans la carte iCloud | Fiche |
 | Délier un réseau, puis confirmer | Retire le profil de la carte | Fiche |
 | Chercher dans Immich et Treemich, puis Lier | Crée la liaison | Fiche |
 | Délier une liaison | Retire la liaison | Fiche |
-| Bloc Photo et affiche | Choisir un portrait, préparer l'affiche, choisir un logo | Fiche |
+| Bloc Photo et affiche | Choisir un portrait, préparer l'affiche, chercher un logo, ou le glisser, le coller, le choisir comme fichier | Fiche |
 | Réunir : saisir un nom, choisir la fiche | Ouvre la fusion | Fusion |
 
 ### Fusion (`#/fusion/<a>/<b>`)
@@ -164,28 +178,46 @@ Six blocs empilés : points à traiter de cette fiche, informations, complétude
 | Réunir en une fiche | Écrit, message avec Annuler | À traiter |
 | Abandonner | Rien n'est écrit | À traiter |
 
+### Photos (`#/photos`)
+
+Quatre tuiles, une par file ; la file choisie s'affiche dessous, avec un filtre par groupe.
+
+| File | Gestes |
+|---|---|
+| Logos | Une ligne par société : glisser, coller ou choisir un logo ; « Chercher sur Google Images » ; pour celles qui ont un site, cocher puis « Chercher les logos » ; « Poser les logos » le pose sur toutes les fiches sans photo de la société |
+| Portraits | Cocher (20 au plus), « Poser les portraits » |
+| Affiches à préparer | Cocher, « Préparer les affiches » |
+| Affiches à poser | Cocher, « Marquer comme posées » |
+
+### Réglages (`#/reglages`)
+
+| Section | Gestes |
+|---|---|
+| Ce que chaque groupe doit avoir | Cocher une case : carnet annonce l'effet, puis Enregistrer ou Annuler. Tableau sur PC, un groupe à la fois sur iPhone |
+| Ce que carnet écrit tout seul | Deux interrupteurs ; liste de ce qui serait écrit ; « Accorder maintenant » ; ce qui empêche une date de partir ; journal avec « Défaire » |
+| Exceptions | Retirer une exception |
+| Réseaux | LinkedIn (fichier, connexion, adresse de retour), Telegram (numéro, code, import), Facebook et Instagram (archives) ; rattacher les personnes sans fiche |
+| Pied de page | Se déconnecter |
+
 ### État (`#/etat`)
 
-Un bandeau de bilan, puis sept tuiles ; un clic sur une tuile ouvre sa section en dessous.
+Un bandeau de bilan, puis six tuiles ; un clic sur une tuile ouvre sa section en dessous.
 
 | Section | Gestes |
 |---|---|
 | iCloud et la nuit | Relire iCloud ; Lancer la nuit maintenant ; forcer la lecture après un coupe-circuit |
 | Sauvegardes | Choisir une sauvegarde, la télécharger, cocher des fiches et les remettre ; Exporter tout le carnet |
 | Copies | Copier vers Synology (et Forcer la copie) ; Envoyer au kit |
-| Réseaux | LinkedIn (fichier, connexion, adresse de retour), Telegram (numéro, code, import), Facebook et Instagram (archives) ; rattacher les personnes sans fiche |
-| Complétude | Relancer l'analyse globale ; Remettre les validations à zéro (en tapant REMETTRE) |
+| Manques | Les lignes de manques, en lecture ; Relancer l'analyse globale ; Remettre les validations à zéro (en tapant REMETTRE) |
 | Services | Voyant par service ; Relire Immich et Treemich |
 | Journal | Lecture seule |
 | Pied de page | Se déconnecter |
 
-### Points de friction relevés en lisant le parcours
+### Points de friction
 
-1. **Deux entrées pour importer** : le bouton « Importer » de Contacts et les dépôts de fichiers de la section Réseaux d'État.
-2. **La section Réseaux est un écran dans l'écran** : six réseaux, trois façons d'importer, quatre listes de personnes sans fiche, le tout dans un bloc d'État.
-3. **La fiche empile six blocs** : sur iPhone, les liaisons et la photo sont loin sous les informations.
-4. **« Se déconnecter » n'existe qu'en bas d'État.**
-5. **Rien n'indique sur À traiter ce que fera un traitement par lot avant d'avoir choisi un filtre.**
+Relevés sur la 2.6.4 et traités depuis : les deux entrées d'import (une seule depuis la 2.8.0), la section Réseaux logée dans État (dans Réglages depuis la 2.8.4), « Se déconnecter » introuvable (dans Réglages et dans État), le lot d'À traiter sans annonce (annoncé depuis la 2.6.5).
+
+Reste : **la fiche empile toujours six blocs** ; sur iPhone, les liaisons et la photo sont loin sous les informations.
 
 ---
 
@@ -207,7 +239,7 @@ Un bandeau de bilan, puis sept tuiles ; un clic sur une tuile ouvre sa section e
 
 ## 5. Schéma de données
 
-Base SQLite `carnet2.db`, version de schéma 2, une seule connexion sous verrou.
+Base SQLite `carnet2.db`, version de schéma 3 (ajouts seulement depuis la 2 : une 2.7 rouvre la base), une seule connexion sous verrou.
 
 | Table | Clé | Contenu |
 |---|---|---|
@@ -224,7 +256,14 @@ Base SQLite `carnet2.db`, version de schéma 2, une seule connexion sous verrou.
 | `validations` | `uid` | Empreinte de la fiche au moment de sa validation |
 | `personnes_externes` | (service, identifiant externe) | Personnes lues dans Telegram, Facebook ou Instagram, purgées à 90 jours |
 | `journal` | `id` | Évènements datés |
-| `kv` | `cle` | Valeurs isolées : référence iCloud, dernière nuit, génération de session |
+| `kv` | `cle` | Valeurs isolées : référence iCloud, dernière nuit, génération de session, interrupteurs de la 2.8 |
+| `attentes` | (groupe, information) | Une ligne par case cochée du tableau des attentes |
+| `exceptions` | (uid, information) | « Normal pour ce contact » |
+| `unions` | couple Treemich | Dernier état lu (mariage, divorce), réponse « pas de mariage ni PACS » |
+| `deces` | `uid` | Décès connus hors de la carte : lus dans Treemich, ou case cochée |
+| `automatiques` | `id` | Écritures faites par carnet tout seul, avec la valeur d'avant |
+| `logos_cherches` | `uid` | Dernière recherche de logo par fiche |
+| `logos_societes` | nom de société | Logo retenu pour une société |
 
 **Relations.** Tout se rattache à `fiches.uid`. Aucune clé étrangère déclarée : la cohérence est tenue par le code (fusion, suppression).
 
@@ -264,15 +303,11 @@ Règles : mêmes textes, même navigation, mêmes rôles d'accessibilité ; les 
 | 6 | État en tuiles bento | Chaque action d'État se lance encore |
 | 7 | Mise en service à la place de l'habillage actuel, en lecture seule le premier jour | Essai sur iPhone : clavier, défilement, fenêtres |
 
-### 2.8.0 — parcours et complétude
+### 2.8 — parcours et complétude
 
-Évolution fonctionnelle : elle aura son propre grill, son dossier et son passage au conseil. Demandes de Julien du 11/11/2026 :
+Faite le 11/11/2026, en cinq versions : 2.8.0 (le dossier `docs/2.8-dossier.md`), 2.8.1 (logo par société), 2.8.2 (noms de société), 2.8.3 (accord immédiat des dates de famille, raisons affichées), 2.8.4 (Réseaux dans Réglages). Détail dans `CHANGELOG.md`.
 
-- une seule entrée pour importer ;
-- des filtres de manques plus nombreux : sans Immich, sans photo ni logo, sans liens familiaux, sans année ou sans date de naissance, sans moyen de contact ;
-- un écran de réglages disant quelles informations chaque groupe doit avoir (un client ou un artisan sans Immich ni Treemich, c'est normal ; un collègue sans Treemich aussi, mais il devrait avoir une photo) ;
-- une section Photos pour choisir et pousser les portraits et les affiches pour l'iPhone, pour plusieurs contacts à la fois ;
-- une fiche aussi complète que possible, d'après ce que proposent les applis de contacts.
+Reste à voir à l'usage : le calendrier des fêtes, l'écriture réelle dans Treemich, le logo glissé depuis un vrai navigateur.
 
 **Retour arrière.** L'image de chaque version reste publiée : `CARNET_VERSION` dans Portainer suffit à revenir. Copie de `/state` avant chaque mise en service. Côté iCloud, carnet garde déjà une copie complète avant la première écriture de chaque jour et sait remettre une fiche comme dans la sauvegarde.
 
@@ -290,6 +325,7 @@ Règles : mêmes textes, même navigation, mêmes rôles d'accessibilité ; les 
 | 6 | Fichier de reprise | Absent | Faible | Ajouté avec ce dossier |
 | 7 | Langage du front | JavaScript ; les composants shadcn-svelte sont en TypeScript | Faible | Ajouter TypeScript au seul usage des composants ; ne pas convertir l'existant |
 | 8 | Poids de l'interface | Non mesuré ; la bibliothèque de graphiques du socle pèse lourd | À surveiller | Ne pas embarquer de graphique dans carnet tant qu'aucun écran n'en a besoin |
-| 9 | Friction de parcours | Cinq points relevés en section 3 | Moyen | L'annonce avant un lot en 2.6.5 ; l'import unique et le reste en 2.8.0 |
+| 9 | Friction de parcours | Cinq points relevés en section 3 | Moyen | **Fait**, sauf la fiche en six blocs |
+| 10 | Composants | shadcn-svelte non introduit ; fenêtre et cases natives du navigateur | Voulu | Décision du conseil de la 2.8 ; à revoir quand le document du socle sera écrit |
 
 **Conforme au socle, à garder tel quel :** FastAPI et image en 3 étapes, session par cookie signé (le socle la reprend de carnet), `/health` public, versions du back épinglées, étiquettes d'image permettant le retour arrière, sauvegarde avec restauration, tests du back et de l'interface, aucune donnée personnelle dans le dépôt.
