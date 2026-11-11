@@ -4,15 +4,16 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **2.7.0 prête** (branche `main`) : nouvel habillage sur tous les écrans, mode clair, État en tuiles bento. Direction validée par Julien sur captures de l'écran À traiter (second essai, réchauffé). Les autres écrans ont été relus par Claude sur captures, pas encore par Julien.
-- En service sur le NAS : 2.6.5.
-- Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md). Premier tour du grill de la 2.8.0 : [`docs/2.8-grill.md`](docs/2.8-grill.md).
+- **2.7.1 sur `main`** : la 2.7.0 (nouvel habillage) plus la sonde avant la 2.8.0. Julien a la 2.7.0 en service ; « À traiter » est vide chez lui.
+- **2.8.0 : grill terminé** ([`docs/2.8-grill.md`](docs/2.8-grill.md)). Sonde écrite (`app/sonde28.py`), pas encore lancée sur le NAS.
+- Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md).
 
 ## Prochaine étape
 
-1. **Julien met la 2.7.0 en service**, en lecture seule le premier jour, et l'essaie sur iPhone (clavier, défilement, mode clair en plein jour). Retour arrière : `CARNET_VERSION=2.6.5`.
-2. Une semaine d'usage avant de généraliser l'habillage aux autres applis ; écrire alors le document du socle et la planche de couleurs.
-3. **2.8.0, parcours et complétude** : finir le grill, écrire le dossier, passer au conseil.
+1. Julien lance la sonde (service ponctuel `carnet-sonde` dans homelab.yml) et transmet le journal.
+2. Écrire le dossier de la 2.8.0 à partir du grill et de la sonde, puis un passage au conseil (deux si le conseil le juge : c'est une grosse version).
+3. Plan d'implémentation, puis code, en une seule livraison.
+4. Après une semaine d'usage de la 2.7.0 : document du socle et planche de couleurs.
 
 ## Décisions tranchées
 

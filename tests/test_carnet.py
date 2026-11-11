@@ -1383,3 +1383,37 @@ def test_lot_qui_ecrit_refuse_en_lecture_seule(c, tmp_path):
     with pytest.raises(LectureSeule):
         actions.repondre_lot(c, ["1", "2"], "lier")
     assert actions.repondre_lot(c, [], "ignorer") == {"faits": 0, "erreurs": [], "reportes": 0}   # écarter reste permis
+
+
+# ================================================================ sonde avant la 2.8.0
+
+def test_sonde_28_lecture_seule_et_sans_nom(c, services, tmp_path):
+    from app import sonde28
+    nuit.passer(c, "test")                                   # quelques liaisons, comme en service
+    avant_icloud, avant_treemich = list(services["icloud"].ecritures), list(services["treemich"].ecrits)
+    base_avant = c.cfg.db_path.read_bytes()
+    b = sonde28.sonder_base(c.cfg.db_path)
+    t = sonde28.sonder_treemich(c.treemich())
+    md = sonde28.rapport(b, t, None)
+    assert b["cartes"] == len(c.fiches()) and b["par_groupe"]["Urgence"] >= 1
+    assert b["cartes_avec"]["FN"] == b["cartes"]
+    assert t["types_relations"]["SPOUSE_OF"] == 1 and t["couples"] == 1 and t["couples_avec_evenement"] == 0
+    assert t["types_evenements"]["BIRTH"] == 2 and t["avec_date"]["BIRTH"] == 2
+    # Rien n'a été écrit nulle part, et la base n'a pas bougé
+    assert services["icloud"].ecritures == avant_icloud and services["treemich"].ecrits == avant_treemich
+    assert c.cfg.db_path.read_bytes() == base_avant
+    # Aucun nom, numéro ou courriel de contact dans le rapport
+    for f in c.fiches().values():
+        for mot in [f.get("prenom"), f.get("nom"), f.get("societe")] + [x["valeur"] for x in f.get("telephones", [])] \
+                + [x["valeur"] for x in f.get("courriels", [])]:
+            assert not mot or mot not in md, f"« {mot} » apparaît dans le rapport"
+
+
+def test_sonde_28_proprietes_d_une_carte():
+    from app import sonde28
+    carte = ("BEGIN:VCARD\r\nVERSION:3.0\r\nFN:Marc DURAND\r\nORG:Hôpital;Cardiologie\r\n"
+             "item1.X-ABDATE:2010-06-12\r\nitem1.X-ABLabel:_$!<Anniversary>!$_\r\n"
+             "item2.X-ABDATE:2001-01-01\r\nitem2.X-ABLabel:Rencontre chez Paul\r\nEND:VCARD\r\n")
+    noms, dates, service = sonde28.proprietes(carte)
+    assert noms["X-ABDATE"] == 2 and noms["ORG"] == 1 and service is True
+    assert dates == {"Anniversary": 1, "(libellé personnel)": 1}       # le libellé saisi à la main n'est pas recopié

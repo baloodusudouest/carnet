@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.7.1 — 11 novembre 2026
+- **Sonde avant la 2.8.0** (`python -m app.sonde28`) : un programme à part, en lecture seule, qui compte ce dont la conception de la 2.8.0 dépend (propriétés déjà présentes dans les cartes, taille de la future famille « Manques », mariages dans Treemich). Il travaille sur une copie de la base, ne contacte pas iCloud, ne fait que lire Treemich, et son rapport ne contient aucun nom de personne. carnet lui-même ne change pas.
+
 ## 2.7.0 — 11 novembre 2026
 Nouvel habillage, seul. Deuxième des trois livraisons (voir `docs/dossier.md`). Mêmes écrans, mêmes textes, même navigation ; aucune route de l'API ni la base ne changent.
 - **Habillage du socle, réchauffé** : fonds neutres teintés vers l'ocre, filets fins, titres en caractères sans empattements (grands et fins pour les écrans, fermes pour les noms). Le thème « cuir » disparaît ; l'ocre reste la couleur de carnet et porte l'action attendue, le filtre actif et ce qui demande l'attention.
