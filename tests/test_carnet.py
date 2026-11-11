@@ -1750,3 +1750,60 @@ def test_28_deces_croix_et_silence(c, services):
     assert famille.marquer_decede(c, "BBBB-2222", True)["decede"] is True
     assert attentes.decedes(c)["BBBB-2222"] == ""
     assert famille.marquer_decede(c, "BBBB-2222", False)["decede"] is False
+
+
+# ================================================================ 2.8 : Photos, logo déposé, import unique
+
+def _png(cote=200, couleur=(200, 60, 40)):
+    import io
+    from PIL import Image
+    s = io.BytesIO()
+    Image.new("RGB", (cote, cote), couleur).save(s, "PNG")
+    return s.getvalue()
+
+
+def test_28_logo_depose_et_files_photos(c, services):
+    import base64
+    from app import galerie
+    f = galerie.files(c)
+    assert [x["uid"] for x in f["files"]["logos"]] == ["CCCC-3333"]            # société sans photo
+    assert f["files"]["logos"][0]["domaine"] is False and "google.com/search?tbm=isch" in f["files"]["logos"][0]["google"]
+    # Fichier déposé : il devient le candidat n° 0, rien n'est écrit tant qu'on ne l'a pas choisi
+    avant = len(services["icloud"].ecritures)
+    r = galerie.deposer_logo(c, "CCCC-3333", contenu=_png())
+    assert r["n"] == 0 and r["largeur"] == 200 and len(services["icloud"].ecritures) == avant
+    assert photos.apercu_logo(c, "CCCC-3333", 0)[:4] == b"\x89PNG"
+    # Image glissée depuis une recherche d'images : souvent une adresse « data: »
+    galerie.deposer_logo(c, "CCCC-3333", url="data:image/png;base64," + base64.b64encode(_png()).decode())
+    # Refus : pas une image, trop petite, adresse du réseau local, autre protocole
+    for mauvais in (dict(contenu=b"<html>pas une image</html>"), dict(contenu=_png(20)),
+                    dict(url="data:text/html;base64,PGI+"), dict(url="ftp://exemple.fr/logo.png")):
+        with pytest.raises(ErreurCarnet):
+            galerie.deposer_logo(c, "CCCC-3333", **mauvais)
+    for locale in ("http://127.0.0.1/logo.png", "http://192.168.1.10:8096/api/etat", "http://localhost/x.png"):
+        with pytest.raises(ErreurCarnet):
+            galerie.telecharger_image(locale)
+    # Une redirection vers le réseau local est refusée elle aussi
+    def repond(r):
+        return httpx.Response(302, headers={"location": "http://192.168.1.1/secret.png"})
+    def verifier(url):
+        if "192.168" in url:
+            raise ErreurCarnet("réseau local")
+    with pytest.raises(ErreurCarnet):
+        galerie.telecharger_image("https://exemple.fr/logo.png", transport=httpx.MockTransport(repond), verifier=verifier)
+    # Lot : le logo coché est posé en photo, la fiche quitte la file
+    galerie.deposer_logo(c, "CCCC-3333", contenu=_png())
+    bilan = galerie.poser_logos(c, [{"uid": "CCCC-3333", "n": 0}])
+    assert bilan["faits"] == 1 and c.fiches()["CCCC-3333"]["a_photo"]
+    assert galerie.files(c)["files"]["logos"] == []
+
+
+def test_28_lots_photos_refuses_en_lecture_seule(c, services):
+    from app import galerie
+    from app.garde import LectureSeule
+    import dataclasses
+    c.cfg = dataclasses.replace(c.cfg, lecture_seule=True)
+    for lot in (lambda: galerie.poser_portraits(c, ["AAAA-1111"]), lambda: galerie.poser_logos(c, [{"uid": "CCCC-3333", "n": 0}]),
+                lambda: galerie.preparer_affiches(c, ["AAAA-1111"])):
+        with pytest.raises(LectureSeule):
+            lot()

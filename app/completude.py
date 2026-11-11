@@ -125,9 +125,11 @@ def resume(c: Carnet) -> dict[str, dict]:
 
 def compteurs(c: Carnet) -> dict:
     r = resume(c)
-    res = {k: sum(1 for x in r.values() if k in x["manques"] and x["statut"] != "valide") for k in CRITERES}
+    res = {k: sum(1 for x in r.values() if k in x["manques"]) for k in CRITERES}
     res["a_revoir"] = sum(1 for x in r.values() if x["statut"] == "a_revoir")
     res["validees"] = sum(1 for x in r.values() if x["statut"] == "valide")
+    res["incompletes"] = sum(1 for x in r.values() if x["manques"])
+    res["lignes"] = attentes.lignes(c)
     return res
 
 
@@ -144,7 +146,7 @@ def analyse_globale(c: Carnet, remettre_a_zero: bool = False) -> dict:
     reseaux.proposer(c)
     bilan = {"compteurs": compteurs(c), "a_traiter": traiter.compte(c)["total"], "remis_a_zero": remettre_a_zero}
     c.base.noter("analyse", "Analyse globale : " + ", ".join(f"{CRITERES[k].lower()} {v}" for k, v in bilan["compteurs"].items()
-                                                         if k in CRITERES) + f" ; {bilan['compteurs']['a_revoir']} à revoir"
+                                                         if k in CRITERES and v) + f" ; {bilan['compteurs']['a_revoir']} à revoir"
                  + (" ; validations remises à zéro" if remettre_a_zero else ""), bilan)
     return bilan
 

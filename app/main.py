@@ -13,7 +13,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .temps import maintenant
-from . import (__version__, actions, attentes, completude, icloud, liaisons, linkedin, nuit, photos, reseaux, sorties,
+from . import (__version__, actions, attentes, completude, famille, galerie, icloud, liaisons, linkedin, nuit, photos, reseaux, sorties,
                telegram, traiter, vcard)
 from .auth import COOKIE, DUREE, Sessions
 from .carddav import ErreurICloud
@@ -214,7 +214,8 @@ def _resume(uid: str, f: dict, liens: dict, en_attente: dict, audit: dict | None
             "valeur_tel": tel.get("valeur", ""), "courriel": (f.get("courriels") or [{}])[0].get("valeur", ""),
             "anniversaire": f.get("anniversaire", ""), "a_traiter": en_attente.get(uid, 0),
             "manques": audit.get("manques", []), "statut": audit.get("statut"), "plateformes": audit.get("plateformes", ["icloud"]),
-            "score": audit.get("score", 0)}
+            "score": audit.get("score", 0), "total": audit.get("total", 0), "decede": audit.get("decede", False),
+            "sans_union": audit.get("sans_union", False)}
 
 
 @app.get("/api/contacts")
@@ -228,7 +229,8 @@ def contacts():
             if p.get("uid"):
                 compte[p["uid"]] = compte.get(p["uid"], 0) + 1
         audit = completude.resume(c)
-        liste = [_resume(u, f, liens, compte, audit.get(u)) for u, f in c.fiches().items()]
+        sans = famille.sans_union_declaree(c)
+        liste = [_resume(u, f, liens, compte, {**audit.get(u, {}), "sans_union": u in sans}) for u, f in c.fiches().items()]
         return sorted(liste, key=lambda x: (x["nom_famille"] or x["nom"]).casefold())
     return c.memo("contacts", calcul)
 
@@ -263,7 +265,11 @@ def contact(uid: str):
             "affiche": dict(affiche) if affiche else None,
             "linkedin": {"url": lk["url"], **json.loads(lk["donnees"])} if lk else None,
             "a_traiter": points, "groupes_connus": [g["nom"] for g in groupes()],
-            "completude": completude.resume(c).get(uid, {}), "criteres": completude.CRITERES}
+            "completude": completude.resume(c).get(uid, {}), "criteres": completude.CRITERES,
+            "fete": dict(zip(("date", "origine"), attentes.fete_de(f))),
+            "deces": {"date": attentes.decedes(c).get(uid), "decede": uid in attentes.decedes(c),
+                      "coche": bool(c.base.un("SELECT 1 FROM deces WHERE uid = ? AND origine = 'main'", (uid,)))},
+            "google_logo": galerie.recherche_google(f)}
 
 
 @app.get("/api/completude")
@@ -432,6 +438,129 @@ def choisir_logo(uid: str, n: int, corps: dict = Body(...)):
     return photos.choisir_logo(carnet(), uid, n, str(corps.get("sorte", "photo")))
 
 
+@app.post("/api/contacts/{uid}/logo-depose")
+async def deposer_logo(uid: str, request: Request, url: str = ""):
+    """Logo fourni à la main. Corps = le fichier image tel quel (glissé, collé ou choisi), ou
+    paramètre « url » quand le navigateur n'a donné qu'une adresse."""
+    c = carnet()
+    if url:
+        return galerie.deposer_logo(c, uid, url=url)
+    morceaux, taille = [], 0
+    async for m in request.stream():
+        taille += len(m)
+        if taille > galerie.POIDS_MAX:
+            raise ErreurCarnet("Image trop lourde (3 Mo au plus).")
+        morceaux.append(m)
+    contenu = b"".join(morceaux)
+    if contenu[:5] == b"data:" or contenu[:4] in (b"http", b"HTTP"):      # adresse envoyée dans le corps
+        return galerie.deposer_logo(c, uid, url=contenu.decode("utf-8", "replace"))
+    return galerie.deposer_logo(c, uid, contenu=contenu)
+
+
+# ---------------------------------------------------------------- onglet Photos (2.8)
+
+@app.get("/api/photos")
+def photos_files():
+    return galerie.files(carnet())
+
+
+def _uids(corps: dict) -> list[str]:
+    return [str(u) for u in corps.get("uids") or []]
+
+
+@app.post("/api/photos/portraits")
+def photos_portraits(corps: dict = Body(...)):
+    c = carnet()
+    return _fond("photos", lambda: _bilan_lot(galerie.poser_portraits(c, _uids(corps)), "portrait(s) posé(s)"))
+
+
+@app.post("/api/photos/affiches")
+def photos_affiches(corps: dict = Body(...)):
+    c = carnet()
+    return _fond("photos", lambda: _bilan_lot(galerie.preparer_affiches(c, _uids(corps)), "affiche(s) préparée(s)"))
+
+
+@app.post("/api/photos/posees")
+def photos_posees(corps: dict = Body(...)):
+    return galerie.marquer_posees(carnet(), _uids(corps))
+
+
+@app.post("/api/photos/logos/chercher")
+def photos_logos_chercher(corps: dict = Body(...)):
+    return galerie.chercher_logos(carnet(), _uids(corps))
+
+
+@app.post("/api/photos/logos/poser")
+def photos_logos_poser(corps: dict = Body(...)):
+    c = carnet()
+    return _fond("photos", lambda: _bilan_lot(galerie.poser_logos(c, list(corps.get("choix") or [])), "logo(s) posé(s)"))
+
+
+def _bilan_lot(r: dict, quoi: str) -> dict:
+    message = f"{r['faits']} {quoi}"
+    if r["restants"]:
+        message += f", {r['restants']} en attente du lot suivant"
+    if r["erreurs"]:
+        message += f" ; {len(r['erreurs'])} refus : " + " ; ".join(r["erreurs"][:3])
+    return {**r, "message": message + "."}
+
+
+# ---------------------------------------------------------------- réglages et manques (2.8)
+
+@app.get("/api/attentes")
+def attentes_tableau():
+    return attentes.tableau(carnet())
+
+
+@app.post("/api/attentes/apercu")
+def attentes_apercu(corps: dict = Body(...)):
+    return attentes.apercu(carnet(), str(corps.get("groupe", "")), str(corps.get("info", "")), bool(corps.get("attendue")))
+
+
+@app.post("/api/attentes")
+def attentes_regler(corps: dict = Body(...)):
+    c = carnet()
+    r = attentes.regler(c, str(corps.get("groupe", "")), str(corps.get("info", "")), bool(corps.get("attendue")))
+    return {**r, "tableau": attentes.tableau(c)}
+
+
+@app.get("/api/manques")
+def manques():
+    c = carnet()
+    return {"lignes": attentes.lignes(c), "total": attentes.total(c)}
+
+
+@app.get("/api/exceptions")
+def exceptions():
+    return attentes.liste_exceptions(carnet())
+
+
+@app.post("/api/contacts/{uid}/exception")
+def excepter(uid: str, corps: dict = Body(...)):
+    return attentes.excepter(carnet(), uid, str(corps.get("info", "")), bool(corps.get("oui", True)))
+
+
+@app.post("/api/contacts/{uid}/decede")
+def decede(uid: str, corps: dict = Body(...)):
+    return famille.marquer_decede(carnet(), uid, bool(corps.get("oui", True)))
+
+
+@app.get("/api/automatique")
+def automatique():
+    c = carnet()
+    return {**famille.apercu(c), "journal": famille.journal(c), "lecture_seule": c.cfg.lecture_seule}
+
+
+@app.post("/api/automatique/{quoi}")
+def automatique_regler(quoi: str, corps: dict = Body(...)):
+    return famille.regler(carnet(), quoi, bool(corps.get("actif")))
+
+
+@app.post("/api/automatique/defaire/{ident}")
+def automatique_defaire(ident: int):
+    return famille.defaire(carnet(), ident)
+
+
 # ---------------------------------------------------------------- fusion
 
 @app.get("/api/fusion")
@@ -569,7 +698,7 @@ IMPORT_MAX = 100 * 1024 * 1024
 
 
 @app.post("/api/import")
-async def importer(request: Request, nom: str = "", source: str = ""):
+async def importer(request: Request, nom: str = "", source: str = "", apercu: bool = False):
     """Fichier envoyé tel quel dans le corps (pas de formulaire) : lu en mémoire seulement,
     jamais écrit sur le disque, 100 Mo au plus."""
     c = carnet()
@@ -586,6 +715,8 @@ async def importer(request: Request, nom: str = "", source: str = ""):
     # Export Facebook ou Instagram (.zip, .json ou .html) ; l'archive n'est jamais gardée.
     # Le contenu reconnu l'emporte ; sinon, le réseau annoncé par le bouton utilisé.
     source = reseaux.source_export(brut, nom) or (source if source in ("facebook", "instagram") else None)
+    if apercu:
+        return _apercu_import(c, brut, nom, source)
     if source == "facebook":
         return reseaux.importer_facebook(c, brut, nom)
     if source == "instagram":
@@ -605,6 +736,28 @@ async def importer(request: Request, nom: str = "", source: str = ""):
     c.oublier()
     c.base.noter("import", f"Import de {fichier_nom} : {len(lues)} fiche(s), {ajoutees} à traiter")
     return {"source": "vcf", "lues": len(lues), "a_traiter": ajoutees, "avertissements": avertissements[:20]}
+
+
+def _apercu_import(c: Carnet, brut: bytes, nom: str, source: str | None) -> dict:
+    """Import unique (2.8) : ce que carnet a reconnu et ce qu'il ferait, sans rien faire."""
+    if source == "facebook":
+        return {"source": "facebook", "reconnu": "Export Facebook", "nombre": len(reseaux.lire_facebook(brut, nom)),
+                "suite": "Les personnes sont rapprochées de tes fiches ; celles qui correspondent arrivent dans « À traiter »."}
+    if source == "instagram":
+        return {"source": "instagram", "reconnu": "Export Instagram", "nombre": len(reseaux.lire_instagram(brut, nom)),
+                "suite": "Les comptes sont rapprochés de tes fiches ; ceux qui correspondent arrivent dans « À traiter »."}
+    contenu = brut.decode("utf-8-sig", errors="replace")
+    if "First Name" in contenu[:4000] and ("Connected On" in contenu or "linkedin" in contenu.lower()):
+        lignes = [l for l in contenu.splitlines() if l.strip()]
+        debut = next((i for i, l in enumerate(lignes) if l.startswith("First Name")), 0)
+        return {"source": "linkedin", "reconnu": "Relations LinkedIn (Connections.csv)", "nombre": max(0, len(lignes) - debut - 1),
+                "suite": "Les changements de poste ou de société de tes contacts arrivent dans « À traiter »."}
+    if "BEGIN:VCARD" in contenu.upper():
+        lues, _ = vcard.lire(contenu, c.cfg.region)
+        return {"source": "vcf", "reconnu": "Cartes de contacts (.vcf)", "nombre": len(lues),
+                "suite": "Chaque fiche arrive dans « À traiter » : tu choisis de la créer dans iCloud, de la réunir ou de l'ignorer."}
+    raise ErreurCarnet("Fichier non reconnu. carnet lit : les cartes .vcf, le Connections.csv de LinkedIn, "
+                       "les exports Facebook et Instagram (.zip, .json ou .html).")
 
 
 @app.post("/api/linkedin/autorisation")

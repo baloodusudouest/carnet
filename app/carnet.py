@@ -35,6 +35,7 @@ class Carnet:
         self.annulations: dict[str, dict] = {}    # jeton → écriture à défaire (10 s)
         self._memo: dict[str, tuple[Any, Any]] = {}
         self._treemich: Treemich | None = None
+        self.logos: dict[str, list[dict]] = {}    # uid → logos trouvés ou déposé, en attente d'un choix (2.8)
         self.tache: dict = {"nom": None, "etat": "libre", "message": ""}
         normalisation.configurer_emojis(cfg.emoji_groupes)
 
