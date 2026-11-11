@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.7.2 — 11 novembre 2026
+- **Essai avant la 2.8.0** (`python -m app.essai28`, mode opératoire dans `docs/essai-2.8.md`) : un programme à part qui crée **une** carte d'essai dans iCloud (« Carnet Essai », données inventées), la relit, et mesure la recherche de logos sur 30 sociétés sans photo. Relancé après une modification sur l'iPhone, il dit ce qui a changé. Aucune fiche existante n'est touchée ; le rapport ne contient ni nom ni site. carnet lui-même ne change pas.
+- Dossier de la 2.8.0 (`docs/2.8-dossier.md`) et compte rendu du conseil (`docs/2.8-conseil.md`).
+
 ## 2.7.1 — 11 novembre 2026
 - **Sonde avant la 2.8.0** (`python -m app.sonde28`) : un programme à part, en lecture seule, qui compte ce dont la conception de la 2.8.0 dépend (propriétés déjà présentes dans les cartes, taille de la future famille « Manques », mariages dans Treemich). Il travaille sur une copie de la base, ne contacte pas iCloud, ne fait que lire Treemich, et son rapport ne contient aucun nom de personne. carnet lui-même ne change pas.
 

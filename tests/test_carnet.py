@@ -1417,3 +1417,39 @@ def test_sonde_28_proprietes_d_une_carte():
     noms, dates, service = sonde28.proprietes(carte)
     assert noms["X-ABDATE"] == 2 and noms["ORG"] == 1 and service is True
     assert dates == {"Anniversary": 1, "(libellé personnel)": 1}       # le libellé saisi à la main n'est pas recopié
+
+
+# ================================================================ essai avant la 2.8.0
+
+def test_essai_28_une_seule_carte_et_rapport_sans_nom(c, services, tmp_path):
+    from app import essai28
+    from app.carddav import CardDAV
+    faux = services["icloud"]
+    dav = CardDAV(c.cfg.icloud_url, c.cfg.icloud_user, c.cfg.icloud_password, transport=faux.transport())
+    avant = {k: v[1] for k, v in faux.cartes.items()}
+    # 1er lancement : la carte d'essai est créée, et elle seule
+    md1 = "\n".join(essai28.essai_carte(dav, tmp_path))
+    nouvelles = {k: v[1] for k, v in faux.cartes.items() if k not in avant}
+    assert len(nouvelles) == 1 and essai28.UID in next(iter(nouvelles))
+    assert {k: v[1] for k, v in faux.cartes.items() if k in avant} == avant      # aucune carte existante touchée
+    assert "créée dans iCloud" in md1 and "| Date sans année, libellé « Fête » (15 août) | oui |" in md1
+    # Modification « sur l'iPhone », puis 2e lancement : rien n'est écrit, le changement est dit
+    chemin, texte = next(iter(nouvelles.items()))
+    faux.modifier_sur_iphone(essai28.UID, texte.replace("2011-07-13", "2012-07-13"))
+    ecritures = len(faux.ecritures)
+    md2 = "\n".join(essai28.essai_carte(dav, tmp_path))
+    assert len(faux.ecritures) == ecritures
+    assert "item2.X-ABDATE:2011-07-13" in md2 and "item2.X-ABDATE:2012-07-13" in md2
+    dav.fermer()
+    # Logos : nombres seulement, aucun nom de société ni de site
+    fiches = [{"groupes": ["Clients"], "societe": "Maçonnerie Durand", "sites": [{"type": "site", "valeur": "durand-btp.example"}]},
+              {"groupes": ["Clients"], "societe": "Sans Site SARL"},
+              {"groupes": ["Artisans et services"], "societe": "Plomberie Petit", "courriels": [{"valeur": "contact@petit-plomberie.example"}]}]
+    md3 = "\n".join(essai28.essai_logos(fiches, chercher=lambda d: [{"largeur": 200, "hauteur": 200}] if "durand" in d else []))
+    assert "| Sociétés essayées | 2 |" in md3 and "| Logo trouvé | 1 (50 %) |" in md3
+    for mot in ("Durand", "durand", "Petit", "petit", "SARL"):
+        assert mot not in md3
+    # Lecture de la base : sur une copie, sans la modifier
+    base_avant = c.cfg.db_path.read_bytes()
+    assert isinstance(essai28.fiches_sans_photo(c.cfg.db_path), list)
+    assert c.cfg.db_path.read_bytes() == base_avant
