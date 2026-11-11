@@ -5,14 +5,13 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 ## État (11/11/2026)
 
 - **2.7.2 sur `main`** : la 2.7.0 (nouvel habillage), la sonde, et l'essai avant la 2.8.0. Julien a la 2.7.0 en service.
-- **2.8.0** : grill, sonde, dossier en version 2 et conseil faits ([`docs/2.8-dossier.md`](docs/2.8-dossier.md), [`docs/2.8-conseil.md`](docs/2.8-conseil.md)). **L'essai est en cours côté Julien** ([`docs/essai-2.8.md`](docs/essai-2.8.md)) : on attend ses deux rapports et ce qu'il voit sur l'iPhone.
+- **2.8.0** : grill, sonde, dossier en version 2 et conseil faits ([`docs/2.8-dossier.md`](docs/2.8-dossier.md), [`docs/2.8-conseil.md`](docs/2.8-conseil.md)). **Essai fait** ([`docs/essai-2.8.md`](docs/essai-2.8.md), résultats en bas) ; dossier en version 3.
 - Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md).
 
 ## Prochaine étape
 
-1. Lire les deux rapports de l'essai et les réponses de Julien ; appliquer le tableau « Ce qui en dépend » de `docs/essai-2.8.md` au dossier.
-2. Coder la 2.8.0 en suivant le plan du dossier (étapes 1 à 13), en une seule livraison ; l'import unique est la ligne de coupe.
-3. Après une semaine d'usage de la 2.7.0 : document du socle et planche de couleurs.
+1. Coder la 2.8.0 en suivant le plan du dossier (étapes 1 à 13), sur une branche `2.8`, en une seule livraison ; l'import unique est la ligne de coupe.
+2. Après une semaine d'usage de la 2.7.0 : document du socle et planche de couleurs.
 
 ## Décisions tranchées
 
@@ -30,6 +29,8 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## Pièges
 
+- Dates supplémentaires d'une carte : l'iPhone réécrit (ordre, `type=pref`, paramètre de la date sans année retiré). Comparer des valeurs ; l'an 1604 veut dire « sans année ». Le libellé natif d'Apple pour les dates s'affiche « fête » en français : ne pas l'utiliser pour le mariage.
+- La recherche automatique de logos ne couvre qu'une fiche de société sur dix : le logo glissé est le chemin principal.
 - Treemich range le mariage et le divorce sur le couple, pas sur la personne : lire `GET /relationships`, écrire par `PATCH /people/<id>/relationships`. Les évènements de vie d'une personne ne les contiennent jamais.
 - carnet écrit dans le vrai compte iCloud : Watchtower est désactivé, toute mise à jour est manuelle dans Portainer.
 - Treemich limite les connexions et le rythme des requêtes : une seule session réutilisée.

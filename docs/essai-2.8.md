@@ -55,3 +55,51 @@ Les rapports sont aussi écrits dans le dossier de données de carnet : `rapport
 | Le libellé d'Apple prête à confusion avec la naissance | Le mariage s'écrit avec le libellé « Mariage » |
 | Moins de la moitié des logos trouvés | File Logos réduite ; attente « photo ou logo » revue pour Clients et Artisans |
 | iCloud réécrit les lignes | La comparaison de carnet se fait sur les valeurs, pas sur le texte |
+
+## Résultats (11/11/2026)
+
+### Carte d'essai
+
+iCloud a rendu les sept champs tels qu'envoyés. Sur l'iPhone (appli Contacts) :
+
+| Champ | Affichage | Décision |
+|---|---|---|
+| Libellé natif d'Apple | **« fête »** : c'est la traduction française du libellé d'anniversaire de mariage | Ne jamais l'utiliser pour le mariage |
+| « Mariage » | « Mariage », avec l'année | Le mariage s'écrit avec ce libellé libre |
+| « Fête », sans année | « 15 août », sans année | La fête s'écrit avec le libellé libre « Fête » |
+| « Décès » | « Décès », avec l'année | Libellé libre gardé |
+| Prononciation, service | Sous le nom : « Karnè Essè · Service d'essai · Société d'essai » | Visibles |
+| Calendrier | Aucune des dates n'y apparaît | L'iPhone ne rappelle rien : le rappel vient de Home Assistant |
+
+carnet 2.7 ne montre aucun de ces champs sur sa fiche, et ne les perd pas.
+
+### Ce que l'iPhone réécrit quand on modifie la carte
+
+Après le changement d'une seule date sur l'iPhone :
+
+- la première date reçoit `type=pref` ;
+- la date sans année perd `X-APPLE-OMIT-YEAR=1604` mais garde l'an 1604 ;
+- l'ordre des lignes change.
+
+Règles pour carnet : comparer des valeurs, jamais des lignes ; **l'an 1604 veut dire « sans année »**, avec ou sans le paramètre ; ignorer `type=pref` et l'ordre.
+
+### Logos
+
+| Mesure | Nombre |
+|---|---|
+| Fiches Clients et Artisans et services sans photo | 210 |
+| Avec un site ou un courriel professionnel | 19 |
+| Sans aucun des deux | 191 |
+| Sociétés différentes essayées | 17 |
+| Logo trouvé | 5 (29 %) |
+| dont net (180 px ou plus) | 4 |
+| Durée moyenne par société | 5,4 s |
+
+La recherche automatique ne peut traiter qu'une fiche sur dix, et en réussit moins d'une sur trois.
+
+### Décisions de Julien après l'essai
+
+| Sujet | Décision |
+|---|---|
+| Fête | Écrite dans iCloud malgré l'absence de rappel : il veut la voir sur la fiche de l'iPhone |
+| Photo ou logo pour Clients et Artisans | L'attente est gardée. Il faut pouvoir **glisser un logo** depuis une recherche d'images Google, dans l'appli ou depuis le navigateur |
