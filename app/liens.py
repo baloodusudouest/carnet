@@ -11,6 +11,8 @@ import time
 
 import httpx
 
+from .garde import LectureSeule
+
 
 class ErreurLien(Exception):
     """Erreur à afficher telle quelle."""
@@ -62,7 +64,14 @@ class Immich:
             return None
         return r.content, (r.headers.get("content-type") or "image/jpeg").split(";")[0]
 
+    lecture_seule = False   # posé par Carnet d'après CARNET_LECTURE_SEULE
+
+    def _garde(self) -> None:
+        if self.lecture_seule:
+            raise LectureSeule("Immich")
+
     def renommer(self, pid: str, nom: str) -> None:
+        self._garde()
         try:
             r = self.client.put(f"{self.api}/people/{pid}", json={"name": nom})
         except httpx.HTTPError as exc:
@@ -71,6 +80,7 @@ class Immich:
             raise ErreurLien(f"Immich a refusé le nouveau nom ({r.status_code}).")
 
     def maj_naissance(self, pid: str, date: str) -> None:
+        self._garde()
         try:
             r = self.client.put(f"{self.api}/people/{pid}", json={"birthDate": date})
         except httpx.HTTPError as exc:
@@ -137,6 +147,7 @@ class Immich:
         return r.content if r.status_code == 200 and r.content else None
 
     def definir_couverture(self, pid: str, asset_id: str) -> None:
+        self._garde()
         try:
             r = self.client.put(f"{self.api}/people/{pid}", json={"featureFaceAssetId": asset_id})
         except httpx.HTTPError as exc:
@@ -150,6 +161,8 @@ class Immich:
     DROITS_AFFICHES = "asset.upload, asset.delete, album.create, album.read et albumAsset.create"
 
     def _appel_affiche(self, methode: str, chemin: str, quoi: str, **kw) -> httpx.Response:
+        if methode != "GET":
+            self._garde()
         try:
             r = self.client.request(methode, self.api + chemin, **kw)
         except httpx.HTTPError as exc:
@@ -228,7 +241,11 @@ class Treemich:
     INTERVALLE = 0.3   # Treemich accepte ~300 requêtes par minute : carnet reste en dessous
     ATTENTES_429 = 4   # sur « trop de requêtes », carnet patiente puis réessaie (au plus 4 fois)
 
+    lecture_seule = False   # posé par Carnet d'après CARNET_LECTURE_SEULE
+
     def _appel(self, methode: str, chemin: str, **kw) -> httpx.Response:
+        if methode != "GET" and self.lecture_seule:
+            raise LectureSeule("Treemich")
         reconnecte, attentes = False, 0
         while True:
             if not self.connecte:

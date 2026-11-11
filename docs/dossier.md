@@ -1,4 +1,4 @@
-# Dossier de carnet — tel que construit (version 2.6.4)
+# Dossier de carnet — tel que construit (version 2.6.4), mis à jour pour la 2.6.5
 
 Rédigé le 11/11/2026 à partir du code, sans modifier celui-ci. Six sections, puis la liste des écarts par rapport au socle commun (`baloodusudouest/socle`).
 
@@ -230,6 +230,8 @@ Trois livraisons, décidées le 11/11/2026 après le passage au conseil. Chacune
 
 ### 2.6.5 — ménage, sans toucher l'apparence
 
+Étapes 1 à 4 faites le 11/11/2026. Reste l'étape 5, côté NAS.
+
 | # | Étape | Vérification |
 |---|---|---|
 | 1 | Retirer les restes de la 1.3 : `sqlcipher3-wheels`, `app/reprise.py`, `CARNET_DB_KEY` | 80 tests du back verts ; l'appli démarre sur la base actuelle |
@@ -273,8 +275,8 @@ Règles : mêmes textes, même navigation, mêmes rôles d'accessibilité ; les 
 | 1 | Habillage | Thème cuir propre à carnet, composants faits main, pas de shadcn-svelte | Voulu | 2.7.0 |
 | 2 | Thème clair | Sombre uniquement (`color-scheme: dark`) | Moyen | 2.7.0 |
 | 3 | Mot de passe | `CARNET_PASSWORD` propre à carnet, sans longueur minimale ; le socle prévoit `APPS_PASSWORD` commun, 12 caractères au moins | Moyen | **Laissé tel quel** (décision du 11/11/2026) : à revoir avec la connexion unique, quand toutes les applis seront prêtes pour l'Anneau unique |
-| 4 | Reste de la 1.3 | `sqlcipher3-wheels`, `app/reprise.py` et `CARNET_DB_KEY` toujours présents alors que la reprise est faite | Faible | 2.6.5 |
-| 5 | Versions du front | 7 dépendances avec `^` dans `package.json` (le fichier de verrouillage les fige quand même) | Faible | 2.6.5 |
+| 4 | Reste de la 1.3 | `sqlcipher3-wheels`, `app/reprise.py` et `CARNET_DB_KEY` toujours présents alors que la reprise est faite | Faible | **Fait en 2.6.5** |
+| 5 | Versions du front | 7 dépendances avec `^` dans `package.json` (le fichier de verrouillage les fige quand même) | Faible | **Fait en 2.6.5** |
 | 6 | Fichier de reprise | Absent | Faible | Ajouté avec ce dossier |
 | 7 | Langage du front | JavaScript ; les composants shadcn-svelte sont en TypeScript | Faible | Ajouter TypeScript au seul usage des composants ; ne pas convertir l'existant |
 | 8 | Poids de l'interface | Non mesuré ; la bibliothèque de graphiques du socle pèse lourd | À surveiller | Ne pas embarquer de graphique dans carnet tant qu'aucun écran n'en a besoin |

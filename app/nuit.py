@@ -42,33 +42,10 @@ def passer(c: Carnet, origine: str = "nuit") -> dict:
                 bilan["erreur"] = bilan["erreur_lecture"] = str(exc)
                 bilan["alerte"] = "lecture"
                 raise
-            if lecture.get("reference"):
-                bilan["details"].append("Première lecture : référence enregistrée, rien n'est écrit cette fois.")
+            if c.cfg.lecture_seule:
+                bilan["details"].append("Mode lecture seule : iCloud relu, rien n'a été lié ni écrit cette nuit.")
             else:
-                c.tache.update(message="Immich et Treemich…", progression=0.4)
-                d = liaisons.donnees(c, rafraichir=True)
-                for e in d["erreurs"]:
-                    bilan["details"].append(e)
-                for s in liaisons.sures(c, d):
-                    liaisons.lier(c, s["uid"], "immich", s["immich"], statut="auto")
-                    if s.get("treemich"):
-                        try:
-                            liaisons.lier(c, s["uid"], "treemich", s["treemich"], statut="auto")
-                        except ErreurCarnet:
-                            pass
-                    bilan["liaisons"] += 1
-                c.tache.update(message="Écritures sûres…", progression=0.6)
-                _ecritures_sures(c, d, bilan)
-            c.tache.update(message="Synology Contacts…", progression=0.85)
-            syno = sorties.copier_synology(c)
-            if syno.get("erreur"):
-                bilan["details"].append(f"Synology : {syno['erreur']}")
-            if any(True for _ in c.base.tous("SELECT 1 FROM fiches LIMIT 1")):
-                try:
-                    if c.cfg.kit_config and c.cfg.kit_config.is_dir():
-                        sorties.envoyer_kit(c)
-                except ErreurCarnet as exc:
-                    bilan["details"].append(f"Kit : {exc}")
+                _suite_de_nuit(c, lecture, bilan)
             icloud.purger(c)
         except Exception as exc:  # noqa: BLE001
             if not bilan["erreur"]:
@@ -83,6 +60,37 @@ def passer(c: Carnet, origine: str = "nuit") -> dict:
                          + (f" — erreur : {bilan['erreur']}" if bilan["erreur"] else ""),
                          {k: bilan[k] for k in ("liaisons", "ecrites", "reportees")})
     return bilan
+
+
+def _suite_de_nuit(c: Carnet, lecture: dict, bilan: dict) -> None:
+    """Tout ce qui lie ou écrit après la lecture d'iCloud (sauté en mode lecture seule)."""
+    if lecture.get("reference"):
+        bilan["details"].append("Première lecture : référence enregistrée, rien n'est écrit cette fois.")
+    else:
+        c.tache.update(message="Immich et Treemich…", progression=0.4)
+        d = liaisons.donnees(c, rafraichir=True)
+        for e in d["erreurs"]:
+            bilan["details"].append(e)
+        for s in liaisons.sures(c, d):
+            liaisons.lier(c, s["uid"], "immich", s["immich"], statut="auto")
+            if s.get("treemich"):
+                try:
+                    liaisons.lier(c, s["uid"], "treemich", s["treemich"], statut="auto")
+                except ErreurCarnet:
+                    pass
+            bilan["liaisons"] += 1
+        c.tache.update(message="Écritures sûres…", progression=0.6)
+        _ecritures_sures(c, d, bilan)
+    c.tache.update(message="Synology Contacts…", progression=0.85)
+    syno = sorties.copier_synology(c)
+    if syno.get("erreur"):
+        bilan["details"].append(f"Synology : {syno['erreur']}")
+    if any(True for _ in c.base.tous("SELECT 1 FROM fiches LIMIT 1")):
+        try:
+            if c.cfg.kit_config and c.cfg.kit_config.is_dir():
+                sorties.envoyer_kit(c)
+        except ErreurCarnet as exc:
+            bilan["details"].append(f"Kit : {exc}")
 
 
 def _ecritures_sures(c: Carnet, d: dict, bilan: dict) -> None:

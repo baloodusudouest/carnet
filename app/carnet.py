@@ -19,17 +19,11 @@ from . import normalisation
 from .base import Base
 from .carddav import CardDAV
 from .config import Config
+from .garde import ErreurCarnet, LectureSeule, Occupe  # noqa: F401 — réexportés pour les autres modules
 from .liens import Immich, Treemich
 
 log = logging.getLogger("carnet")
 
-
-class ErreurCarnet(Exception):
-    """Erreur à afficher telle quelle dans l'interface."""
-
-
-class Occupe(ErreurCarnet):
-    """Une autre écriture est en cours."""
 
 
 class Carnet:
@@ -59,23 +53,35 @@ class Carnet:
 
     # ------------------------------------------------------------ services
 
+    def exiger_ecriture(self, service: str) -> None:
+        """À appeler à l'entrée de toute opération qui écrit hors de carnet."""
+        if self.cfg.lecture_seule:
+            raise LectureSeule(service)
+
     def icloud(self) -> CardDAV:
-        return CardDAV(self.cfg.icloud_url, self.cfg.icloud_user, self.cfg.icloud_password,
-                       transport=self.transports.get("icloud"))
+        dav = CardDAV(self.cfg.icloud_url, self.cfg.icloud_user, self.cfg.icloud_password,
+                      transport=self.transports.get("icloud"))
+        dav.lecture_seule = self.cfg.lecture_seule
+        return dav
 
     def synology(self) -> CardDAV:
-        return CardDAV(self.cfg.synology_url, self.cfg.synology_user, self.cfg.synology_password,
-                       transport=self.transports.get("synology"), nom_carnet=self.cfg.synology_carnet,
-                       verifier_tls=self.cfg.synology_verifier_tls, service="Synology")
+        dav = CardDAV(self.cfg.synology_url, self.cfg.synology_user, self.cfg.synology_password,
+                      transport=self.transports.get("synology"), nom_carnet=self.cfg.synology_carnet,
+                      verifier_tls=self.cfg.synology_verifier_tls, service="Synology")
+        dav.lecture_seule = self.cfg.lecture_seule
+        return dav
 
     def immich(self) -> Immich:
-        return Immich(self.cfg.immich_url, self.cfg.immich_cle, transport=self.transports.get("immich"))
+        im = Immich(self.cfg.immich_url, self.cfg.immich_cle, transport=self.transports.get("immich"))
+        im.lecture_seule = self.cfg.lecture_seule
+        return im
 
     def treemich(self) -> Treemich:
         # Une seule session, gardée : Treemich limite le nombre de connexions
         if self._treemich is None:
             self._treemich = Treemich(self.cfg.treemich_url, self.cfg.treemich_email, self.cfg.treemich_password,
                                       transport=self.transports.get("treemich"))
+        self._treemich.lecture_seule = self.cfg.lecture_seule
         return self._treemich
 
     def http(self, nom: str, **kw) -> httpx.Client:

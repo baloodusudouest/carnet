@@ -187,6 +187,29 @@ def test_ajouter_puis_delier_un_profil_facebook(page):
     page.wait_for_selector(".reseaux li:has-text('Facebook')", state="detached")
 
 
+def test_annonce_avant_un_traitement_par_lot(page):
+    """2.6.5 : avant « Confirmer », carnet dit ce que le lot fera. Rien n'est confirmé ici."""
+    page.click("nav.onglets a[aria-label='À traiter']")
+    filtre = page.locator(".filtres .pastille", has_text="Réseaux")
+    if not filtre.count():
+        pytest.skip("points réseau déjà traités")
+    filtre.click()
+    tout_lier = page.get_by_role("button", name=re.compile(r"^Tout lier \(\d+\)$"))
+    if not tout_lier.count():
+        pytest.skip("un seul point réseau : pas de traitement par lot")
+    tout_lier.click()
+    annonce = page.locator(".lot .annonce")
+    annonce.wait_for()
+    assert "seront modifiées dans iCloud" in annonce.inner_text()
+    assert "copie d'iCloud" in annonce.inner_text()
+    page.get_by_role("button", name="Annuler", exact=True).click()
+    page.get_by_role("button", name=re.compile(r"^Tout ignorer \(\d+\)$")).click()
+    annonce.wait_for()
+    assert "Rien n'est écrit dans iCloud" in annonce.inner_text()
+    page.get_by_role("button", name="Annuler", exact=True).click()
+    assert not annonce.count()
+
+
 def test_a_traiter_famille_reseaux(page):
     page.click("nav.onglets a[aria-label='À traiter']")
     filtre = page.locator(".filtres .pastille", has_text="Réseaux")

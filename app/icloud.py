@@ -308,6 +308,7 @@ def ecrire(c: Carnet, uid: str, fiche: dict, photo: tuple[bytes, str] | None = N
     etag_vu : version que l'interface avait affichée ; si la carte a changé depuis (relue la nuit
     après une modification sur l'iPhone), rien n'est écrit et les deux versions vont en conflit.
     Renvoie {etag, jeton} ; jeton sert à « Annuler » pendant 10 s."""
+    c.exiger_ecriture("iCloud")
     ligne = c.base.un("SELECT * FROM fiches WHERE uid = ?", (uid,))
     if not ligne:
         raise ErreurCarnet("Ce contact n'existe plus dans iCloud : relis iCloud avant de le modifier.")
@@ -344,6 +345,7 @@ def ecrire(c: Carnet, uid: str, fiche: dict, photo: tuple[bytes, str] | None = N
 
 def creer(c: Carnet, fiche: dict, photo: tuple[bytes, str] | None = None, origine: str = "manuel") -> dict:
     """Nouvelle fiche dans iCloud (import)."""
+    c.exiger_ecriture("iCloud")
     uid = str(uuid.uuid4()).upper()
     sauvegarde_du_jour(c)
     dav = c.icloud()
@@ -362,6 +364,7 @@ def creer(c: Carnet, fiche: dict, photo: tuple[bytes, str] | None = None, origin
 
 def recreer(c: Carnet, texte: str, href: str, groupes: list[str]) -> dict:
     """Remet dans iCloud une carte supprimée sur l'iPhone, à l'identique (même UID, mêmes groupes)."""
+    c.exiger_ecriture("iCloud")
     carte_ = synchro.analyser(href, "", texte)
     sauvegarde_du_jour(c)
     dav = c.icloud()
@@ -379,6 +382,7 @@ def recreer(c: Carnet, texte: str, href: str, groupes: list[str]) -> dict:
 def supprimer(c: Carnet, uid: str, origine: str = "fusion") -> None:
     """Suppression d'une carte : seulement à la demande (fusion), jamais la nuit. La carte est
     supprimée d'abord ; les groupes ne sont nettoyés qu'ensuite."""
+    c.exiger_ecriture("iCloud")
     ligne = c.base.un("SELECT * FROM fiches WHERE uid = ?", (uid,))
     if not ligne:
         return
@@ -463,6 +467,7 @@ def _ecrire_groupes(c: Carnet, dav, uid: str, avant: list[str], apres: list[str]
 def remettre(c: Carnet, uid: str, texte_avant: str, groupes_avant: list[str], motif: str) -> dict:
     """Remet une carte exactement comme elle était (photo comprise), groupes compris.
     La carte actuelle est contrôlée par If-Match : un changement sur l'iPhone n'est pas écrasé."""
+    c.exiger_ecriture("iCloud")
     ligne = c.base.un("SELECT * FROM fiches WHERE uid = ?", (uid,))
     if not ligne:
         raise ErreurCarnet("Ce contact n'existe plus dans iCloud.")
@@ -531,6 +536,7 @@ def contenu_sauvegarde(c: Carnet, nom: str) -> list[dict]:
 def restaurer(c: Carnet, nom: str, uids: list[str]) -> dict:
     """Remet dans iCloud les cartes choisies, telles qu'elles étaient dans la sauvegarde
     (verrou d'écriture déjà pris). Une copie de l'état actuel est faite d'abord."""
+    c.exiger_ecriture("iCloud")
     texte = _fichier(c, nom).read_text(encoding="utf-8")
     voulues = set(uids)
     blocs, groupes_sauves = {}, {}

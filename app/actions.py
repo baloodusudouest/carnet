@@ -188,16 +188,39 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
     raise ErreurCarnet("Action inconnue pour ce point.")
 
 
+ACTIONS_LOT = ("ignorer", "lier", "pas_lui", "garder", "appliquer")
+ACTIONS_LOT_QUI_ECRIVENT = ("lier", "appliquer")
+
+
+def _plafond_lot(c: Carnet) -> int:
+    return max(3, len(c.fiches()) // 20)
+
+
+def apercu_lot(c: Carnet, idents: list[str], action: str) -> dict:
+    """Ce que ferait repondre_lot, sans rien faire : combien de points, combien d'écritures
+    dans iCloud, combien remis au lot suivant. Affiché avant « Confirmer »."""
+    if action not in ACTIONS_LOT:
+        raise ErreurCarnet("Action groupée inconnue.")
+    ecrit = action in ACTIONS_LOT_QUI_ECRIVENT
+    plafond = _plafond_lot(c)
+    n = len(idents)
+    return {"action": action, "points": n, "ecrit": ecrit, "plafond": plafond,
+            "a_ecrire": min(n, plafond) if ecrit else 0, "reportes": max(0, n - plafond) if ecrit else 0,
+            "lecture_seule": c.cfg.lecture_seule}
+
+
 def repondre_lot(c: Carnet, idents: list[str], action: str) -> dict:
     """Même réponse à plusieurs points. Les écritures dans iCloud sont plafonnées comme le
     coupe-circuit (5 % des fiches, 3 au moins) : au-delà, le reste attend un autre lot."""
-    if action not in ("ignorer", "lier", "pas_lui", "garder", "appliquer"):
+    if action not in ACTIONS_LOT:
         raise ErreurCarnet("Action groupée inconnue.")
-    plafond = max(3, len(c.fiches()) // 20)
+    if action in ACTIONS_LOT_QUI_ECRIVENT:
+        c.exiger_ecriture("iCloud")
+    plafond = _plafond_lot(c)
     bilan = {"faits": 0, "erreurs": [], "reportes": 0}
     ecritures = 0
     for ident in idents:
-        ecrit = action in ("lier", "appliquer")
+        ecrit = action in ACTIONS_LOT_QUI_ECRIVENT
         if ecrit and ecritures >= plafond:
             bilan["reportes"] += 1
             continue

@@ -8,7 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app import actions, icloud, liaisons, linkedin, nuit, photos, reprise, sorties, traiter
+from app import actions, icloud, liaisons, linkedin, nuit, photos, sorties, traiter
 from app.carnet import Carnet, ErreurCarnet, Occupe
 from app.config import Config
 from tests.faux_icloud import CARNET, FauxICloud
@@ -552,64 +552,6 @@ def test_import_vcf_cree_apres_validation(c, services):
     main.ETAT.clear()
 
 
-# ================================================================ reprise de la 1.3
-
-def test_reprise_depuis_la_base_1_3(tmp_path, services):
-    import sqlcipher3
-    state = tmp_path / "state"
-    state.mkdir()
-    ancienne = sqlcipher3.connect(str(state / "carnet.db"))
-    ancienne.execute("PRAGMA key = 'cle-ancienne'")
-    ancienne.executescript("""
-        CREATE TABLE etat (cle TEXT PRIMARY KEY, valeur TEXT);
-        CREATE TABLE sources (id INTEGER PRIMARY KEY, source TEXT, uid TEXT, donnees TEXT, personne_id TEXT);
-        CREATE TABLE distinctes (a INTEGER, b INTEGER);""")
-    etat = {"icloud_suivi": {"p1": {"uid": "DDDD-4444"}},
-            "liaisons": {"p1": {"immich": "im-paul", "treemich": "t-paul"}, "p2": {"immich": "im-jp"}},
-            "liaisons_refusees": ["p3|im-claire"],
-            "photos_hd": {"p1": {"asset": "p1", "manuel": True}},
-            "photos_hd_candidats": {"p1": [{"asset": "p1", "boite": [0.3, 0.3, 0.6, 0.55], "taille": 400}]},
-            "affiches": {"p1": {"immich_asset": "aff-9", "posee": "2026-10-01T10:00:00+02:00", "source": "p1"}}}
-    for k, v in etat.items():
-        ancienne.execute("INSERT INTO etat VALUES (?, ?)", (k, json.dumps(v)))
-    ancienne.execute("INSERT INTO sources VALUES (1, 'icloud', 'AAAA-1111', '{}', 'p3')")
-    ancienne.execute("INSERT INTO sources VALUES (2, 'linkedin', 'linkedin.com/in/paul-martin', ?, 'p1')",
-                     (json.dumps({"prenom": "Paul", "nom": "MARTIN", "societe": "Cave", "fonction": "Caviste"}),))
-    ancienne.commit()
-    ancienne.close()
-    avant = (state / "carnet.db").read_bytes()
-    cn = Carnet(_config(tmp_path, ancienne_base=state / "carnet.db", ancienne_cle="cle-ancienne"),
-                {k: v.transport() for k, v in services.items()})
-    assert not reprise.a_faire(cn)              # il faut d'abord la référence iCloud
-    with cn.ecriture():
-        icloud.relire(cn)
-    assert reprise.a_faire(cn)
-    b = reprise.reprendre(cn)
-    assert b["erreur"] is None and b["liaisons"] == 2 and b["ignorees"] == 1 and b["affiches"] == 1
-    assert cn.liaisons()["DDDD-4444"] == {"immich": "im-paul", "immich_statut": "confirmee",
-                                          "treemich": "t-paul", "treemich_statut": "confirmee"}
-    assert cn.base.un("SELECT * FROM refus WHERE uid = 'AAAA-1111' AND ext_id = 'im-claire'")
-    assert cn.base.un("SELECT uid FROM linkedin")["uid"] == "DDDD-4444"
-    assert not reprise.a_faire(cn)              # une seule fois
-    assert (state / "carnet.db").read_bytes() == avant      # l'ancienne base n'est jamais modifiée
-
-
-def test_reprise_cle_fausse(tmp_path, services):
-    import sqlcipher3
-    state = tmp_path / "state"
-    state.mkdir()
-    a = sqlcipher3.connect(str(state / "carnet.db"))
-    a.execute("PRAGMA key = 'bonne'")
-    a.execute("CREATE TABLE etat (cle TEXT, valeur TEXT)")
-    a.commit()
-    a.close()
-    cn = Carnet(_config(tmp_path, ancienne_base=state / "carnet.db", ancienne_cle="fausse"),
-                {k: v.transport() for k, v in services.items()})
-    with cn.ecriture():
-        icloud.relire(cn)
-    assert "CARNET_DB_KEY" in reprise.reprendre(cn)["erreur"]
-
-
 # ================================================================ relecture indépendante : cas ajoutés
 
 RICHE = ("BEGIN:VCARD\r\nVERSION:3.0\r\nN:DURAND;Marc;;Dr.;Jr\r\nFN:Marc DURAND\r\nORG:Hôpital;Cardiologie\r\n"
@@ -755,25 +697,6 @@ def test_deux_groupes_du_meme_nom(c, services):
     assert "AAAA-1111" not in ic.texte("GGGG-0001") and "AAAA-1111" not in ic.texte("GGGG-0002")
     with c.ecriture():
         assert icloud.relire(c)["modifies"] == 0
-
-
-def test_reprise_retentee_apres_une_cle_fausse(tmp_path, services):
-    import sqlcipher3
-    state = tmp_path / "state"
-    state.mkdir()
-    a = sqlcipher3.connect(str(state / "carnet.db"))
-    a.execute("PRAGMA key = 'bonne'")
-    a.executescript("CREATE TABLE etat (cle TEXT, valeur TEXT); CREATE TABLE sources (id INTEGER, source TEXT, uid TEXT, "
-                    "donnees TEXT, personne_id TEXT); CREATE TABLE distinctes (a INTEGER, b INTEGER);")
-    a.commit()
-    a.close()
-    cn = Carnet(_config(tmp_path, ancienne_base=state / "carnet.db", ancienne_cle="fausse"),
-                {k: v.transport() for k, v in services.items()})
-    with cn.ecriture():
-        icloud.relire(cn)
-    assert reprise.reprendre(cn)["erreur"] and reprise.a_faire(cn)
-    object.__setattr__(cn, "cfg", _config(tmp_path, ancienne_base=state / "carnet.db", ancienne_cle="bonne"))
-    assert reprise.reprendre(cn)["erreur"] is None and not reprise.a_faire(cn)
 
 
 # ================================================================ dates sans année (1900)
@@ -1373,3 +1296,90 @@ def test_pause_apres_un_refus_d_identifiants():
     with pytest.raises(carddav.ErreurICloud, match="attend encore"):
         b.decouvrir()
     assert len(appels) == 1                                                   # rien n'est envoyé pendant la pause
+
+
+# ================================================================ mode lecture seule (2.6.5)
+
+def _en_lecture_seule(c, tmp_path):
+    object.__setattr__(c, "cfg", _config(tmp_path, lecture_seule=True))
+    c._treemich = None
+    return c
+
+
+def test_lecture_seule_refuse_toute_ecriture_icloud(c, services, tmp_path):
+    from app.garde import LectureSeule
+    ic = services["icloud"]
+    _en_lecture_seule(c, tmp_path)
+    f = c.fiche("DDDD-4444")
+    f["societe"] = "Cave du Coteau"
+    assert [d["champ"] for d in actions.apercu(c, "DDDD-4444", f)["champs"]] == ["societe"]   # l'aperçu reste possible
+    with pytest.raises(LectureSeule) as exc:
+        actions.valider(c, "DDDD-4444", f)
+    assert "lecture seule" in str(exc.value) and "iCloud" in str(exc.value)
+    with pytest.raises(LectureSeule):
+        with c.ecriture():
+            icloud.supprimer(c, "DDDD-4444")
+    assert ic.ecritures == [] and "ORG:" not in ic.texte("DDDD-4444")
+    assert not any(Path(c.cfg.sauvegardes).glob("icloud-*-jour.vcf"))     # refusé avant tout travail
+
+
+def test_lecture_seule_garde_aussi_les_acces_reseau(c, tmp_path):
+    """Seconde garde, dans les clients eux-mêmes : rien ne passe par un chemin oublié."""
+    from app.garde import LectureSeule
+    _en_lecture_seule(c, tmp_path)
+    for appel in (lambda: c.icloud().ecrire("/x.vcf", "BEGIN:VCARD", None),
+                  lambda: c.icloud().supprimer("/x.vcf", "etag"),
+                  lambda: c.synology().ecrire("/x.vcf", "BEGIN:VCARD", None),
+                  lambda: c.immich().renommer("im-paul", "Paul DURAND"),
+                  lambda: c.immich().maj_naissance("im-paul", "1980-01-01"),
+                  lambda: c.immich().definir_couverture("im-paul", "asset"),
+                  lambda: c.immich().envoyer_image(b"x", "a.jpg", "2026-01-01T00:00:00Z"),
+                  lambda: c.treemich().renommer("t-claire", "Claire", "MARTIN"),
+                  lambda: c.treemich().maj_naissance("t-claire", "1980-01-01"),
+                  lambda: sorties.envoyer_kit(c),
+                  lambda: sorties.copier_synology(c)):
+        with pytest.raises(LectureSeule):
+            appel()
+    assert c.immich().personnes() and c.treemich().personnes()          # les lectures passent
+
+
+def test_lecture_seule_la_nuit_relit_sans_rien_ecrire(c, services, tmp_path):
+    ic = services["icloud"]
+    _en_lecture_seule(c, tmp_path)
+    bilan = nuit.passer(c, "test")
+    assert bilan["erreur"] is None, bilan
+    assert bilan["ecrites"] == 0 and bilan["liaisons"] == 0 and not c.liaisons()
+    assert any("lecture seule" in d for d in bilan["details"])
+    assert ic.ecritures == [] and services["synology"].ecritures == []
+
+
+def test_sans_lecture_seule_rien_ne_change(c, services):
+    assert c.cfg.lecture_seule is False
+    f = c.fiche("DDDD-4444")
+    f["societe"] = "Cave du Coteau"
+    actions.valider(c, "DDDD-4444", f)
+    assert "ORG:Cave du Coteau;" in services["icloud"].texte("DDDD-4444")
+
+
+# ================================================================ annonce avant un traitement par lot (2.6.5)
+
+def test_apercu_d_un_lot_dit_ce_qui_sera_ecrit(c, services):
+    ids = [str(i) for i in range(1, 8)]
+    a = actions.apercu_lot(c, ids, "appliquer")
+    plafond = max(3, len(c.fiches()) // 20)
+    assert a == {"action": "appliquer", "points": 7, "ecrit": True, "plafond": plafond,
+                 "a_ecrire": plafond, "reportes": 7 - plafond, "lecture_seule": False}
+    b = actions.apercu_lot(c, ids, "ignorer")
+    assert (b["ecrit"], b["a_ecrire"], b["reportes"]) == (False, 0, 0)
+    with pytest.raises(ErreurCarnet):
+        actions.apercu_lot(c, ids, "supprimer")
+    assert services["icloud"].ecritures == []            # un aperçu n'écrit rien
+
+
+def test_lot_qui_ecrit_refuse_en_lecture_seule(c, tmp_path):
+    from app.garde import LectureSeule
+    _en_lecture_seule(c, tmp_path)
+    assert actions.apercu_lot(c, ["1", "2"], "lier")["lecture_seule"] is True
+    with pytest.raises(LectureSeule):
+        actions.repondre_lot(c, ["1", "2"], "lier")
+    assert actions.repondre_lot(c, [], "ignorer") == {"faits": 0, "erreurs": [], "reportes": 0}   # écarter reste permis

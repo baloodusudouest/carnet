@@ -66,6 +66,9 @@
     </nav>
 
     <main class="contenu">
+      {#if etat.accueil?.lecture_seule}
+        <p class="lecture-seule" role="status"><strong>Mode lecture seule.</strong> carnet lit et calcule, mais n'écrit ni dans iCloud, ni dans Immich, Treemich, Synology ou le kit.</p>
+      {/if}
       {#if etat.accueil?.tache?.etat === 'en_cours'}
         <p class="tache" role="status">{etat.accueil.tache.message}</p>
       {/if}
@@ -135,6 +138,7 @@
   .roue { position: absolute; top: -0.4rem; right: -0.45rem; display: grid; border-radius: 50%; background: #15110f; padding: 1px; }
   .onglet[aria-current='page'] .roue { background: var(--color-papier); }
   @media (prefers-reduced-motion: reduce) { .onglet, .libelle { transition: none; } }
+  .lecture-seule { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; border: 1px solid var(--color-onglet); border-radius: 6px; color: var(--color-papier); }
   .tache { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; border-left: 3px solid var(--color-onglet); color: var(--color-mine); }
   .message {
     position: fixed; z-index: 30; left: 1rem; right: 1rem; bottom: calc(4.9rem + env(safe-area-inset-bottom));

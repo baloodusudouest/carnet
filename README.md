@@ -83,14 +83,15 @@ Le service est décrit dans `docker-compose.yml` ; les variables sont dans `.env
 
 `/state` n'est ni partagé ni synchronisé vers OneDrive : la base et les sauvegardes y restent.
 
-### Passer de la 1.3 à la 2.0
+### Mode lecture seule
 
-1. Dans Portainer : **Recreate + Re-pull image** (image `latest` ou `2.0.0`). Rien d'autre à changer.
-2. Au premier démarrage, carnet lit iCloud (référence), puis reprend une seule fois les choix de la 1.3 depuis `carnet.db` avec `CARNET_DB_KEY` : liaisons et refus, photos choisies, affiches et leur pose, relations LinkedIn. L'ancienne base n'est jamais modifiée. Le bilan est dans État › Services.
-3. Vérifie : même nombre de fiches qu'avant (État), adresses HA qui répondent, et essaie « Remettre comme dans la sauvegarde » sur ta propre fiche.
-4. La première copie Synology remplace celle de la 1.3 (identifiants « carnet-… ») par un miroir exact d'iCloud.
+`CARNET_LECTURE_SEULE=oui` dans les variables de la stack, puis Recreate : carnet lit iCloud, Immich et Treemich, calcule les points à traiter et affiche tout, mais **n'écrit nulle part** hors de sa propre base (ni iCloud, ni Immich, Treemich, Synology Contacts ou le kit d'urgence). Un bandeau le rappelle en haut de chaque écran, et la nuit relit sans rien lier ni écrire. À utiliser pour essayer une nouvelle version ; retirer la variable pour écrire de nouveau.
 
-**Retour arrière** : `CARNET_VERSION=1.3.1` et `CARNET_VEILLE_HEURE=off` (la nuit de la 1.3 ne doit pas tourner : elle réécrirait des fiches devenues périmées), puis Recreate.
+### Revenir à une version précédente
+
+Chaque version reste publiée : `CARNET_VERSION=2.6.4` (par exemple) dans les variables de la stack, puis Recreate. La base est la même d'une version à l'autre tant que le journal des versions ne dit pas le contraire.
+
+La reprise des choix de la 1.3 (base SQLCipher, `CARNET_DB_KEY`) a été retirée en 2.6.5 : elle a été faite par les versions 2.0.0 à 2.6.4. `CARNET_DB_KEY` peut être supprimée de la stack.
 
 ### Droits de la clé d'API Immich
 `person.read`, `person.update` (liaisons, noms, dates) ; `asset.read`, `asset.view`, `asset.download`, `face.read` (portraits) ; `asset.upload`, `asset.delete`, `album.create`, `album.read`, `albumAsset.create` (affiches).

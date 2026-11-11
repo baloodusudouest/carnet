@@ -13,7 +13,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .temps import maintenant
-from . import (__version__, actions, completude, icloud, liaisons, linkedin, nuit, photos, reprise, reseaux, sorties,
+from . import (__version__, actions, completude, icloud, liaisons, linkedin, nuit, photos, reseaux, sorties,
                telegram, traiter, vcard)
 from .auth import COOKIE, DUREE, Sessions
 from .carddav import ErreurICloud
@@ -33,16 +33,21 @@ def carnet() -> Carnet:
 
 
 def demarrage(c: Carnet) -> None:
-    """Au démarrage : première lecture d'iCloud (référence), reprise unique de la 1.3,
-    puis données d'Immich et de Treemich en mémoire."""
+    """Au démarrage : première lecture d'iCloud (référence), puis données d'Immich et de
+    Treemich en mémoire."""
     try:
         if c.cfg.icloud_user and not c.base.lire("reference"):
             with c.ecriture(attendre=60):
                 c.tache = {"nom": "demarrage", "etat": "en_cours", "message": "Première lecture d'iCloud…"}
                 icloud.relire(c, "démarrage")
-        if reprise.a_faire(c):
-            c.tache = {"nom": "demarrage", "etat": "en_cours", "message": "Reprise des choix de la 1.3…"}
-            reprise.reprendre(c)
+        # La reprise des choix de la 1.3 a été retirée en 2.6.5. Si l'ancienne base est là et que
+        # la reprise n'a jamais eu lieu, on le dit une fois plutôt que de perdre ces choix en silence.
+        if (c.cfg.state / "carnet.db").is_file() and not c.base.lire("reprise") \
+                and not c.base.lire("reprise_signalee"):
+            c.base.noter("reprise", "La base de la 1.3 est présente mais ses choix n'ont jamais été repris. "
+                                    "Pour les reprendre : CARNET_VERSION=2.6.4 dans la stack, un démarrage, "
+                                    "puis retour à cette version.")
+            c.base.ecrire("reprise_signalee", True)
         if c.cfg.immich_cle or c.cfg.treemich_email:
             c.tache = {"nom": "demarrage", "etat": "en_cours", "message": "Lecture d'Immich et de Treemich…"}
             liaisons.donnees(c)
@@ -171,12 +176,18 @@ def accueil():
     reseaux.purger_si_besoin(c)
     return {"version": __version__, "a_traiter": traiter.compte(c), "tache": c.tache,
             "contacts": len(c.fiches()), "reference": bool(c.base.lire("reference")),
-            "icloud": bool(c.cfg.icloud_user), "nuit": c.base.lire("nuit"), "lecture": c.base.lire("derniere_lecture")}
+            "icloud": bool(c.cfg.icloud_user), "nuit": c.base.lire("nuit"), "lecture": c.base.lire("derniere_lecture"),
+            "lecture_seule": c.cfg.lecture_seule}
 
 
 @app.get("/api/a-traiter")
 def a_traiter():
     return traiter.liste(carnet())
+
+
+@app.post("/api/a-traiter-lot/apercu")
+def apercu_lot(corps: dict = Body(...)):
+    return actions.apercu_lot(carnet(), [str(i) for i in corps.get("ids") or []], str(corps.get("action", "")))
 
 
 @app.post("/api/a-traiter-lot")
@@ -436,7 +447,8 @@ def fusion(corps: dict = Body(...)):
 @app.get("/api/etat")
 def etat():
     c = carnet()
-    return {"version": __version__, "statut": sorties.statut(c), "lecture": c.base.lire("derniere_lecture"),
+    return {"version": __version__, "lecture_seule": c.cfg.lecture_seule,
+            "statut": sorties.statut(c), "lecture": c.base.lire("derniere_lecture"),
             "nuit": c.base.lire("nuit"), "reference": c.base.lire("reference"), "reprise": c.base.lire("reprise"),
             "synology": c.base.lire("synology"), "kit": c.base.lire("dernier_envoi_kit"),
             "sauvegardes": icloud.liste_sauvegardes(c)[:60], "journal": c.base.journal(limite=80),

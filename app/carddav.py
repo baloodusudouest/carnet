@@ -17,6 +17,8 @@ import time
 
 import httpx
 
+from .garde import LectureSeule
+
 log = logging.getLogger("carnet")
 
 D, C = "DAV:", "urn:ietf:params:xml:ns:carddav"
@@ -300,18 +302,26 @@ class CardDAV:
 
     # ------------------------------------------------------------ écriture
 
+    lecture_seule = False   # posé par Carnet d'après CARNET_LECTURE_SEULE
+
+    def _garde(self) -> None:
+        if self.lecture_seule:
+            raise LectureSeule("iCloud" if self.service == "iCloud" else "Synology Contacts")
+
     def href_nouveau(self, uid: str) -> str:
         return urlsplit(self.decouvrir()).path.rstrip("/") + "/" + "".join(
             c if c.isalnum() or c in "-_." else "_" for c in uid) + ".vcf"
 
     def ecrire(self, href: str, texte: str, etag: str | None) -> str | None:
         """Crée (etag None) ou remplace la carte. Renvoie le nouvel ETag s'il est fourni."""
+        self._garde()
         entetes = {"Content-Type": "text/vcard; charset=utf-8"}
         entetes["If-Match" if etag else "If-None-Match"] = etag or "*"
         r = self._requete("PUT", self._url(href, self.decouvrir()), content=texte.encode("utf-8"), headers=entetes)
         return r.headers.get("ETag")
 
     def supprimer(self, href: str, etag: str | None) -> None:
+        self._garde()
         if not etag:   # jamais de suppression sans condition
             raise Conflit("Version de la carte inconnue : suppression refusée.")
         entetes = {"If-Match": etag}

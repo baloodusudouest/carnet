@@ -29,6 +29,7 @@ SEUIL_SYNOLOGY = 0.05
 
 def envoyer_kit(c: Carnet) -> dict:
     """Groupe « Urgence » → contacts-urgence.vcf dans le dossier du kit, puis régénération."""
+    c.exiger_ecriture("le kit d'urgence")
     dossier = c.cfg.kit_config
     if not dossier or not dossier.is_dir():
         raise ErreurCarnet("Dossier du kit introuvable : vérifie le volume ${KIT_DATA_DIR}/config dans la stack.")
@@ -68,6 +69,7 @@ def copier_synology(c: Carnet, forcer: bool = False, avancer=None) -> dict:
     avancer = avancer or (lambda *_: None)
     if not c.cfg.synology_url:
         return {"desactivee": True}
+    c.exiger_ecriture("Synology Contacts")
     dav = c.synology()
     bilan = {"le": iso(maintenant()), "crees": 0, "modifies": 0, "supprimes": 0, "erreurs": [], "ok": True}
     try:

@@ -4,17 +4,15 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **En service : 2.6.4** (branche `main`), 80 tests du back et 19 tests d'interface.
-- Dossier « tel que construit » écrit : [`docs/dossier.md`](docs/dossier.md), avec le parcours des clics et des écrans et 9 écarts par rapport au socle.
-- Branche `habillage-socle` : le dossier et ce fichier ; aucun code modifié.
+- **2.6.5 prête** (branche `main`) : mode lecture seule, annonce avant un traitement par lot, restes de la 1.3 retirés, versions exactes. 83 tests du back et 20 tests d'interface verts. Pas encore mise en service sur le NAS.
+- En service sur le NAS : 2.6.4.
+- Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md). Premier tour du grill de la 2.8.0 : [`docs/2.8-grill.md`](docs/2.8-grill.md).
 
 ## Prochaine étape
 
-Trois livraisons, détaillées en section 6 du dossier :
-
-1. **2.6.5, ménage** : restes de la 1.3 retirés, versions exactes, annonce avant un traitement par lot, mode lecture seule. Pas commencée.
-2. **2.7.0, nouvel habillage seul** : commence par un écran réel à faire valider par Julien.
-3. **2.8.0, parcours et complétude** : grill, dossier et conseil à faire avant de coder.
+1. **Julien met la 2.6.5 en service**, puis essaie pour de vrai le retour à la 2.6.4 par `CARNET_VERSION` (étape 5 du plan).
+2. **2.7.0, nouvel habillage seul** : commence par un écran réel (À traiter) à faire valider par Julien, en sombre et en clair, sur PC et iPhone.
+3. **2.8.0, parcours et complétude** : finir le grill, écrire le dossier, passer au conseil.
 
 ## Décisions tranchées
 
@@ -34,7 +32,7 @@ Trois livraisons, détaillées en section 6 du dossier :
 - Pousser sur `main` reconstruit et republie l'image `latest`.
 - Les 19 tests d'interface s'appuient sur des textes, des rôles d'accessibilité et quelques noms internes (`.ligne`, `.message`, `nav.onglets`, `.tranche`, `.jauge`, `.volet-liste`) : les conserver pendant l'habillage.
 - Tant que l'ancien et le nouvel habillage coexistent, un écran pas encore refait peut se dégrader sans qu'un test le voie : regarder les captures de tous les écrans à chaque étape.
-- Aucun mode lecture seule avant la 2.6.5.
+- Mode lecture seule : toute nouvelle écriture vers un service extérieur doit appeler `c.exiger_ecriture(...)` et passer par un client gardé (`_garde`).
 
 ## Retour arrière
 

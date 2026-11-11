@@ -1,6 +1,6 @@
 # Service carnet à placer dans la stack homelab.yml (Portainer).
 # Les variables viennent des « Environment variables » de la stack (voir .env.example) :
-# celles de la 1.3, plus CARNET_TELEGRAM_API_ID et CARNET_TELEGRAM_API_HASH (facultatives, 2.1).
+# CARNET_TELEGRAM_API_ID et CARNET_TELEGRAM_API_HASH sont facultatives ; CARNET_DB_KEY n'est plus lue depuis la 2.6.5.
 services:
   carnet:
     image: ghcr.io/baloodusudouest/carnet:${CARNET_VERSION:-latest}
@@ -17,7 +17,7 @@ services:
     environment:
       - TZ=Europe/Paris
       - CARNET_PASSWORD=${CARNET_PASSWORD}         # mot de passe de l'interface
-      - CARNET_DB_KEY=${CARNET_DB_KEY}             # clé de la base 1.3 : lue une seule fois pour la reprise
+      - CARNET_LECTURE_SEULE=${CARNET_LECTURE_SEULE:-}   # « oui » : carnet lit tout mais n'écrit nulle part
       - CARNET_VEILLE_HEURE=${CARNET_VEILLE_HEURE:-03:00}   # heure de la nuit ; « off » : désactivée
       - CARNET_EMOJI_GROUPES=${CARNET_EMOJI_GROUPES:-}
       - CARNET_ICLOUD_USER=${CARNET_ICLOUD_USER:-}

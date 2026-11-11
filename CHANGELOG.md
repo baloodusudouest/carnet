@@ -1,5 +1,14 @@
 # Journal des versions
 
+## 2.6.5 — 11 novembre 2026
+Ménage, sans changement d'apparence. Première des trois livraisons décidées après le passage au conseil (voir `docs/dossier.md`).
+- **Mode lecture seule** (`CARNET_LECTURE_SEULE=oui`) : carnet lit et calcule tout, mais n'écrit ni dans iCloud, ni dans Immich, Treemich, Synology Contacts ou le kit d'urgence. Le refus est posé deux fois : à l'entrée de chaque opération, et dans les accès réseau eux-mêmes. Un bandeau le rappelle ; la nuit relit sans rien lier ni écrire.
+- **Annonce avant un traitement par lot** : avant « Confirmer », carnet dit combien de fiches seront modifiées dans iCloud, combien attendront le lot suivant, ou que rien n'est écrit (« Tout ignorer »).
+- **Restes de la 1.3 retirés** : module de reprise, dépendance SQLCipher et variable `CARNET_DB_KEY`. Si l'ancienne base est présente et n'a jamais été reprise, le journal le signale une fois.
+- **Versions exactes** des dépendances de l'interface.
+- Tests : 83 pour le back (3 tests de la reprise retirés avec elle, 6 ajoutés), 20 pour l'interface (1 ajouté, aucun réécrit).
+- Base inchangée : le retour à la 2.6.4 se fait par `CARNET_VERSION=2.6.4`.
+
 ## 2.6.4 — 11 novembre 2026
 - **Refus d'identifiants iCloud (401)** : carnet ne réessaie plus et marque une pause de 15 minutes sans aucune requête vers iCloud (nuit et boutons compris), pour ne pas faire verrouiller le compte Apple par des refus répétés. Le message explique qu'un changement du mot de passe du compte Apple annule les mots de passe d'application. Un nouveau mot de passe dans la stack suivi d'un Recreate lève la pause.
 

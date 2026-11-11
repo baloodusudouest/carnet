@@ -24,7 +24,22 @@
     'Imports': [{ action: 'ignorer', libelle: 'Tout ignorer' }],
   }
   let lotEnCours = $state(false)
-  let aConfirmer = $state(null)   // action groupée en attente de confirmation
+  let aConfirmer = $state(null)   // action groupée en attente de confirmation, avec son aperçu
+  // Avant « Confirmer » : carnet dit ce que le lot fera (écritures dans iCloud, plafond, lecture seule)
+  async function annoncer(l) {
+    try {
+      const apercu = await api.post('/api/a-traiter-lot/apercu', { ids: visibles.map((p) => p.id), action: l.action })
+      aConfirmer = { ...l, apercu }
+    } catch (e) { erreur(e) }
+  }
+  function annonce(a) {
+    const n = a.points
+    if (!a.ecrit) return `${n} point(s) seront écartés et ne seront plus proposés. Rien n'est écrit dans iCloud.`
+    if (a.lecture_seule) return `Mode lecture seule : ces ${n} écriture(s) dans iCloud seront refusées.`
+    return `${a.a_ecrire} fiche(s) seront modifiées dans iCloud`
+      + (a.reportes ? `, les ${a.reportes} autres attendront le lot suivant (${a.plafond} écritures au plus par lot)` : '')
+      + `. Une copie d'iCloud est faite avant la première écriture du jour.`
+  }
   async function lot(action) {
     const ids = visibles.map((p) => p.id)
     aConfirmer = null
@@ -80,12 +95,13 @@
     {#if filtre && LOTS[filtre.nom] && visibles.length > 1}
       <div class="lot">
         {#if aConfirmer}
-          <span class="discret">{aConfirmer.libelle} : {visibles.length} point(s).</span>
-          <button class="bouton bouton-principal" disabled={lotEnCours} onclick={() => lot(aConfirmer.action)}>Confirmer</button>
+          <span class="discret annonce" role="status">{aConfirmer.libelle} : {annonce(aConfirmer.apercu)}</span>
+          <button class="bouton bouton-principal" disabled={lotEnCours || (aConfirmer.apercu.ecrit && aConfirmer.apercu.lecture_seule)}
+                  onclick={() => lot(aConfirmer.action)}>Confirmer</button>
           <button class="bouton" onclick={() => (aConfirmer = null)}>Annuler</button>
         {:else}
           {#each LOTS[filtre.nom] as l}
-            <button class="bouton" disabled={lotEnCours} onclick={() => (aConfirmer = l)}>{l.libelle} ({visibles.length})</button>
+            <button class="bouton" disabled={lotEnCours} onclick={() => annoncer(l)}>{l.libelle} ({visibles.length})</button>
           {/each}
         {/if}
       </div>
