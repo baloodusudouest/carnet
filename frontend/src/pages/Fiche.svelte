@@ -51,7 +51,7 @@
     try {
       const res = await api.put(`/api/contacts/${e}`, { fiche: apercu.fiche, etag: donnees.etag })
       brouillon = apercu = null
-      await apresEcriture(res, 'Fiche écrite dans iCloud.')
+      await apresEcriture(res, res.famille ? `Fiche écrite dans iCloud. ${res.famille}` : 'Fiche écrite dans iCloud.')
       await charger()
     } catch (err) { erreur(err) } finally { attente = false }
   }

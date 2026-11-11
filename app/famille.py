@@ -68,7 +68,10 @@ def couples(d: dict) -> list[dict]:
 
 def _treemich_parle(d: dict | None) -> bool:
     """Treemich a répondu en entier à la dernière lecture (sinon on garde le dernier état connu)."""
-    return bool(d and d.get("treemich") and not d.get("erreurs"))
+    if not d or not d.get("treemich"):
+        return False
+    # Seules les erreurs de Treemich comptent : une panne d'Immich ne doit pas bloquer les dates de famille
+    return d["treemich_ok"] if "treemich_ok" in d else not d.get("erreurs")
 
 
 def memoriser(c: Carnet, d: dict | None) -> None:
@@ -200,13 +203,50 @@ def examiner(c: Carnet, d: dict | None) -> dict:
     return {"actions": actions, "points": points}
 
 
+def pourquoi_rien(c: Carnet, d: dict | None) -> list[str]:
+    """Quand une date de famille est sur une fiche et que rien ne part vers Treemich : la raison,
+    dite en clair (2.8.3). Une ligne par cause."""
+    raisons = []
+    if c.cfg.lecture_seule:
+        raisons.append("carnet est en lecture seule (CARNET_LECTURE_SEULE) : rien n'est écrit, ni dans iCloud ni dans Treemich.")
+    if not c.cfg.treemich_email:
+        return raisons + ["Treemich n'est pas configuré."]
+    if d is None:
+        return raisons + ["Treemich n'a pas encore été relu depuis le démarrage : « Relire Immich et Treemich » dans État."]
+    if not _treemich_parle(d):
+        return raisons + ["Treemich n'a pas répondu en entier à la dernière lecture"
+                          + (f" ({d['erreur_treemich']})" if d.get("erreur_treemich") else "") + " : rien n'est accordé tant qu'il ne répond pas."]
+    fiches, liens = c.fiches(), c.liaisons()
+    en_couple = {t for x in couples(d) for t in (x["a"], x["b"])}
+    partielles = {t for x in couples(d) if x["mariage"] and not _complete(x["mariage"]) for t in (x["a"], x["b"])}
+    en_revue = _en_revue(c)
+    for uid, f in sorted(fiches.items(), key=lambda x: nom_affiche(x[1]).casefold()):
+        nom, t = nom_affiche(f), liens.get(uid, {}).get("treemich")
+        if f.get("mariage"):
+            if not t:
+                raisons.append(f"{nom} a une date de mariage, mais sa fiche n'est pas reliée à une personne de Treemich (fiche, bloc Liaisons).")
+            elif t not in en_couple:
+                raisons.append(f"{nom} a une date de mariage, mais n'a pas de conjoint dans Treemich : le mariage s'y range sur le couple.")
+            elif t in partielles:
+                raisons.append(f"{nom} : Treemich porte déjà une date de mariage incomplète ; carnet n'y touche pas.")
+            elif not _complete(f["mariage"]):
+                raisons.append(f"{nom} : date de mariage sans année ; Treemich ne reçoit que des dates complètes.")
+        if f.get("deces") and not t:
+            raisons.append(f"{nom} a une date de décès, mais sa fiche n'est pas reliée à une personne de Treemich.")
+        if uid in en_revue and (f.get("mariage") or f.get("deces")):
+            raisons.append(f"{nom} attend ta relecture dans « À traiter » (modifiée sur l'iPhone) : carnet n'écrit pas sur sa carte en attendant.")
+    return raisons[:12]
+
+
 def apercu(c: Carnet) -> dict:
     """Pour l'écran Réglages : par interrupteur, s'il est allumé et ce que carnet écrirait."""
     from . import liaisons
     d = c.memo_present("liens", liaisons.DUREE_CACHE)
+    etat = examiner(c, d)
     return {"fetes": {"nom": INTERRUPTEURS["fetes"], "actif": actif(c, "fetes"), "actions": fetes_a_ecrire(c)},
             "famille": {"nom": INTERRUPTEURS["famille"], "actif": actif(c, "famille"),
-                        "actions": examiner(c, d)["actions"], "treemich": _treemich_parle(d)}}
+                        "actions": etat["actions"], "treemich": _treemich_parle(d), "raisons": pourquoi_rien(c, d),
+                        "points": len(etat["points"])}}
 
 
 # ----------------------------------------------------------------- écritures
@@ -252,11 +292,34 @@ def _ecrire_cartes(c: Carnet, actions: list[dict], bilan: dict, plafond: int, mo
             bilan["details"].append(str(exc))
 
 
-def appliquer(c: Carnet, d: dict | None, bilan: dict, plafond: int) -> None:
+def accorder_maintenant(c: Carnet) -> dict:
+    """Dates de famille accordées tout de suite, sans attendre la nuit (2.8.3) : après une date
+    saisie sur une fiche dans carnet, ou depuis le bouton de Réglages. Ne fait rien si
+    l'interrupteur est éteint. Treemich est relu juste avant, pour ne jamais écraser."""
+    from . import liaisons
+    from .nuit import PLAFOND
+    bilan = {"ecrites": 0, "reportees": 0, "details": [], "treemich": 0}
+    if not actif(c, "famille"):
+        return {**bilan, "message": "L'accord des dates de famille est éteint (Réglages) : rien n'a été écrit."}
+    c.exiger_ecriture("Treemich")
+    with c.ecriture(attendre=5):
+        d = liaisons.donnees(c, rafraichir=True)
+        appliquer(c, d, bilan, PLAFOND, fetes_aussi=False)
+    c.oublier()
+    message = f"Dates de famille : {bilan['ecrites']} fiche(s) écrite(s) dans iCloud, {bilan['treemich']} écriture(s) dans Treemich"
+    if bilan["details"]:
+        message += " ; " + " ; ".join(bilan["details"][:2])
+    elif not bilan["ecrites"] and not bilan["treemich"]:
+        raisons = pourquoi_rien(c, d)
+        message += " ; " + (raisons[0] if raisons else "rien à accorder")
+    return {**bilan, "message": message + ("" if message.endswith(".") else ".")}
+
+
+def appliquer(c: Carnet, d: dict | None, bilan: dict, plafond: int, fetes_aussi: bool = True) -> None:
     """La nuit, après les écritures sûres : fêtes puis dates de famille, si leur interrupteur est
     allumé. Verrou d'écriture déjà pris."""
     memoriser(c, d)
-    if actif(c, "fetes"):
+    if fetes_aussi and actif(c, "fetes"):
         _ecrire_cartes(c, fetes_a_ecrire(c), bilan, plafond, "fête")
     if not actif(c, "famille") or not _treemich_parle(d):
         return
@@ -267,12 +330,24 @@ def appliquer(c: Carnet, d: dict | None, bilan: dict, plafond: int) -> None:
         return
     tm = c.treemich()
     try:
+        # Jamais écraser : Treemich est relu à l'instant, et une date qui s'y trouve déjà fait
+        # renoncer à l'écriture (elle deviendra un point « dates différentes » à la prochaine lecture)
+        fraiches = {(x["a"], x["b"]): x["mariage"] for x in couples({"relations": tm.relations()})}
+        faisables = []
+        for a in vers_treemich:
+            deja = fraiches.get((a["a"], a["b"]), "") if a["sujet"] == "mariage" else tm.evenements(a["cible"])["deces"]
+            if deja and deja != a["apres"]:
+                bilan["details"].append(f"{a['nom']} : Treemich porte déjà une autre date ; rien n'a été écrasé.")
+            elif not deja:
+                faisables.append(a)
+        vers_treemich = faisables
         for a in vers_treemich:
             if a["sujet"] == "mariage":
                 tm.maj_mariage(a["a"], a["b"], a["apres"])
             else:
                 tm.maj_deces(a["cible"], a["apres"])
             _noter(c, a)
+            bilan["treemich"] = bilan.get("treemich", 0) + 1
         # Relecture : la version de Treemich installée suit « latest », son interface peut changer.
         # Si ce qui revient n'est pas ce qui a été écrit, l'interrupteur est coupé.
         relues = {(x["a"], x["b"]): x["mariage"] for x in couples({"relations": tm.relations()})}

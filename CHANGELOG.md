@@ -1,5 +1,14 @@
 # Journal des versions
 
+## 2.8.3 — 11 novembre 2026
+Après le retour de Julien : une date de mariage saisie sur une fiche n'apparaissait pas dans Treemich, sans que carnet dise pourquoi.
+- **La date part tout de suite** : quand l'accord avec Treemich est allumé, une date de mariage ou de décès saisie sur une fiche dans carnet est accordée une douzaine de secondes après l'écriture (le temps laissé à « Annuler »), sans attendre la nuit. Avant, seule la nuit le faisait ; « Relire iCloud » et « Relire Immich et Treemich » n'écrivent rien.
+- **Bouton « Accorder maintenant »** dans Réglages, sous l'interrupteur, avec le bilan en retour.
+- **carnet dit ce qui bloque** : Réglages affiche, en clair, pourquoi une date ne part pas — lecture seule, Treemich pas relu ou en erreur, fiche non reliée à une personne de l'arbre, pas de conjoint dans l'arbre (le mariage s'y range sur le couple), date sans année, fiche en attente de relecture. Le message après l'écriture d'une fiche le dit aussi quand l'accord est éteint.
+- **Jamais écraser, vérifié au dernier moment** : avant d'écrire dans Treemich, carnet relit la valeur ; si une autre date s'y trouve déjà, il renonce et le dit.
+- Une erreur d'Immich ne bloque plus l'accord avec Treemich.
+- Tests : 101 du back, 25 d'interface.
+
 ## 2.8.2 — 11 novembre 2026
 - **Sociétés écrites de plusieurs façons** : « aquitaineenergie », « aquitaineÉnergie », « AQUITAINEENERGIE », « Aquitaine Énergie SA »… carnet les rapproche et ajoute un point dans « À traiter » (famille Sociétés). Tu choisis l'écriture à garder, ou tu en tapes une autre ; le bouton dit combien de fiches changeront, puis carnet l'écrit dans iCloud, 20 fiches au plus par réponse (le point revient s'il en reste). Seul le nom de la société change : le service et le reste de la carte ne bougent pas.
 - Le rapprochement ignore majuscules, accents, espaces, traits d'union, points et formes juridiques en fin de nom (SA, SAS, SARL…). Quand les écritures diffèrent par plus que les majuscules et les accents, le point demande de vérifier que c'est bien la même société. « Pas la même société » ne repose plus la question.
