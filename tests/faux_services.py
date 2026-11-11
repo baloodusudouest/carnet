@@ -93,6 +93,9 @@ class FauxTreemich:
             return httpx.Response(200, json={}, headers={"set-cookie": "s=1; Path=/"})
         if self.muet:
             return httpx.Response(503)
+        if r.method == "POST" and chemin.endswith("/thumbnail/import/immich"):
+            self.ecrits.append((chemin, None))
+            return httpx.Response(200, json={})
         if r.method == "PATCH":
             corps = json.loads(r.content)
             self.ecrits.append((chemin, corps))

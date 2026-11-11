@@ -152,12 +152,15 @@ def poser_choix(c: Carnet, choix: list[dict]) -> dict:
     c.exiger_ecriture("iCloud")
     par_uid = dict(_choix(choix))
     refus_immich: list[str] = []
+    a_reprendre: list[str] = []          # visages changés dans Immich, que Treemich reprendra en fin de lot
 
     def un(uid):
         cle = par_uid[uid]
         if c.liaison(uid).get("immich"):
-            res = photos.poser(c, uid, cle, origine="Photos")
-            if res.get("immich") not in ("ok", "non relié"):
+            res = photos.poser(c, uid, cle, origine="Photos", suites=False)
+            if res.get("immich") == "ok":
+                a_reprendre.append(uid)
+            elif res.get("immich") != "non relié":
                 refus_immich.append(nom_affiche(c.fiche(uid)))
             return
         logo = photos._logo_de(c, uid, int(cle)) if cle.isdigit() else None
@@ -169,6 +172,11 @@ def poser_choix(c: Carnet, choix: list[dict]) -> dict:
                         etag_vu=actions._etag(c, uid))
         retenir_logo(c, c.fiche(uid), logo)
     bilan = _par_lot(c, list(par_uid), un)
+    # Treemich reprend les visages une fois le lot posé : Immich a eu le temps de refaire ses vignettes
+    refus_treemich = [nom_affiche(c.fiche(uid)) for i, uid in enumerate(a_reprendre)
+                      if photos.vignette_treemich(c, uid, attendre=(i == 0)) not in ("ok", "non relié")]
+    if refus_treemich:
+        bilan["erreurs"] = (bilan["erreurs"] + [f"Visage non repris par Treemich pour : {', '.join(refus_treemich[:8])}."])[:10]
     if refus_immich:
         bilan["erreurs"] = (bilan["erreurs"] + [f"Visage non mis à jour dans Immich pour : {', '.join(refus_immich[:8])}."])[:10]
     return bilan

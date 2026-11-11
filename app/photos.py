@@ -117,7 +117,7 @@ def portrait(c: Carnet, uid: str, asset: str) -> tuple[bytes, str]:
     return images.alleger(images.portrait(contenu, cand["boite"]))
 
 
-def poser(c: Carnet, uid: str, asset: str, origine: str = "manuel") -> dict:
+def poser(c: Carnet, uid: str, asset: str, origine: str = "manuel", suites: bool = True) -> dict:
     """Le portrait choisi devient la photo de la fiche dans iCloud."""
     from . import actions
     image = portrait(c, uid, asset)
@@ -126,6 +126,8 @@ def poser(c: Carnet, uid: str, asset: str, origine: str = "manuel") -> dict:
     c.base.executer("UPDATE portraits SET asset = ?, manuel = ?, le = ? WHERE uid = ?",
                     (asset, int(origine == "manuel"), iso(maintenant()), uid))
     res["immich"] = vignette_immich(c, uid, asset)
+    if res["immich"] == "ok" and suites:
+        res["treemich"] = vignette_treemich(c, uid)
     return res
 
 
@@ -147,6 +149,29 @@ def vignette_immich(c: Carnet, uid: str, asset: str) -> str:
         log.warning("Vignette Immich non mise à jour : %s", exc)
         return str(exc)
     c.base.noter("photos", "Visage de la personne mis à jour dans Immich", {"uid": uid})
+    return "ok"
+
+
+ATTENTE_IMMICH = 3.0     # secondes laissées à Immich pour refaire la vignette avant que Treemich la reprenne
+
+
+def vignette_treemich(c: Carnet, uid: str, attendre: bool = True) -> str:
+    """2.11.1 : Treemich garde sa propre copie du visage ; on lui demande de la reprendre dans Immich.
+    Immich refait la vignette en tâche de fond : on lui laisse quelques secondes. Si Treemich montre
+    encore l'ancien visage, « Importer depuis Immich » dans Treemich, ou reposer la photo, le corrige."""
+    import time
+    treemich_id = c.liaison(uid).get("treemich")
+    if not treemich_id:
+        return "non relié"
+    try:
+        c.exiger_ecriture("Treemich")
+        if attendre and ATTENTE_IMMICH:
+            time.sleep(ATTENTE_IMMICH)
+        c.treemich().importer_vignette(treemich_id)
+    except (ErreurLien, ErreurCarnet) as exc:
+        log.warning("Visage non repris par Treemich : %s", exc)
+        return str(exc)
+    c.base.noter("photos", "Visage de la personne repris par Treemich", {"uid": uid})
     return "ok"
 
 

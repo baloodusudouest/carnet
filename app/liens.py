@@ -347,6 +347,13 @@ class Treemich:
         if r.status_code >= 400:
             raise ErreurLien(f"Treemich a refusé la date de mariage ({r.status_code}).")
 
+    def importer_vignette(self, pid: str) -> None:
+        """2.11.1 : Treemich recopie le visage de la personne depuis Immich (il en garde sa propre
+        copie, qui ne suit pas toute seule). Adresse relevée dans l'interface de Treemich."""
+        r = self._appel("POST", f"/people/{pid}/thumbnail/import/immich")
+        if r.status_code >= 400:
+            raise ErreurLien(f"Treemich a refusé de reprendre le visage ({r.status_code}).")
+
     def maj_deces(self, pid: str, date: str | None) -> None:
         r = self._appel("PATCH", f"/people/{pid}", json={"deathDate": date})
         if r.status_code >= 400:

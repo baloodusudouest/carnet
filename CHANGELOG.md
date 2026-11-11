@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.11.1 — 12 novembre 2026
+- **Treemich reprend le visage** : après qu'une photo posée a changé le visage de la personne dans Immich, carnet demande à Treemich de le recopier (Treemich garde sa propre copie, qui ne suit pas toute seule). Par lot, la reprise se fait une fois le lot posé. Si Immich a refusé, Treemich n'est pas sollicité.
+- Immich refait sa vignette en tâche de fond : carnet lui laisse trois secondes. Si Treemich montre encore l'ancien visage, « Importer depuis Immich » dans Treemich le corrige.
+- Tests : 112 du back, 31 d'interface.
+
 ## 2.11.0 — 11 novembre 2026
 - **Photos : les tuiles « Portraits » et « Affiches » montrent tous les contacts** qui peuvent en recevoir une (reliés à Immich, ou d'une société dont le logo est gardé), y compris ceux qui ont déjà une photo. Le nombre de la tuile compte ce qui manque. « Affiches » remplace « Affiches à préparer ».
   - Chaque contact montre jusqu'à 5 propositions, telles qu'elles seraient posées. **La première est le choix de carnet** : visage entier (déjà exigé), grand, la personne seule sur la photo si possible, et plutôt au centre ; pour un contact de société, le logo.

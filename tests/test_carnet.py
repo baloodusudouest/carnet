@@ -2266,3 +2266,29 @@ def test_211_lecture_seule_et_routes(c, services):
     assert photos.vignette_immich(c, "DDDD-4444", "p1") != "ok"                        # refusé au plus près d'Immich
     assert len(services["immich"].ecrits) == avant and not c.fiche("DDDD-4444").get("a_photo")
     main.ETAT.clear()
+
+
+def test_2111_treemich_reprend_le_visage_apres_immich(c, services, monkeypatch):
+    """La photo posée change le visage dans Immich, puis Treemich le reprend. Si Immich refuse,
+    Treemich n'est pas appelé (il reprendrait l'ancien visage)."""
+    from app import galerie, liens
+    tm = services["treemich"]
+    pid = tm.personnes[0]["id"] if hasattr(tm, "personnes") and tm.personnes else "tm-1"
+    liaisons.lier(c, "DDDD-4444", "immich", "im-paul")
+    liaisons.lier(c, "DDDD-4444", "treemich", pid)
+    galerie.chercher_propositions(c, ["DDDD-4444"])
+    r = galerie.poser_choix(c, [{"uid": "DDDD-4444", "cle": "p1"}])
+    assert r["faits"] == 1 and not r["erreurs"]
+    assert (f"/people/{pid}/thumbnail/import/immich", None) in tm.ecrits
+    # Depuis la fiche : même suite
+    tm.ecrits.clear()
+    res = photos.poser(c, "DDDD-4444", "p1")
+    assert res["immich"] == "ok" and res["treemich"] == "ok" and len(tm.ecrits) == 1
+    # Immich refuse : Treemich n'est pas sollicité
+    tm.ecrits.clear()
+
+    def refus(self, pid_, asset):
+        raise liens.ErreurLien("Immich a refusé la photo de la personne (403).")
+    monkeypatch.setattr(liens.Immich, "definir_couverture", refus)
+    galerie.poser_choix(c, [{"uid": "DDDD-4444", "cle": "p1"}])
+    assert tm.ecrits == []

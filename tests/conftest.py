@@ -16,3 +16,9 @@ def sans_pause_de_refus():
     carddav._refus.clear()
     carddav._decouverts.clear()
     yield
+
+
+# 2.11.1 : pas d'attente d'Immich avant la reprise du visage par Treemich pendant les tests
+from app import photos as _photos  # noqa: E402
+
+_photos.ATTENTE_IMMICH = 0
