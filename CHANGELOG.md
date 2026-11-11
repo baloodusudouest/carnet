@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.9.2 — 11 novembre 2026
+Pour Home Assistant (annonces des mariages et des fêtes).
+- **Mariages par couple** : `/ha/anniversaires` renvoie, dans `mariages`, une entrée par couple (« Prénom NOM et Prénom NOM ») quand le conjoint est connu par l'arbre et a une fiche ; sinon une entrée au nom de la personne. Champs ajoutés : `noms` et `couple`. Un couple divorcé ou dont l'un est décédé n'est pas annoncé.
+- Rien d'autre ne change. Tests : 106 du back, 28 d'interface.
+
 ## 2.9.1 — 11 novembre 2026
 Après le retour de Julien : la date de mariage était bien dans Treemich, mais introuvable — Treemich la range sur le lien du couple, pas dans les évènements de la personne.
 - **Connexion › Treemich, « Vérifier »** affiche maintenant chaque couple avec la date côté carnet et la date côté Treemich, et dit où la trouver dans Treemich (Profile › Relatives › crayon du conjoint › Marriage anniversary).

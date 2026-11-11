@@ -106,6 +106,18 @@ def divorces(c: Carnet) -> set[str]:
     return res
 
 
+def conjoints(c: Carnet) -> dict[str, str]:
+    """uid → uid du conjoint, d'après le dernier état lu dans l'arbre (les deux ont une fiche reliée,
+    couple non divorcé)."""
+    reliees = _reliees(c)
+    res: dict[str, str] = {}
+    for l in c.base.tous("SELECT a, b FROM unions WHERE divorce IS NULL"):
+        if l["a"] in reliees and l["b"] in reliees:
+            res[reliees[l["a"]]] = reliees[l["b"]]
+            res[reliees[l["b"]]] = reliees[l["a"]]
+    return res
+
+
 def marquer_decede(c: Carnet, uid: str, oui: bool) -> dict:
     """Case « décédé(e) » d'une fiche quand la date n'est pas connue. Reste dans carnet."""
     c.fiche(uid)

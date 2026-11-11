@@ -1676,7 +1676,10 @@ def test_28_mariage_rempli_jamais_ecrase(c, services):
     assert c.fiche("DDDD-4444")["mariage"] == "2010-06-12"
     assert "X-ABLabel:Mariage" in services["icloud"].texte("DDDD-4444") and "X-PERSO:garder" in services["icloud"].texte("DDDD-4444")
     assert {(x["service"], x["sujet"]) for x in famille.journal(c)} == {("icloud", "mariage"), ("treemich", "mariage")}
-    assert [m["nom"] for m in sorties.ha_anniversaires(c)["mariages"]] != []
+    # 2.9.2 : une seule entrée pour le couple, aux deux noms
+    m = sorties.ha_anniversaires(c)["mariages"]
+    assert len(m) == 1 and m[0]["couple"] and len(m[0]["noms"]) == 2 and m[0]["nom"] == " et ".join(m[0]["noms"])
+    assert (m[0]["jour"], m[0]["mois"], m[0]["annee"]) == (12, 6, 2010)
     # Une date effacée d'un côté n'est jamais effacée de l'autre : elle est remise
     _ecrire_champ(c, "DDDD-4444", mariage="")
     d = liaisons.donnees(c, rafraichir=True)

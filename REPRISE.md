@@ -4,7 +4,8 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **2.9.1 sur `main`** (11/11/2026) : liste des couples dans Connexion › Treemich, messages corrigés. Vérifié sur l'installation de Julien le 11/11 : l'écriture d'un mariage dans Treemich fonctionne (lue dans l'arbre) ; « Vérifier » sur Treemich prend environ 50 secondes.
+- **2.9.2 sur `main`** (11/11/2026) : mariages par couple dans `/ha/anniversaires` ; côté Home Assistant, `maison/anniversaires.yaml` v2 lit les mariages et `/ha/fetes` (master doc HA 1.50).
+- 2.9.1 (11/11/2026) : liste des couples dans Connexion › Treemich, messages corrigés. Vérifié sur l'installation de Julien le 11/11 : l'écriture d'un mariage dans Treemich fonctionne (lue dans l'arbre) ; « Vérifier » sur Treemich prend environ 50 secondes.
 - 2.9.0 (11/11/2026) : réorganisation en six onglets (À traiter en tuiles, Contacts, Groupes, Photos, Connexion avec une icône par service, Réglages). Faite sans dossier ni conseil préalables, à la demande de Julien ; le dossier tel que construit a été mis à jour après le code.
 - 2.8.5 avant elle : la 2.8 complète (vérification de l'accord avec Treemich en 2.8.5 ; attentes et manques, Photos, champs nouveaux, fêtes et dates de famille, import unique, suppression confirmée, logo par société, noms de société, accord immédiat avec Treemich, Réseaux dans Réglages). Julien a une 2.8 en service.
 - Interrupteurs : Julien a allumé « dates de famille » le 11/11 ; « fêtes » est éteint à la livraison.
@@ -20,7 +21,7 @@ Restes de la 2.8, toujours valables :
 1. Julien met la 2.8.0 en service **en lecture seule un jour** (`CARNET_LECTURE_SEULE=oui`), copie de `/state` avant. Il vérifie : les nombres de la famille « Manques » (la sonde donnait 437 fiches incomplètes, 406 sans photo, 59 sans téléphone, avant l'exemption des fiches d'entreprise et sans la colonne Fête), le tableau des attentes, la liste « ce que carnet écrirait ».
 2. Il enlève la lecture seule, puis allume « fêtes » ; une semaine plus tard, « dates de famille ». Relire « Écrit par carnet tout seul » après chaque première nuit.
 3. À voir à l'usage : le calendrier des fêtes (prénoms introuvables dans la ligne « Sans fête »), le logo glissé depuis Google Images sur iPhone et sur PC, l'écriture réelle d'un mariage dans Treemich (jamais essayée sur la vraie installation).
-4. Home Assistant ne lit pas encore `/ha/fetes` ni les mariages de `/ha/anniversaires` : à brancher (master doc HA) pour que les annonces existent.
+4. Home Assistant : `maison/anniversaires.yaml` v2 livré le 11/11 (mariages et fêtes dans `calendar.anniversaires`, alerte 08:00, carte) ; à installer par Julien (secret `carnet_fetes_url`, redémarrage).
 5. Idée gardée : route unique d'évènements pour Home Assistant.
 6. Après une semaine d'usage : document du socle et planche de couleurs.
 

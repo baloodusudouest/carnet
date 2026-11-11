@@ -166,11 +166,30 @@ def ha_anniversaires(c: Carnet) -> dict:
                for p in personnes if p["jour"]]
     liste = anniversaires.assembler(entrees)
     fiches = c.fiches()
-    mariages = []
+    # 2.9.2 : une entrée par couple (« A et B ») quand le conjoint est connu par l'arbre et a une
+    # fiche ; sinon une entrée au nom de la personne. Un couple dont l'un est décédé n'est plus annoncé.
+    conjoints = famille.conjoints(c)
+    noms = {p["carnet_id"]: p["nom"] for p in contacts_ha(c)}
+    mariages, vus = [], set()
     for p in personnes:
-        lue = anniversaires.analyser(fiches[p["carnet_id"]].get("mariage"))
-        if lue and p["carnet_id"] not in divorces:
-            mariages.append({"nom": p["nom"], "jour": lue[0], "mois": lue[1], "annee": lue[2], "immich": bool(p["immich_id"])})
+        uid = p["carnet_id"]
+        lue = anniversaires.analyser(fiches[uid].get("mariage"))
+        if not lue or uid in divorces:
+            continue
+        autre = conjoints.get(uid)
+        if autre in morts:
+            continue
+        if autre:
+            paire = tuple(sorted((uid, autre)))
+            if paire in vus:
+                continue
+            vus.add(paire)
+            deux = sorted((noms[uid], noms[autre]), key=str.casefold)
+            mariages.append({"nom": " et ".join(deux), "noms": deux, "couple": True, "jour": lue[0], "mois": lue[1],
+                             "annee": lue[2], "immich": bool(p["immich_id"])})
+        else:
+            mariages.append({"nom": p["nom"], "noms": [p["nom"]], "couple": False, "jour": lue[0], "mois": lue[1],
+                             "annee": lue[2], "immich": bool(p["immich_id"])})
     mariages = anniversaires.assembler(mariages)
     log.info("HA anniversaires : %d naissance(s), %d mariage(s)", len(liste), len(mariages))
     return {"genere_le": iso(maintenant()), "nombre": len(liste), "anniversaires": liste, "mariages": mariages}
