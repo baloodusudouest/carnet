@@ -23,7 +23,9 @@ PRENOMS = ["Agnès Roux", "Bruno Lefèvre", "Camille Garnier", "Denis Fabre", "�
 def preparer(dossier: Path) -> tuple[Carnet, FauxICloud]:
     vcf = (DONNEES / "icloud.vcf").read_text(encoding="utf-8") + PAUL
     for i, nom in enumerate(PRENOMS):
-        vcf += carte_simple(f"F-{i:02d}", nom, f"TEL;type=CELL:+33 6 {10 + i} 20 30 40\r\n")
+        # 2.8.2 : deux fiches de la même société, écrite de deux façons
+        societe = {20: "ORG:Atelier Dupont;\r\n", 21: "ORG:ATELIER DUPONT;\r\n"}.get(i, "")
+        vcf += carte_simple(f"F-{i:02d}", nom, f"TEL;type=CELL:+33 6 {10 + i} 20 30 40\r\n" + societe)
     # 2.8 : des groupes, pour que les attentes produisent des manques (photo, naissance, Immich…)
     def groupe(uid, nom, membres):
         return ("BEGIN:VCARD\r\nVERSION:3.0\r\nN:" + nom + "\r\nFN:" + nom + "\r\nX-ADDRESSBOOKSERVER-KIND:group\r\n"

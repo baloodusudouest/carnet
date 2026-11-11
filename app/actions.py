@@ -226,6 +226,9 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
     if motif == "deces_different" and action == "ecrire":
         from . import famille
         return famille.ecrire_partout(c, "deces", str(valeur or ""), [uid], treemich=d["treemich"])
+    if motif == "societe" and action == "choisir":
+        from . import societes
+        return societes.harmoniser(c, d["cle"], str(valeur or ""))
     if motif == "doublon" and action == "distincts":
         traiter.ignorer(c, motif, cle)
         return {"ok": True}

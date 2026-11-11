@@ -19,6 +19,7 @@
     { nom: 'Liaisons', motifs: ['liaison', 'date', 'nom', 'relations'] },
     { nom: 'Famille', motifs: ['mariage', 'mariage_different', 'deces_different'] },
     { nom: 'Mise en forme', motifs: ['forme', 'emoji'] },
+    { nom: 'Sociétés', motifs: ['societe'] },
     { nom: 'Réseaux', motifs: ['reseau'] },
     { nom: 'Imports', motifs: ['import', 'linkedin'] },
   ]
