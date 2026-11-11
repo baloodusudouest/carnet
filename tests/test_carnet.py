@@ -1821,3 +1821,31 @@ def test_28_passage_de_version_relit_les_cartes_en_base(c, services):
     avant = len(points(c))
     assert icloud.reanalyser(c) >= 1 and c.fiche("DDDD-4444")["mariage"] == "2009-09-19"
     assert len(points(c)) == avant and icloud.reanalyser(c) == 0            # une seule fois, rien de signalé
+
+
+def test_28_supprimer_une_fiche_toujours_confirmee(c, services):
+    ic = services["icloud"]
+    liaisons.lier(c, "DDDD-4444", "treemich", "t-paul")
+    etag = actions._etag(c, "DDDD-4444")
+    texte = ic.texte("DDDD-4444")
+    # Sans confirmation, ou avec une version dépassée : rien n'est supprimé
+    for confirmation, version in ((False, etag), (None, etag), ("oui", etag), (True, "ancien"), (True, None)):
+        with pytest.raises(ErreurCarnet):
+            actions.supprimer(c, "DDDD-4444", version, confirmation)
+    assert ic.texte("DDDD-4444") == texte and "DDDD-4444" in c.fiches()
+    # Confirmée : la carte quitte iCloud et carnet, ses liaisons sont oubliées
+    res = actions.supprimer(c, "DDDD-4444", etag, True)
+    assert res["nom"] == "Paul MARTIN" and ic.texte("DDDD-4444") is None and "DDDD-4444" not in c.fiches()
+    assert not c.base.un("SELECT 1 FROM liaisons WHERE uid = 'DDDD-4444'")
+    assert not services["treemich"].ecrits                                   # rien n'est supprimé dans Treemich
+    # « Annuler » dans les 10 secondes : la carte revient à l'identique, avec sa liaison
+    actions.annuler(c, res["jeton"])
+    assert "X-PERSO:garder" in ic.texte("DDDD-4444") and c.fiche("DDDD-4444")["nom"] == "MARTIN"
+    assert c.liaisons()["DDDD-4444"]["treemich"] == "t-paul"
+    # En lecture seule, la suppression est refusée
+    import dataclasses
+    from app.garde import LectureSeule
+    c.cfg = dataclasses.replace(c.cfg, lecture_seule=True)
+    with pytest.raises(LectureSeule):
+        actions.supprimer(c, "DDDD-4444", actions._etag(c, "DDDD-4444"), True)
+    assert ic.texte("DDDD-4444")

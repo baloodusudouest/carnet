@@ -521,6 +521,21 @@ def annuler(c: Carnet, jeton: str) -> dict:
     a = c.annulations.pop(jeton, None)
     if not a or a["jusqua"] < time.monotonic():
         raise ErreurCarnet("Trop tard pour annuler : modifie la fiche à nouveau si besoin.")
+    if a.get("supprimee"):
+        # Suppression demandée sur la fiche (2.8) : la carte revient à l'identique, avec ce que
+        # carnet savait d'elle (liaisons, exceptions, validation)
+        if c.base.un("SELECT 1 FROM fiches WHERE uid = ?", (a["uid"],)):
+            raise ErreurCarnet("Cette fiche existe de nouveau : rien à remettre.")
+        res = recreer(c, a["texte"], a["href"], a["groupes"])
+        with c.base.transaction() as cx:
+            for table, lignes in a["memoire"].items():
+                for l in lignes:
+                    cles = list(l)
+                    cx.execute(f"INSERT OR IGNORE INTO {table}({', '.join(cles)}) VALUES ({', '.join('?' * len(cles))})",
+                               tuple(l[k] for k in cles))
+        c.oublier()
+        c.base.noter("ecriture", "Suppression annulée : fiche remise dans iCloud", {"uid": a["uid"]})
+        return res
     ligne = c.base.un("SELECT etag FROM fiches WHERE uid = ?", (a["uid"],))
     if not ligne or ligne["etag"] != a["etag"]:
         raise ErreurCarnet("La fiche a changé depuis : annulation impossible sans risque.")

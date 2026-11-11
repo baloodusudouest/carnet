@@ -341,6 +341,12 @@ def valider(uid: str, corps: dict = Body(...)):
     return actions.valider(carnet(), uid, corps.get("fiche") or {}, etag_vu=str(corps["etag"]), regler_revue=True)
 
 
+@app.post("/api/contacts/{uid}/supprimer")
+def supprimer_fiche(uid: str, corps: dict = Body(...)):
+    """Suppression d'une fiche, depuis son écran de modification. « confirmation » doit valoir vrai."""
+    return actions.supprimer(carnet(), uid, corps.get("etag") or None, corps.get("confirmation"))
+
+
 @app.post("/api/annuler/{jeton}")
 def annuler(jeton: str):
     return actions.annuler(carnet(), jeton)

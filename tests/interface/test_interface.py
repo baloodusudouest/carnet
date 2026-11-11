@@ -384,3 +384,23 @@ def test_28_import_annonce_avant_d_importer(page):
     assert "1 fiche(s)" in fenetre.locator(".reconnu").inner_text()
     fenetre.get_by_role("button", name="Fermer").click()                        # on n'importe pas : rien n'a été ajouté
     page.wait_for_function("!document.querySelector('dialog[open]')")
+
+
+def test_28_supprimer_une_fiche_demande_toujours_confirmation(page):
+    base = page.url.split("#")[0]
+    page.goto(base + "#/contacts/F-18")
+    page.get_by_role("button", name="Modifier les informations").click()
+    page.get_by_role("button", name="Supprimer cette fiche…").click()
+    confirmation = page.get_by_role("alertdialog", name="Confirmer la suppression")
+    assert "Sophie" in confirmation.inner_text() and "iPhone" in confirmation.inner_text()
+    confirmation.get_by_role("button", name="Garder la fiche").click()            # on peut toujours renoncer
+    assert page.get_by_role("alertdialog").count() == 0
+    page.get_by_role("button", name="Supprimer cette fiche…").click()
+    page.get_by_role("alertdialog").get_by_role("button", name="Supprimer définitivement").click()
+    page.wait_for_selector(".message >> text=supprimée d'iCloud")
+    assert "#/contacts" in page.url and "F-18" not in page.url
+    # « Annuler » la remet (le serveur est partagé entre PC et iPhone : la fiche doit revenir)
+    page.locator(".message").get_by_role("button", name="Annuler").click()
+    page.wait_for_selector(".message >> text=Annulé")
+    page.goto(base + "#/contacts/F-18")
+    page.wait_for_selector("h1:has-text('Sophie')")

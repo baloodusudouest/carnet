@@ -36,6 +36,7 @@
   function modifier() {
     brouillon = JSON.parse(JSON.stringify(donnees.fiche))
     brouillon.anniversaire = dateSaisie(brouillon.anniversaire)
+    aSupprimer = false
     for (const k of ['mariage', 'deces']) brouillon[k] = dateSaisie(brouillon[k] || '')
     brouillon.fete = (brouillon.fete || '').startsWith('--') ? `${brouillon.fete.slice(5, 7)}/${brouillon.fete.slice(2, 4)}` : ''
     for (const k of ['service', 'prononciation_prenom', 'prononciation_nom']) brouillon[k] = brouillon[k] || ''
@@ -52,6 +53,18 @@
       brouillon = apercu = null
       await apresEcriture(res, 'Fiche écrite dans iCloud.')
       await charger()
+    } catch (err) { erreur(err) } finally { attente = false }
+  }
+  // Suppression : seulement depuis la modification, et toujours après une confirmation
+  let aSupprimer = $state(false)
+  async function supprimer() {
+    attente = true
+    try {
+      const res = await api.post(`/api/contacts/${e}/supprimer`, { etag: donnees.etag, confirmation: true })
+      brouillon = apercu = null
+      aSupprimer = false
+      aller('contacts')
+      await apresEcriture(res, `${res.nom} : fiche supprimée d'iCloud.`)
     } catch (err) { erreur(err) } finally { attente = false }
   }
   async function chercherProches() {
@@ -166,6 +179,22 @@
           <div class="boutons">
             <button class="bouton" onclick={() => (brouillon = null)}>Abandonner</button>
             <button class="bouton bouton-principal" disabled={attente} onclick={verifier}>{attente ? 'Vérification…' : 'Voir les changements'}</button>
+          </div>
+        {/if}
+      </div>
+      <div class="feuille bloc suppression">
+        {#if !aSupprimer}
+          <button class="bouton bouton-danger" disabled={attente} onclick={() => (aSupprimer = true)}>Supprimer cette fiche…</button>
+        {:else}
+          <div class="confirmer-suppression" role="alertdialog" aria-label="Confirmer la suppression">
+            <p><strong>Supprimer {donnees.nom} ?</strong></p>
+            <p class="discret">La fiche sera retirée d'iCloud, donc de l'iPhone et de tes autres appareils. Ses liaisons avec Immich et Treemich
+              sont oubliées ; rien n'est supprimé dans Immich ni dans Treemich. Tu auras 10 secondes pour annuler ; ensuite, la sauvegarde
+              du jour permet de la remettre (État, Sauvegardes).</p>
+            <span class="boutons-gauche">
+              <button class="bouton bouton-danger" disabled={attente} onclick={supprimer}>{attente ? 'Suppression…' : 'Supprimer définitivement'}</button>
+              <button class="bouton" disabled={attente} onclick={() => (aSupprimer = false)}>Garder la fiche</button>
+            </span>
           </div>
         {/if}
       </div>
@@ -357,6 +386,8 @@
   .petit-bouton { min-height: 2rem; padding: 0 0.7rem; font-size: 0.82rem; }
   .exceptee { color: var(--color-champ); text-decoration: line-through; text-decoration-color: var(--color-tranche); }
   .croix { color: var(--color-mine); font-weight: 400; }
+  .suppression { border-style: dashed; }
+  .confirmer-suppression { display: grid; gap: 0.6rem; }
   .prononciation { font-style: italic; }
   .case-deces { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.9rem; }
   .manques .pastille { min-height: 1.8rem; font-size: 0.82rem; }

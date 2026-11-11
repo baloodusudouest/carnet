@@ -21,6 +21,7 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 - iCloud est la source maître ; toute modification faite sur l'iPhone repasse par « À traiter ».
 - Aucune suppression automatique ; la nuit n'écrit que les mises à jour sûres.
+- Suppression d'une fiche : seulement à la demande de Julien, depuis la modification de la fiche, et toujours après confirmation (2.8.0). Le serveur refuse sans `confirmation` vraie.
 - Trois onglets jusqu'à la 2.7 ; cinq à partir de la 2.8.0 (Photos, Réglages).
 - Le nouvel habillage (minimalisme, tuiles bento pour État, sombre par défaut et clair selon l'appareil, shadcn-svelte, ocre conservé) **remplace** l'actuel, sans version en parallèle (décision du 11/11/2026).
 - L'habillage ne change aucune route de l'API ni le schéma de la base, ni les textes, ni la navigation ; les tests d'interface ne sont pas réécrits.
