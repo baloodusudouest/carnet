@@ -6,7 +6,11 @@
   import Changements from './Changements.svelte'
   let { point, ontraite } = $props()
   let attente = $state(false)
-  let date = $state(Object.values(point.donnees.valeurs || {}).find((v) => v) || '')
+  const FAMILLE = ['mariage', 'mariage_different', 'deces_different']
+  // Dates de famille : valeurs = [{ source, date }] ; date de naissance : valeurs = { service: date }
+  let date = $state(FAMILLE.includes(point.motif) ? (point.donnees.valeurs?.[0]?.date || '')
+    : Object.values(point.donnees.valeurs || {}).find((v) => v) || '')
+  let saisie = $state('')   // date de mariage tapée (JJ/MM/AAAA)
   const d = point.donnees
 
   const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -106,6 +110,20 @@
       <p class="discret">Raison : {d.raison}.{#if d.telephone} Numéro absent de la fiche : {d.telephone}.{/if}</p>
     {:else if point.motif === 'relations'}
       <ul class="ecarts">{#each d.ajouts as a}<li><span class="apres">{a.valeur}</span> <span class="discret">({a.type})</span></li>{/each}</ul>
+    {:else if point.motif === 'mariage'}
+      <p>{d.couple} forment un couple dans Treemich, sans date de mariage.</p>
+      <label class="saisie-date"><span class="discret">Date du mariage ou du PACS</span>
+        <input bind:value={saisie} placeholder="12/06/2010" inputmode="numeric" autocomplete="off" /></label>
+      <p class="discret">Elle sera écrite dans Treemich et sur la fiche iCloud de chaque conjoint relié.</p>
+    {:else if point.motif === 'mariage_different' || point.motif === 'deces_different'}
+      {#if d.couple}<p>{d.couple}</p>{/if}
+      <fieldset class="choix">
+        <legend class="discret">Date à garder partout</legend>
+        {#each [...new Set(d.valeurs.map((v) => v.date))] as v}
+          <label><input type="radio" name={'date-' + point.id} value={v} bind:group={date} />
+            {dateLisible(v)} <span class="discret">({d.valeurs.filter((x) => x.date === v).map((x) => x.source).join(', ')})</span></label>
+        {/each}
+      </fieldset>
     {/if}
   </div>
 
@@ -146,6 +164,12 @@
     {:else if point.motif === 'relations'}
       <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('ajouter', null, 'Liens familiaux ajoutés.')}>Ajouter à la fiche</button>
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Ignorer</button>
+    {:else if point.motif === 'mariage'}
+      <button class="bouton bouton-principal" disabled={attente || !saisie.trim()} onclick={() => faire('ecrire', saisie, 'Date de mariage écrite partout.')}>Écrire la date</button>
+      <button class="bouton" disabled={attente} onclick={() => faire('sans', null, 'Noté : la question ne sera plus posée pour ce couple.')}>Pas de mariage ni PACS</button>
+    {:else if point.motif === 'mariage_different' || point.motif === 'deces_different'}
+      <button class="bouton bouton-principal" disabled={attente || !date} onclick={() => faire('ecrire', date, 'Date écrite partout.')}>Écrire partout</button>
+      <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Ignorer</button>
     {:else}
       <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('appliquer', null, 'Écrit dans iCloud.')}>
         {point.motif === 'emoji' ? `Ajouter à ${d.groupe}` : 'Appliquer'}</button>
@@ -155,6 +179,7 @@
 </article>
 
 <style>
+  .saisie-date { display: grid; gap: 0.2rem; max-width: 16rem; }
   .point { padding: 1rem 1.1rem; display: grid; gap: 0.75rem; }
   header { display: flex; gap: 0.7rem; align-items: center; }
   .qui { display: grid; min-width: 0; }

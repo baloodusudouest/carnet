@@ -3,10 +3,9 @@
   // lettres sur le bord droit, qu'on peut parcourir du pouce. PC : liste à gauche, fiche à droite.
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  import { etat, erreur, rafraichirAccueil, rafraichirContacts, dire, choisirTri } from '../lib/etat.svelte.js'
+  import { etat, erreur, rafraichirContacts, choisirTri } from '../lib/etat.svelte.js'
   import Avatar from '../components/Avatar.svelte'
-  import BoutonAnneau from '../components/BoutonAnneau.svelte'
-  import { de, envoyer, resumeImport } from '../lib/suivi.svelte.js'
+  import Import from '../components/Import.svelte'
   import Jauge from '../components/Jauge.svelte'
   import Plateformes from '../components/Plateformes.svelte'
   import Fiche from './Fiche.svelte'
@@ -14,7 +13,9 @@
   let { selection = null } = $props()
   let recherche = $state('')
   let groupe = $state(null)
-  let manque = $state(null)   // filtre de complétude
+  let manque = $state(etat.manque)   // filtre de manque (peut venir d'« À traiter »)
+  let importOuvert = $state(false)
+  etat.manque = null
   let groupes = $state([])
   let menuGroupes = $state(false)
   let hautEntete = $state(0)
@@ -30,14 +31,15 @@
     const l = cle(c).charAt(0).toUpperCase()
     return /[A-Z]/.test(l) ? l : '#'
   }
-  // Filtres de complétude : une fiche validée ne compte plus dans les « Sans … »
-  const MANQUES = [
-    { cle: 'annee', libelle: 'Sans année' }, { cle: 'adresse', libelle: 'Sans adresse' },
-    { cle: 'telephone', libelle: 'Sans téléphone' }, { cle: 'contact', libelle: 'Sans moyen de contact' },
-    { cle: 'a_revoir', libelle: 'À revoir' }, { cle: 'valide', libelle: 'Validées' },
-  ]
+  // Filtres : une information du tableau des attentes par manque, puis les cas à part
+  const MANQUES = $derived([
+    ...Object.entries(etat.criteres || {}).map(([cle, libelle]) => ({ cle, libelle })),
+    { cle: 'sans_groupe', libelle: 'Sans groupe' }, { cle: 'sans_union', libelle: 'Sans union déclarée' },
+    { cle: 'decedes', libelle: 'Décédés' }, { cle: 'a_revoir', libelle: 'À revoir' }, { cle: 'valide', libelle: 'Validées' },
+  ])
   const correspond = (c, m) => m === 'a_revoir' ? c.statut === 'a_revoir' : m === 'valide' ? c.statut === 'valide'
-    : (c.manques || []).includes(m) && c.statut !== 'valide'
+    : m === 'sans_groupe' ? !c.groupes.length && !c.decede : m === 'sans_union' ? c.sans_union : m === 'decedes' ? c.decede
+    : (c.manques || []).includes(m)
   const nombres = $derived(Object.fromEntries(MANQUES.map((m) => [m.cle, (etat.contacts || []).filter((c) => correspond(c, m.cle)).length])))
   const filtres = $derived.by(() => {
     const q = sansAccent(recherche.trim())
@@ -71,10 +73,6 @@
     if (el?.dataset?.lettre) sauter(el.dataset.lettre)
   }
 
-  async function importer(fichier) {
-    try { dire(resumeImport(await envoyer('import', fichier))); rafraichirAccueil() } catch (err) { erreur(err) }
-  }
-
   onMount(async () => {
     try {
       if (!etat.contacts) await rafraichirContacts()
@@ -90,8 +88,7 @@
     <div class="entete" bind:clientHeight={hautEntete}>
       <div class="ligne-titre">
         <h1 class="titre">Contacts <span class="discret nombre">{filtres.length !== (etat.contacts?.length ?? 0) ? `${filtres.length} / ` : ''}{etat.contacts?.length ?? ''}</span></h1>
-        <BoutonAnneau compact icone="envoyer" libelle="Importer" enCours="Envoi…" {...de('import')}
-                      fichier=".vcf,.vcard,.csv,.zip,.json,text/vcard,text/csv,application/zip,application/json" onfichier={importer} />
+        <button class="bouton importer" onclick={() => (importOuvert = true)}>Importer</button>
       </div>
       <input class="recherche" type="search" placeholder="Nom, société, numéro…" bind:value={recherche} aria-label="Chercher un contact" />
       <div class="outils">
@@ -142,9 +139,9 @@
               {#each membres as c (c.uid)}
                 <li>
                   <a class="ligne" href={'#/contacts/' + encodeURIComponent(c.uid)} aria-current={selection === c.uid ? 'true' : undefined}>
-                    <Jauge score={c.score} statut={c.statut}><Avatar uid={c.uid} nom={c.nom} photo={c.a_photo} /></Jauge>
+                    <Jauge score={c.score} total={c.total} statut={c.statut}><Avatar uid={c.uid} nom={c.nom} photo={c.a_photo} /></Jauge>
                     <span class="texte">
-                      <span class="nom">{c.nom}{#if c.a_traiter}<span class="marque" aria-label="À traiter"></span>{/if}</span>
+                      <span class="nom">{#if c.decede}<span class="croix" title="Décédé(e)" aria-label="Décédé(e)">†</span>{' '}{/if}{c.nom}{#if c.a_traiter}<span class="marque" aria-label="À traiter"></span>{/if}</span>
                       <span class="discret detail">{[c.societe, c.telephone].filter(Boolean).join(', ')}</span>
                     </span>
                     <Plateformes liste={c.plateformes} />
@@ -174,6 +171,8 @@
     {/if}
   </section>
 
+  <Import bind:ouvert={importOuvert} />
+
   {#if etat.large}
     <section class="volet-fiche">
       {#if selection}
@@ -186,6 +185,8 @@
 </div>
 
 <style>
+  .croix { color: var(--color-mine); font-weight: 400; }
+  .importer { min-height: 2.4rem; }
   .contacts { max-width: 46rem; }
   .entete {
     position: sticky; z-index: 6; top: env(safe-area-inset-top); background: var(--color-cuir);

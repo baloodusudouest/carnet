@@ -36,6 +36,9 @@
   function modifier() {
     brouillon = JSON.parse(JSON.stringify(donnees.fiche))
     brouillon.anniversaire = dateSaisie(brouillon.anniversaire)
+    for (const k of ['mariage', 'deces']) brouillon[k] = dateSaisie(brouillon[k] || '')
+    brouillon.fete = (brouillon.fete || '').startsWith('--') ? `${brouillon.fete.slice(5, 7)}/${brouillon.fete.slice(2, 4)}` : ''
+    for (const k of ['service', 'prononciation_prenom', 'prononciation_nom']) brouillon[k] = brouillon[k] || ''
     apercu = null
   }
   async function verifier() {
@@ -94,6 +97,23 @@
   const f = $derived(donnees?.fiche)
   const comp = $derived(donnees?.completude || {})
   const liees = $derived(comp.plateformes || [])
+  const decede = $derived(!!donnees?.deces?.decede)
+  const prononciation = $derived([f?.prononciation_prenom, f?.prononciation_nom].filter(Boolean).join(' '))
+  const ORIGINE_FETE = { calendrier: 'd\'après le calendrier, pas encore écrite dans iCloud', main: 'saisie à la main', carte: '' }
+  async function excepter(info, oui) {
+    try {
+      await api.post(`/api/contacts/${e}/exception`, { info, oui })
+      dire(oui ? 'Noté : ce manque ne sera plus signalé pour ce contact.' : 'Ce manque est de nouveau signalé.')
+      await Promise.all([charger(), rafraichirContacts()])
+    } catch (err) { erreur(err) }
+  }
+  async function marquerDecede(oui) {
+    try {
+      await api.post(`/api/contacts/${e}/decede`, { oui })
+      dire(oui ? 'Noté. Cette personne ne sera plus annoncée par Home Assistant.' : 'Marque retirée.')
+      await Promise.all([charger(), rafraichirContacts()])
+    } catch (err) { erreur(err) }
+  }
   onMount(charger)
 </script>
 
@@ -105,8 +125,9 @@
     <header class="entete">
       <Avatar {uid} nom={donnees.nom} photo={f.a_photo} taille={84} />
       <div>
-        <h1 class="titre">{donnees.nom}</h1>
-        {#if f.societe || f.fonction}<p class="discret">{[f.fonction, f.societe].filter(Boolean).join(', ')}</p>{/if}
+        <h1 class="titre">{#if decede}<span class="croix" title="Décédé(e)" aria-label="Décédé(e)">†</span>{' '}{/if}{donnees.nom}</h1>
+        {#if prononciation}<p class="discret prononciation">{prononciation}</p>{/if}
+        {#if f.societe || f.fonction || f.service}<p class="discret">{[f.fonction, f.service, f.societe].filter(Boolean).join(', ')}</p>{/if}
         {#if f.groupes.length}<p class="groupes">{#each f.groupes as g}<span class="pastille">{g}</span>{/each}</p>{/if}
       </div>
       {#if !brouillon}
@@ -156,6 +177,9 @@
         </div>
         <dl>
           {#if f.anniversaire}<dt>Anniversaire</dt><dd>{dateLecture(f.anniversaire)}</dd>{/if}
+          {#if donnees.fete?.date && !decede}<dt>Fête</dt><dd>{dateLecture(donnees.fete.date)}{#if ORIGINE_FETE[donnees.fete.origine]}{' '}<span class="discret">({ORIGINE_FETE[donnees.fete.origine]})</span>{/if}</dd>{/if}
+          {#if f.mariage}<dt>Mariage</dt><dd>{dateLecture(f.mariage)}</dd>{/if}
+          {#if decede}<dt>Décès</dt><dd>{donnees.deces.date ? dateLecture(donnees.deces.date) : 'date inconnue'}</dd>{/if}
           {#if f.surnom}<dt>Surnom</dt><dd>{f.surnom}</dd>{/if}
           {#each f.adresses as a}<dt>Adresse {a.type}</dt><dd>{[a.rue, `${a.cp} ${a.ville}`.trim(), a.pays].filter(Boolean).join(', ')}</dd>{/each}
           {#each f.noms_associes as n}<dt>{n.type}</dt><dd>{n.valeur}</dd>{/each}
@@ -170,10 +194,30 @@
           {#if comp.statut === 'valide'}<span class="etat valide">Fiche validée</span>
           {:else if comp.statut === 'a_revoir'}<span class="etat revoir">Modifiée depuis la validation</span>{/if}
         </div>
-        {#if comp.manques?.length}
-          <ul class="manques">{#each comp.manques as m}<li class="pastille">{donnees.criteres[m]}</li>{/each}</ul>
+        {#if decede}
+          <p class="discret">Personne décédée : rien n'est attendu, rien n'est annoncé.</p>
+        {:else if !comp.total}
+          <p class="discret">{f.groupes.length ? "Les groupes de ce contact n'attendent aucune information." : "Ce contact n'est dans aucun groupe : rien n'est attendu de sa fiche."}</p>
         {:else}
-          <p class="discret">Rien ne manque : année, adresse, téléphone et moyen de contact sont là.</p>
+          <p class="discret">{comp.score} sur {comp.total} informations attendues par {f.groupes.length > 1 ? 'ses groupes' : 'son groupe'}.</p>
+          {#if comp.manques?.length}
+            <ul class="manques">
+              {#each comp.manques as m}
+                <li><span class="pastille">{donnees.criteres[m]}</span>
+                  <button class="bouton petit-bouton" onclick={() => excepter(m, true)}>Normal pour ce contact</button></li>
+              {/each}
+            </ul>
+          {:else}
+            <p class="discret">Rien ne manque.</p>
+          {/if}
+          {#if comp.exceptees?.length}
+            <ul class="manques exceptees">
+              {#each comp.exceptees as m}
+                <li><span class="pastille exceptee">{donnees.criteres[m]}</span>
+                  <button class="bouton petit-bouton" onclick={() => excepter(m, false)}>Signaler de nouveau</button></li>
+              {/each}
+            </ul>
+          {/if}
         {/if}
         <div class="boutons-gauche">
           {#if comp.statut === 'valide'}
@@ -188,6 +232,10 @@
         </div>
         {#if comp.statut !== 'valide' && comp.manques?.length}
           <p class="discret petit">Valider dit que la fiche est complète telle quelle : elle sort des filtres « Sans … ».</p>
+        {/if}
+        {#if !f.deces}
+          <label class="case-deces"><input type="checkbox" checked={donnees.deces?.coche} onchange={(ev) => marquerDecede(ev.currentTarget.checked)} />
+            <span>Personne décédée, date inconnue <span class="discret">(si tu connais la date, saisis-la dans la fiche)</span></span></label>
         {/if}
       </div>
 
@@ -260,7 +308,7 @@
       <div class="feuille bloc">
         <h2 class="titre">Photo et affiche</h2>
         <PhotosFiche {uid} nom={donnees.nom} lieImmich={!!donnees.liaisons.immich} portraits={donnees.portraits}
-                     affiche={donnees.affiche} societe={f.societe} onchange={charger} />
+                     affiche={donnees.affiche} societe={f.societe} google={donnees.google_logo} onchange={charger} />
       </div>
 
       <div class="feuille bloc">
@@ -304,7 +352,13 @@
   .etat { font-size: 0.85rem; font-weight: 600; }
   .etat.valide { color: var(--color-valide); }
   .etat.revoir { color: var(--color-alerte); }
-  .manques { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+  .manques { display: grid; gap: 0.35rem; }
+  .manques li { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; }
+  .petit-bouton { min-height: 2rem; padding: 0 0.7rem; font-size: 0.82rem; }
+  .exceptee { color: var(--color-champ); text-decoration: line-through; text-decoration-color: var(--color-tranche); }
+  .croix { color: var(--color-mine); font-weight: 400; }
+  .prononciation { font-style: italic; }
+  .case-deces { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.9rem; }
   .manques .pastille { min-height: 1.8rem; font-size: 0.82rem; }
   .boutons-gauche { display: flex; flex-wrap: wrap; gap: 0.5rem; }
   .petit { font-size: 0.82rem; }

@@ -1,17 +1,23 @@
 <script>
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  import { etat, erreur, dire, rafraichirAccueil } from '../lib/etat.svelte.js'
+  import { aller, etat, erreur, dire, rafraichirAccueil } from '../lib/etat.svelte.js'
   import Point from '../components/Point.svelte'
 
   let points = $state(null)
   let filtre = $state(null)
   let choisi = $state(null)   // PC : point affiché à droite
+  // Manques (2.8) : des informations attendues et absentes. Ce ne sont pas des décisions : ils ne
+  // comptent pas dans le compteur de l'onglet, et chaque ligne mène à la liste des fiches.
+  let manques = $state(null)
+  let voirManques = $state(false)
+  function ouvrirManque(cle) { etat.manque = cle; aller('contacts') }
 
   const familles = [
     { nom: 'iPhone', motifs: ['iphone_modifiee', 'iphone_nouvelle', 'iphone_supprimee', 'conflit'] },
     { nom: 'Doublons', motifs: ['doublon'] },
     { nom: 'Liaisons', motifs: ['liaison', 'date', 'nom', 'relations'] },
+    { nom: 'Famille', motifs: ['mariage', 'mariage_different', 'deces_different'] },
     { nom: 'Mise en forme', motifs: ['forme', 'emoji'] },
     { nom: 'Réseaux', motifs: ['reseau'] },
     { nom: 'Imports', motifs: ['import', 'linkedin'] },
@@ -57,6 +63,7 @@
 
   async function charger() {
     try { points = await api.get('/api/a-traiter') } catch (e) { erreur(e) }
+    try { manques = await api.get('/api/manques') } catch { manques = null }
   }
   const affiche = $derived(visibles.find((p) => p.id === choisi) || visibles[0])
   function traite(p) {
@@ -76,22 +83,39 @@
 
   {#if points === null}
     <p class="discret">Chargement…</p>
-  {:else if !points.length}
-    <div class="vide">
-      <p class="titre">Rien à traiter.</p>
-      <p class="discret">Les fiches modifiées sur l'iPhone, les doublons et les liaisons à confirmer arriveront ici.</p>
-    </div>
   {:else}
-    {#if presentes.length > 1}
+    {#if presentes.length > 1 || manques?.lignes.length}
       <div class="filtres" role="group" aria-label="Filtrer">
-        <button class="pastille" aria-pressed={!filtre} onclick={() => (filtre = null)}>Tout ({points.length})</button>
-        {#each presentes as f}
-          <button class="pastille" aria-pressed={filtre === f} onclick={() => { filtre = f; aConfirmer = null }}>
+        <button class="pastille" aria-pressed={!filtre && !voirManques} onclick={() => { filtre = null; voirManques = false }}>Tout ({points.length})</button>
+        {#each presentes.length > 1 ? presentes : [] as f}
+          <button class="pastille" aria-pressed={filtre === f && !voirManques} onclick={() => { filtre = f; voirManques = false; aConfirmer = null }}>
             {f.nom} ({points.filter((p) => f.motifs.includes(p.motif)).length})
           </button>
         {/each}
+        {#if manques?.lignes.length}
+          <button class="pastille" aria-pressed={voirManques} onclick={() => { voirManques = true; filtre = null }}>
+            Manques <span class="discret">{manques.total.incompletes} fiche(s)</span></button>
+        {/if}
       </div>
     {/if}
+    {#if voirManques}
+      <div class="manques feuille">
+        <p class="discret">Ce que les groupes attendent et qui n'est pas sur la fiche. Rien à décider ici : chaque ligne ouvre la liste des fiches. Les attentes se règlent dans <a href="#/reglages">Réglages</a>.</p>
+        <ul>
+          {#each manques.lignes as l (l.cle)}
+            <li>
+              <button class="ligne-manque" onclick={() => ouvrirManque(l.cle)}><span>{l.libelle}</span><span class="nombre">{l.nombre}</span></button>
+              {#if l.cle === 'photo'}<a class="bouton" href="#/photos">Traiter dans Photos</a>{/if}
+            </li>
+          {/each}
+        </ul>
+      </div>
+    {:else if !points.length}
+      <div class="vide">
+        <p class="titre">Rien à traiter.</p>
+        <p class="discret">Les fiches modifiées sur l'iPhone, les doublons et les liaisons à confirmer arriveront ici.</p>
+      </div>
+    {:else}
     {#if filtre && LOTS[filtre.nom] && visibles.length > 1}
       <div class="lot">
         {#if aConfirmer}
@@ -126,9 +150,17 @@
       </div>
     {/if}
   {/if}
+  {/if}
 </section>
 
 <style>
+  .manques { padding: 1rem; display: grid; gap: 0.75rem; max-width: 40rem; }
+  .manques ul { display: grid; }
+  .manques li { display: flex; align-items: center; gap: 0.6rem; border-top: 1px solid var(--color-couture); }
+  .ligne-manque { flex: 1; display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 3rem; text-align: left; }
+  .ligne-manque:hover span:first-child { text-decoration: underline; text-underline-offset: 3px; }
+  .ligne-manque .nombre { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .manques a:not(.bouton) { text-decoration: underline; text-underline-offset: 3px; }
   .page { max-width: 46rem; }
   .page:has(.deux-volets) { max-width: none; }
   .deux-volets { display: grid; grid-template-columns: minmax(18rem, 24rem) minmax(0, 46rem); gap: 1.5rem; align-items: start; }

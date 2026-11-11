@@ -2,12 +2,14 @@
   // Photo, affiche et logo d'une fiche
   import { api } from '../lib/api.js'
   import { apresEcriture, dire, erreur } from '../lib/etat.svelte.js'
-  let { uid, nom, lieImmich, portraits = null, affiche = null, societe = '', onchange } = $props()
+  import DepotLogo from './DepotLogo.svelte'
+  let { uid, nom, lieImmich, portraits = null, affiche = null, societe = '', google = '', onchange } = $props()
 
   let candidats = $state(portraits?.candidats ?? null)
   let attente = $state('')
   let logos = $state(null)
   let fichierAffiche = $state(null)
+  let version = $state(0)   // change à chaque logo déposé : l'aperçu est rechargé
   const e = encodeURIComponent(uid)
 
   async function chercher(rafraichir = false) {
@@ -51,6 +53,7 @@
     attente = 'logos'
     try { logos = await api.get(`/api/contacts/${e}/logos`) } catch (err) { erreur(err) } finally { attente = '' }
   }
+  function logoDepose(r) { version += 1; logos = [{ n: r.n, depose: true, petit: r.petit }] }
   async function choisirLogo(n, sorte) {
     attente = 'logo' + n
     try {
@@ -115,7 +118,7 @@
         <div class="grille">
           {#each logos as l (l.n)}
             <figure>
-              <img class="logo" src={`/api/contacts/${e}/logos/${l.n}`} alt="" />
+              <img class="logo" src={`/api/contacts/${e}/logos/${l.n}?v=${version}`} alt="" />
               <figcaption class="actions">
                 <button class="bouton" disabled={!!attente} onclick={() => choisirLogo(l.n, 'photo')}>Photo</button>
                 <button class="bouton" disabled={!!attente} onclick={() => choisirLogo(l.n, 'affiche')}>Affiche</button>
@@ -126,6 +129,8 @@
       {:else if logos}
         <p class="discret">Aucun logo trouvé sur le site de la société.</p>
       {/if}
+      {#if logos?.[0]?.petit}<p class="discret">Image petite : le logo risque d'être flou sur l'iPhone.</p>{/if}
+      <DepotLogo {uid} {google} onpret={logoDepose} />
     </div>
   {/if}
 </div>
