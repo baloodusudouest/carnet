@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.8.1 — 11 novembre 2026
+- **Logo par société** : dans Photos, la file Logos montre une ligne par société, avec le nombre de fiches sans photo. Le logo choisi (glissé, collé, ou trouvé sur le site) est posé sur **toutes les fiches sans photo de la société**, par lots de 20, et gardé : une fiche de la même société créée plus tard le retrouve, prêt à poser sans nouveau dépôt.
+- **Une photo n'est jamais remplacée par un logo** : une fiche qui a déjà une photo, ou qui est reliée à Immich (elle aura un portrait), n'entre pas dans la file.
+- Un logo posé depuis une fiche devient lui aussi celui de sa société.
+- Base : table `logos_societes` ajoutée (la 2.7 rouvre toujours la base). Tests : 99 du back, 24 d'interface.
+
 ## 2.8.0 — 11 novembre 2026
 Parcours et complétude. Dossier : `docs/2.8-dossier.md` ; conseil : `docs/2.8-conseil.md` ; essai : `docs/essai-2.8.md`. La base passe au schéma 3 (ajouts seulement : la 2.7 la rouvre).
 - **Attentes par groupe** : un tableau (onglet Réglages) dit quelles informations chaque groupe doit avoir. Prérempli au premier démarrage ; un groupe hors du tableau de départ reçoit les attentes d'Amis, « Moi » aucune. Les attentes de plusieurs groupes s'additionnent. Chaque case annonce son effet avant d'être enregistrée.

@@ -10,7 +10,7 @@
 
   const FILES = [
     { cle: 'logos', nom: 'Logos', vide: 'Aucune fiche de société sans photo.',
-      aide: 'Fiches de société sans photo. Glisse ou colle un logo sur une fiche, ou lance la recherche sur le site de la société pour celles qui en ont un.' },
+      aide: 'Une ligne par société. Glisse ou colle son logo, ou lance la recherche sur son site quand elle en a un : il est posé sur toutes ses fiches sans photo, et gardé pour les suivantes. Une fiche qui a déjà une photo la garde.' },
     { cle: 'portraits', nom: 'Portraits', vide: 'Aucun contact relié à Immich sans photo.',
       aide: 'Contacts reliés à Immich, sans photo. Le portrait est découpé dans la meilleure photo de la personne.' },
     { cle: 'a_preparer', nom: 'Affiches à préparer', vide: 'Aucune affiche à préparer.',
@@ -28,11 +28,27 @@
   let version = $state(0)
 
   const courante = $derived(FILES.find((f) => f.cle === file))
-  const lignes = $derived((donnees?.files[file] || []).filter((x) => !groupe || x.groupes.includes(groupe)))
+  const filtrees = $derived((donnees?.files[file] || []).filter((x) => !groupe || x.groupes.includes(groupe)))
+  // Logos : une ligne par société. Le logo choisi est posé sur toutes ses fiches sans photo ;
+  // une fiche qui a déjà une photo n'est pas dans la file et n'est jamais touchée.
+  const lignes = $derived.by(() => {
+    if (file !== 'logos') return filtrees
+    const par = new Map()
+    for (const x of filtrees) {
+      const g = par.get(x.cle) || par.set(x.cle, []).get(x.cle)
+      g.push(x)
+    }
+    return [...par.values()].map((g) => {
+      const rep = g.find((x) => x.domaine) || g[0]
+      return { ...rep, nom: rep.societe, nb: g.length, noms: g.map((x) => x.nom).filter((n) => n !== rep.societe),
+               groupes: [...new Set(g.flatMap((x) => x.groupes))], cherche: g.some((x) => x.cherche), trouves: Math.max(...g.map((x) => x.trouves)) }
+    }).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
+  })
   const groupes = $derived([...new Set((donnees?.files[file] || []).flatMap((x) => x.groupes))].sort((a, b) => a.localeCompare(b, 'fr')))
   const lot = $derived(donnees?.lot_max || 20)
   const cochees = $derived(lignes.filter((x) => coches.has(x.uid)).map((x) => x.uid))
-  const logosChoisis = $derived(lignes.filter((x) => choix[x.uid] !== undefined).map((x) => ({ uid: x.uid, n: choix[x.uid] })))
+  // Prêtes à poser : un logo trouvé ou déposé à l'instant, ou le logo déjà gardé pour la société
+  const logosChoisis = $derived(lignes.filter((x) => choix[x.uid] !== undefined || x.connu).map((x) => ({ uid: x.uid, n: choix[x.uid] ?? 0 })))
 
   async function charger() {
     try { donnees = await api.get('/api/photos') } catch (e) { erreur(e) }
@@ -108,8 +124,8 @@
       <div class="outils">
         {#if groupes.length > 1}
           <select bind:value={groupe} aria-label="Groupe" onchange={() => (coches = new Set())}>
-            <option value="">Tous les groupes ({donnees.files[file].length})</option>
-            {#each groupes as g}<option value={g}>{g} ({donnees.files[file].filter((x) => x.groupes.includes(g)).length})</option>{/each}
+            <option value="">Tous les groupes</option>
+            {#each groupes as g}<option value={g}>{g} ({donnees.files[file].filter((x) => x.groupes.includes(g)).length} fiches)</option>{/each}
           </select>
         {/if}
         {#if file !== 'logos' || lignes.some((x) => x.domaine)}
@@ -125,7 +141,7 @@
               {attente ? 'Recherche…' : `Chercher les logos (${cochees.length})`}</button>
           {/if}
           <button class="bouton bouton-principal" disabled={attente || !logosChoisis.length}
-                  onclick={() => enFond('/api/photos/logos/poser', { choix: logosChoisis })}>Poser les logos ({logosChoisis.length})</button>
+                  onclick={() => enFond('/api/photos/logos/poser', { choix: logosChoisis })}>Poser les logos ({logosChoisis.length} société{logosChoisis.length > 1 ? 's' : ''})</button>
         {:else if file === 'portraits'}
           <button class="bouton bouton-principal" disabled={attente || !cochees.length}
                   onclick={() => enFond('/api/photos/portraits', { uids: cochees })}>Poser les portraits ({cochees.length})</button>
@@ -146,6 +162,8 @@
               {:else}<span class="sans-case" aria-hidden="true"></span>{/if}
               {#if file === 'logos' && trouves[x.uid]?.length}
                 <img class="apercu-logo" src={`/api/contacts/${encodeURIComponent(x.uid)}/logos/${choix[x.uid] ?? trouves[x.uid][0].n}?v=${version}`} alt="Logo proposé" />
+              {:else if file === 'logos' && x.connu}
+                <img class="apercu-logo" src={`/api/photos/logos/connu/${encodeURIComponent(x.uid)}`} alt="Logo de la société" />
               {:else if file === 'a_poser'}
                 <img class="apercu-affiche" src={`/api/contacts/${encodeURIComponent(x.uid)}/affiche`} alt="" loading="lazy" />
               {:else}
@@ -153,10 +171,15 @@
               {/if}
               <span class="texte">
                 <a class="nom" href={'#/contacts/' + encodeURIComponent(x.uid)}>{x.nom}</a>
-                <span class="discret detail">{[x.societe !== x.nom ? x.societe : '', x.groupes.join(', ')].filter(Boolean).join(' · ')}</span>
+                {#if file === 'logos'}
+                  <span class="discret detail">{x.nb} fiche(s) sans photo{x.noms.length ? ' : ' + x.noms.slice(0, 4).join(', ') + (x.noms.length > 4 ? '…' : '') : ''}</span>
+                {:else}
+                  <span class="discret detail">{[x.societe !== x.nom ? x.societe : '', x.groupes.join(', ')].filter(Boolean).join(' · ')}</span>
+                {/if}
                 {#if file === 'logos'}
                   {#if trouves[x.uid]?.length}
                     <span class="etat-logo pret">{trouves[x.uid][0].depose ? 'Logo déposé' : `${trouves[x.uid].length} logo(s) trouvé(s)`} : prêt à poser</span>
+                  {:else if x.connu}<span class="etat-logo pret">Logo de la société déjà choisi : prêt à poser</span>
                   {:else if x.cherche && !x.trouves}<span class="discret etat-logo">Rien trouvé sur le site</span>
                   {:else if !x.domaine}<span class="discret etat-logo">Ni site ni courriel professionnel : à déposer</span>{/if}
                 {/if}

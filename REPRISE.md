@@ -4,7 +4,7 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **2.8.0 sur `main`**, pas encore en service chez Julien (il a la 2.7.0). Elle contient tout le dossier [`docs/2.8-dossier.md`](docs/2.8-dossier.md) sauf trois écarts notés dans le journal des versions : Réseaux resté dans État, journal des écritures automatiques dans Réglages, pas de shadcn-svelte.
+- **2.8.1 sur `main`** (2.8.0 plus le logo par société), pas encore en service chez Julien (il a la 2.7.0). La 2.8.0 contient tout le dossier [`docs/2.8-dossier.md`](docs/2.8-dossier.md) sauf trois écarts notés dans le journal des versions : Réseaux resté dans État, journal des écritures automatiques dans Réglages, pas de shadcn-svelte.
 - Les deux interrupteurs (fêtes, dates de famille) sont **éteints** : rien n'a encore été écrit tout seul.
 - Conseil : [`docs/2.8-conseil.md`](docs/2.8-conseil.md). Essai sur le vrai iCloud : [`docs/essai-2.8.md`](docs/essai-2.8.md).
 - Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md) (à remettre à jour pour la 2.8 à la prochaine réouverture).
@@ -35,6 +35,7 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 ## Pièges
 
 - 2.8 : toute écriture automatique nouvelle passe par `famille.appliquer` (interrupteur, plafond de nuit, table `automatiques`). Une réponse de Julien dans « À traiter » écrit tout de suite et n'est pas journalisée comme automatique.
+- Le logo se choisit par société (`logos_societes`) et ne remplace jamais une photo : `galerie.fiches_de_la_societe` ne rend que des fiches sans photo et non reliées à Immich.
 - Les logos en attente d'un choix sont dans `c.logos`, pas dans le cache `c._memo` (vidé à chaque écriture).
 - Le tableau des attentes n'est inscrit qu'une fois (`attentes_semees`) : un groupe créé plus tard n'attend rien tant que Julien ne coche pas.
 - Dates supplémentaires d'une carte : l'iPhone réécrit (ordre, `type=pref`, paramètre de la date sans année retiré). Comparer des valeurs ; l'an 1604 veut dire « sans année ». Le libellé natif d'Apple pour les dates s'affiche « fête » en français : ne pas l'utiliser pour le mariage.

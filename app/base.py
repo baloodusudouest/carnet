@@ -166,6 +166,13 @@ CREATE TABLE IF NOT EXISTS logos_cherches (
     le       TEXT NOT NULL,
     trouves  INTEGER NOT NULL DEFAULT 0
 );
+-- Logo retenu pour une société : posé sur toutes ses fiches sans photo, reproposé aux suivantes
+CREATE TABLE IF NOT EXISTS logos_societes (
+    cle     TEXT PRIMARY KEY,    -- nom de la société, sans accents ni casse
+    nom     TEXT NOT NULL,
+    image   BLOB NOT NULL,
+    le      TEXT NOT NULL
+);
 -- Écritures faites par carnet tout seul (fête, mariage, décès), avec la valeur d'avant
 CREATE TABLE IF NOT EXISTS automatiques (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,

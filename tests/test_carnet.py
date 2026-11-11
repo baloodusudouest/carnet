@@ -1849,3 +1849,40 @@ def test_28_supprimer_une_fiche_toujours_confirmee(c, services):
     with pytest.raises(LectureSeule):
         actions.supprimer(c, "DDDD-4444", actions._etag(c, "DDDD-4444"), True)
     assert ic.texte("DDDD-4444")
+
+
+def test_281_logo_par_societe_sans_toucher_aux_photos(c, services, tmp_path):
+    """Un logo choisi une fois est posé sur toutes les fiches sans photo de la société, gardé pour
+    les suivantes ; une fiche qui a déjà une photo la garde."""
+    from app import galerie
+    ic = services["icloud"]
+    photo = re.search(r"PHOTO;[^\r\n]*(?:\r?\n [^\r\n]*)*", ic.texte("AAAA-1111")).group(0)
+    for uid, nom, extra in (("S-1", "Alice Durand", ""), ("S-2", "Bob Petit", ""), ("S-3", "Chloé Roy", photo + "\r\n")):
+        ic.cartes[f"{CARNET}{uid}.vcf"] = [ic._etag(), carte_simple(uid, nom, "ORG:Plomberie Garonne;\r\n" + extra)]
+    with c.ecriture():
+        icloud.relire(c)
+    actions.repondre  # (les fiches nouvelles restent à traiter : sans effet ici)
+    assert c.fiches()["S-3"]["a_photo"] and not c.fiches()["S-1"]["a_photo"]
+    logos_ = galerie.files(c)["files"]["logos"]
+    assert {x["uid"] for x in logos_} == {"CCCC-3333", "S-1", "S-2"} and len({x["cle"] for x in logos_}) == 1
+    assert not any(x["connu"] for x in logos_)
+    avant_s3 = ic.texte("S-3")
+    galerie.deposer_logo(c, "S-1", contenu=_png())
+    bilan = galerie.poser_logos(c, [{"uid": "S-1", "n": 0}])
+    assert bilan["faits"] == 3 and all(c.fiches()[u]["a_photo"] for u in ("CCCC-3333", "S-1", "S-2"))
+    assert ic.texte("S-3") == avant_s3                                         # la photo existante n'a pas bougé
+    assert galerie.files(c)["files"]["logos"] == []
+    # Une fiche de la même société arrive plus tard : le logo est connu, il se pose sans nouveau dépôt
+    ic.cartes[f"{CARNET}S-4.vcf"] = [ic._etag(), carte_simple("S-4", "Dan Blanc", "ORG:plomberie garonne;\r\n")]
+    with c.ecriture():
+        icloud.relire(c)
+    suite = galerie.files(c)["files"]["logos"]
+    assert [(x["uid"], x["connu"]) for x in suite] == [("S-4", True)]
+    assert galerie.logo_connu(c, suite[0]["cle"])
+    assert galerie.poser_logos(c, [{"uid": "S-4", "n": 0}])["faits"] == 1 and c.fiches()["S-4"]["a_photo"]
+    # Sans logo déposé ni gardé : refus dit, rien d'écrit
+    ic.cartes[f"{CARNET}S-5.vcf"] = [ic._etag(), carte_simple("S-5", "Eve Noir", "ORG:Autre SARL;\r\n")]
+    with c.ecriture():
+        icloud.relire(c)
+    r = galerie.poser_logos(c, [{"uid": "S-5", "n": 0}])
+    assert r["faits"] == 0 and r["erreurs"] and not c.fiches()["S-5"]["a_photo"]

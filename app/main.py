@@ -493,6 +493,21 @@ def photos_posees(corps: dict = Body(...)):
     return galerie.marquer_posees(carnet(), _uids(corps))
 
 
+@app.get("/api/photos/logos/connu/{uid}")
+def photos_logo_connu(uid: str):
+    """Logo déjà gardé pour la société de cette fiche (aperçu)."""
+    c = carnet()
+    contenu = galerie.logo_connu(c, galerie.cle_societe(c.fiche(uid)))
+    if not contenu:
+        raise HTTPException(404, "Pas de logo gardé pour cette société.")
+    from PIL import Image
+    import io
+    img = Image.open(io.BytesIO(contenu))
+    sortie = io.BytesIO()
+    img.convert("RGBA").save(sortie, "PNG")
+    return Response(sortie.getvalue(), media_type="image/png")
+
+
 @app.post("/api/photos/logos/chercher")
 def photos_logos_chercher(corps: dict = Body(...)):
     return galerie.chercher_logos(carnet(), _uids(corps))

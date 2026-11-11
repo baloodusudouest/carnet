@@ -365,7 +365,7 @@ def test_28_photos_logo_depose_puis_pose(page):
     fiche.locator("input[type=file]").set_input_files({"name": "logo.png", "mimeType": "image/png", "buffer": image.getvalue()})
     fiche.locator("text=prêt à poser").wait_for()
     assert fiche.locator("img.apercu-logo").count() == 1
-    page.get_by_role("button", name=re.compile(r"Poser les logos \(1\)")).click()
+    page.get_by_role("button", name=re.compile(r"Poser les logos \(1 société\)")).click()
     page.wait_for_function("!document.body.innerText.includes('Plomberie Garonne')", timeout=20000)
 
 

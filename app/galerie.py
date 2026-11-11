@@ -2,7 +2,10 @@
 
 Files :
 - portraits  : fiches reliées à Immich, sans photo ;
-- logos      : fiches sans photo qui portent une société et ne sont pas reliées à Immich ;
+- logos      : fiches sans photo qui portent une société et ne sont pas reliées à Immich. Le logo
+               se choisit **par société** : il est posé sur toutes ses fiches sans photo, et gardé
+               pour les fiches à venir. Une fiche qui a déjà une photo la garde : le logo ne
+               remplace jamais une photo ;
 - a_preparer : fiches avec une photo venue d'Immich, sans affiche iPhone ;
 - a_poser    : affiches prêtes dans l'album Immich, pas encore posées sur l'iPhone.
 
@@ -25,7 +28,7 @@ from PIL import Image
 from . import logos, photos
 from .carnet import Carnet, ErreurCarnet
 from .modele import nom_affiche
-from .normalisation import domaine_pro
+from .normalisation import cle_texte, domaine_pro
 from .temps import iso, maintenant
 
 LOT_MAX = 20                # fiches traitées au plus par envoi (le reste attend le lot suivant)
@@ -42,6 +45,7 @@ def files(c: Carnet) -> dict:
     from . import attentes
     morts = attentes.decedes(c)
     cherches = {l["uid"]: dict(l) for l in c.base.tous("SELECT * FROM logos_cherches")}
+    connus = {l["cle"] for l in c.base.tous("SELECT cle FROM logos_societes")}
     portraits_connus = {l["uid"] for l in c.base.tous("SELECT uid FROM portraits WHERE candidats != '[]'")}
     affiches = {l["uid"]: l["posee"] for l in c.base.tous("SELECT uid, posee FROM affiches")}
     res = {"portraits": [], "logos": [], "a_preparer": [], "a_poser": []}
@@ -56,6 +60,7 @@ def files(c: Carnet) -> dict:
                 recherche = cherches.get(uid)
                 res["logos"].append(_ligne(uid, f, domaine=bool(logos.domaine_de(f, domaine_pro)),
                                            cherche=bool(recherche), trouves=recherche["trouves"] if recherche else 0,
+                                           cle=cle_societe(f), connu=cle_societe(f) in connus,
                                            google=recherche_google(f)))
         elif immich and uid not in affiches:
             res["a_preparer"].append(_ligne(uid, f))
@@ -122,10 +127,64 @@ def chercher_logos(c: Carnet, uids: list[str]) -> dict:
     return {"resultats": res, "restants": max(0, len(uids) - LOT_MAX)}
 
 
+def cle_societe(f: dict) -> str:
+    return cle_texte(f.get("societe") or "")
+
+
+def logo_connu(c: Carnet, cle: str) -> bytes | None:
+    l = c.base.un("SELECT image FROM logos_societes WHERE cle = ?", (cle,))
+    return bytes(l["image"]) if l else None
+
+
+def retenir_logo(c: Carnet, f: dict, contenu: bytes) -> None:
+    """Le logo choisi pour une fiche devient celui de sa société."""
+    cle = cle_societe(f)
+    if cle:
+        c.base.executer("INSERT INTO logos_societes(cle, nom, image, le) VALUES (?,?,?,?) ON CONFLICT(cle) DO UPDATE SET "
+                        "nom = excluded.nom, image = excluded.image, le = excluded.le",
+                        (cle, f.get("societe") or "", contenu, iso(maintenant())))
+
+
+def fiches_de_la_societe(c: Carnet, cle: str) -> list[str]:
+    """Fiches de cette société qui attendent un logo : sans photo, et pas reliées à Immich (celles-là
+    auront un portrait). Une fiche qui a une photo n'est jamais dans la liste."""
+    liens, res = c.liaisons(), []
+    for uid, f in c.fiches().items():
+        if cle and cle_societe(f) == cle and not f.get("a_photo") and not liens.get(uid, {}).get("immich"):
+            res.append(uid)
+    return sorted(res)
+
+
 def poser_logos(c: Carnet, choix: list[dict]) -> dict:
+    """Pose par société : chaque choix {uid, n} désigne le logo retenu sur une fiche ; il est posé
+    sur toutes les fiches sans photo de la même société. Sans logo en attente pour cette fiche,
+    c'est le logo déjà gardé pour la société qui sert."""
     c.exiger_ecriture("iCloud")
-    par_uid = {str(x.get("uid")): int(x.get("n", 0)) for x in choix}
-    return _par_lot(c, list(par_uid), lambda uid: photos.choisir_logo(c, uid, par_uid[uid], "photo"))
+    a_poser: dict[str, bytes] = {}
+    refus: list[str] = []
+    for x in choix:
+        uid = str(x.get("uid"))
+        f = c.fiches().get(uid)
+        if not f:
+            continue
+        cle = cle_societe(f)
+        try:
+            contenu = photos._logo(c, uid, int(x.get("n", 0)))
+        except ErreurCarnet:
+            contenu = logo_connu(c, cle)
+        if not contenu:
+            refus.append(f"{nom_affiche(f)} : dépose d'abord un logo.")
+            continue
+        retenir_logo(c, f, contenu)
+        for cible in (fiches_de_la_societe(c, cle) or [uid]):
+            a_poser.setdefault(cible, contenu)
+
+    def un(uid):
+        photos.garder_logos(c, uid, [{"url": "société", "octets": a_poser[uid], "largeur": 0, "hauteur": 0}])
+        photos.choisir_logo(c, uid, 0, "photo")
+    bilan = _par_lot(c, list(a_poser), un)
+    bilan["erreurs"] = (refus + bilan["erreurs"])[:10]
+    return bilan
 
 
 # ----------------------------------------------------------------- logo déposé

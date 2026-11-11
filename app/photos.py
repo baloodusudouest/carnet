@@ -259,4 +259,7 @@ def choisir_logo(c: Carnet, uid: str, n: int, sorte: str) -> dict:
     if sorte == "affiche":
         return preparer_affiche(c, uid, logo=contenu)
     photo = images.alleger((logos.photo(contenu), "image/jpeg"))
-    return actions.valider(c, uid, c.fiche(uid), photo=photo, motif="logo en photo", etag_vu=actions._etag(c, uid))
+    res = actions.valider(c, uid, c.fiche(uid), photo=photo, motif="logo en photo", etag_vu=actions._etag(c, uid))
+    from . import galerie
+    galerie.retenir_logo(c, c.fiche(uid), contenu)   # 2.8.1 : ce logo devient celui de la société
+    return res
