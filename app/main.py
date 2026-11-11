@@ -338,7 +338,27 @@ def apercu(uid: str, corps: dict = Body(...)):
 def valider(uid: str, corps: dict = Body(...)):
     if not corps.get("etag"):
         raise ErreurCarnet("Version de la fiche absente : recharge la page.")
-    return actions.valider(carnet(), uid, corps.get("fiche") or {}, etag_vu=str(corps["etag"]), regler_revue=True)
+    c = carnet()
+    avant = c.fiche(uid)
+    res = actions.valider(c, uid, corps.get("fiche") or {}, etag_vu=str(corps["etag"]), regler_revue=True)
+    # 2.8.3 : une date de mariage ou de décès saisie ici part vers Treemich sans attendre la nuit,
+    # si l'accord est allumé — après le délai d'« Annuler », pour ne rien propager d'une saisie annulée
+    apres = c.fiches().get(uid, {})
+    if any((apres.get(k) or "") and (apres.get(k) or "") != (avant.get(k) or "") for k in ("mariage", "deces")):
+        if famille.actif(c, "famille") and not c.cfg.lecture_seule:
+            def accorder():
+                try:
+                    bilan = famille.accorder_maintenant(c)
+                    c.base.noter("automatique", bilan["message"])
+                except Exception as exc:  # noqa: BLE001 — occupé, Treemich muet… : la nuit reprendra
+                    c.base.noter("automatique", f"Dates de famille non accordées tout de suite ({exc}) : la nuit reprendra.")
+            threading.Timer(icloud.DELAI_ANNULER + 2, accorder).start()
+            res["famille"] = "Date de famille : elle part vers Treemich dans quelques secondes."
+        else:
+            res["famille"] = ("Date de famille enregistrée dans iCloud seulement : "
+                              + ("carnet est en lecture seule." if c.cfg.lecture_seule
+                                 else "l'accord avec Treemich est éteint (Réglages)."))
+    return res
 
 
 @app.post("/api/contacts/{uid}/supprimer")
@@ -572,6 +592,12 @@ def decede(uid: str, corps: dict = Body(...)):
 def automatique():
     c = carnet()
     return {**famille.apercu(c), "journal": famille.journal(c), "lecture_seule": c.cfg.lecture_seule}
+
+
+@app.post("/api/automatique/accorder")
+def automatique_accorder():
+    """Accorde tout de suite mariages et décès avec Treemich (bouton de Réglages)."""
+    return famille.accorder_maintenant(carnet())
 
 
 @app.post("/api/automatique/{quoi}")

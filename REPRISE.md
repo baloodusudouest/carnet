@@ -4,7 +4,7 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **2.8.2 sur `main`** (2.8.0, plus le logo par société et l'harmonisation des noms de société dans « À traiter »), pas encore en service chez Julien (il a la 2.7.0). La 2.8.0 contient tout le dossier [`docs/2.8-dossier.md`](docs/2.8-dossier.md) sauf trois écarts notés dans le journal des versions : Réseaux resté dans État, journal des écritures automatiques dans Réglages, pas de shadcn-svelte.
+- **2.8.3 sur `main`** (accord immédiat des dates de famille et raisons affichées ; Julien a une 2.8 en service et a allumé l'accord avec Treemich) ; avant elle, 2.8.2 (2.8.0, plus le logo par société et l'harmonisation des noms de société dans « À traiter »), pas encore en service chez Julien (il a la 2.7.0). La 2.8.0 contient tout le dossier [`docs/2.8-dossier.md`](docs/2.8-dossier.md) sauf trois écarts notés dans le journal des versions : Réseaux resté dans État, journal des écritures automatiques dans Réglages, pas de shadcn-svelte.
 - Les deux interrupteurs (fêtes, dates de famille) sont **éteints** : rien n'a encore été écrit tout seul.
 - Conseil : [`docs/2.8-conseil.md`](docs/2.8-conseil.md). Essai sur le vrai iCloud : [`docs/essai-2.8.md`](docs/essai-2.8.md).
 - Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md) (à remettre à jour pour la 2.8 à la prochaine réouverture).

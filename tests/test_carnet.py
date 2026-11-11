@@ -1922,3 +1922,39 @@ def test_282_societes_ecrites_de_plusieurs_facons(c, services):
     assert p[0]["donnees"]["sur"] is True
     actions.repondre(c, p[0]["id"], "ignorer")
     assert not points(c, "societe") and c.fiche("B-9")["societe"] == "Aquitaineénergie"
+
+
+def test_283_date_de_famille_accordee_tout_de_suite_et_raisons_dites(c, services):
+    from app import famille
+    tm = services["treemich"]
+    # Fiche non reliée à l'arbre : rien ne peut partir, et carnet dit pourquoi
+    d = liaisons.donnees(c, rafraichir=True)
+    _ecrire_champ(c, "AAAA-1111", mariage="12/06/2010")
+    assert any("n'est pas reliée" in x for x in famille.pourquoi_rien(c, d))
+    assert "éteint" in famille.accorder_maintenant(c)["message"] and not tm.mariages     # interrupteur éteint
+    famille.regler(c, "famille", True)
+    assert famille.accorder_maintenant(c)["treemich"] == 0 and not tm.mariages
+    # Reliée : la date part tout de suite, sans attendre la nuit
+    liaisons.lier(c, "AAAA-1111", "treemich", "t-claire")
+    bilan = famille.accorder_maintenant(c)
+    assert bilan["treemich"] == 1 and tm.mariages == {("t-claire", "t-paul"): "2010-06-12"}
+    assert not famille.apercu(c)["famille"]["raisons"]
+    # Une panne d'Immich ne rend pas Treemich muet
+    d = liaisons.donnees(c, rafraichir=True)
+    d["erreurs"].append("Immich injoignable")
+    assert famille._treemich_parle(d)
+    # Jamais écraser : Treemich a reçu entre-temps une autre date, carnet (qui a une vieille lecture) renonce
+    liaisons.lier(c, "DDDD-4444", "treemich", "t-paul")
+    vieux = liaisons.donnees(c, rafraichir=True)
+    for r in vieux["relations"]:
+        r["mariage"] = ""                                        # ce que carnet croit savoir
+    tm.mariages[("t-claire", "t-paul")] = "2011-01-01"           # ce que Treemich porte vraiment
+    bilan = {"ecrites": 0, "reportees": 0, "details": [], "treemich": 0}
+    with c.ecriture():
+        famille.appliquer(c, vieux, bilan, 20, fetes_aussi=False)
+    assert tm.mariages[("t-claire", "t-paul")] == "2011-01-01" and bilan["treemich"] == 0
+    assert any("rien n'a été écrasé" in x for x in bilan["details"])
+    # Lecture seule : dit en premier
+    import dataclasses
+    c.cfg = dataclasses.replace(c.cfg, lecture_seule=True)
+    assert "lecture seule" in famille.pourquoi_rien(c, liaisons.donnees(c))[0]

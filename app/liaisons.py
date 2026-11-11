@@ -42,6 +42,7 @@ def donnees(c: Carnet, rafraichir: bool = False) -> dict:
             finally:
                 im.fermer()
         if c.cfg.treemich_email:
+            res["treemich_ok"] = True
             try:
                 tm = c.treemich()
                 res["treemich"] = tm.personnes()
@@ -56,9 +57,11 @@ def donnees(c: Carnet, rafraichir: bool = False) -> dict:
                                 res["deces_treemich"][p["id"]] = ev["deces"]
                         except ErreurLien as exc:
                             res["erreurs"].append(str(exc))
+                            res["treemich_ok"], res["erreur_treemich"] = False, str(exc)
                             break
             except ErreurLien as exc:
                 res["erreurs"].append(str(exc))
+                res["treemich_ok"], res["erreur_treemich"] = False, str(exc)
             from . import famille
             famille.memoriser(c, res)   # dernier état connu des couples et des décès (2.8)
         return res

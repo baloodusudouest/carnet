@@ -41,6 +41,14 @@
       auto = await api.get('/api/automatique')
     } catch (e) { erreur(e) } finally { attente = false }
   }
+  async function accorder() {
+    attente = true
+    try {
+      const r = await api.post('/api/automatique/accorder')
+      dire(r.message)
+      auto = await api.get('/api/automatique'); rafraichirContacts(); rafraichirAccueil()
+    } catch (e) { erreur(e) } finally { attente = false }
+  }
   async function defaire(x) {
     attente = true
     try {
@@ -140,6 +148,18 @@
           {:else}
             <p class="discret">Rien à écrire pour l'instant.</p>
           {/if}
+          {#if quoi === 'famille'}
+            {#if b.actif && b.actions.length}
+              <span><button class="bouton" disabled={attente || auto.lecture_seule} onclick={accorder}>{attente ? 'Accord en cours…' : 'Accorder maintenant'}</button></span>
+            {/if}
+            {#if b.points}<p class="discret">{b.points} point(s) attendent ta réponse dans <a href="#/a-traiter">À traiter</a> (date manquante ou dates différentes).</p>{/if}
+            {#if b.raisons?.length}
+              <div class="raisons" role="status">
+                <p><strong>Ce qui empêche une date de partir vers Treemich</strong></p>
+                <ul>{#each b.raisons as raison}<li>{raison}</li>{/each}</ul>
+              </div>
+            {/if}
+          {/if}
         </div>
       {/each}
 
@@ -215,6 +235,8 @@
   .bascule input:checked { background: var(--color-onglet); }
   .bascule input:checked::after { transform: translateX(1.2rem); }
   .bascule input:focus-visible { outline: 2px solid var(--color-onglet); outline-offset: 2px; }
+  .raisons { display: grid; gap: 0.35rem; padding: 0.7rem 0.9rem; border-left: 3px solid var(--color-onglet); font-size: 0.92rem; }
+  .raisons ul { display: grid; gap: 0.25rem; padding-left: 1.1rem; list-style: disc; color: var(--color-mine); }
   .etat-bascule { color: var(--color-mine); font-size: 0.85rem; margin-left: 0.3rem; }
   .etat-bascule.actif { color: var(--color-onglet); }
   .prevu summary { cursor: pointer; min-height: 2.4rem; display: flex; align-items: center; }
