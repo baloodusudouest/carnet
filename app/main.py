@@ -360,7 +360,7 @@ def valider(uid: str, corps: dict = Body(...)):
         else:
             res["famille"] = ("Date de famille enregistrée dans iCloud seulement : "
                               + ("carnet est en lecture seule." if c.cfg.lecture_seule
-                                 else "l'accord avec Treemich est éteint (Réglages)."))
+                                 else "l'accord avec Treemich est éteint (Connexion › Treemich)."))
     return res
 
 

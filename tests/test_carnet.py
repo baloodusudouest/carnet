@@ -2081,6 +2081,9 @@ def test_29_connexion_verifier_n_ecrit_rien_synchroniser_ecrit_le_sur(c, service
     r = connexion.verifier(c, "treemich")
     assert r["ok"] and [l["libelle"] for l in r["lignes"]] == ["Nom", "Naissance", "Mariage", "Décès", "Liens familiaux"]
     assert any(e["libelle"] == "Mariage" and e["carnet"] == "12/06/2010" for e in r["ecarts"])
+    # 2.9.1 : chaque couple avec la date des deux côtés, et où la trouver dans Treemich
+    assert [(x["carnet"], x["treemich"], x["etat"]) for x in r["couples"]] == [("12/06/2010", "", "Dans carnet seulement")]
+    assert any("Marriage anniversary" in n for n in r["notes"])
     r = connexion.verifier(c, "immich")
     assert r["ok"] and [l["libelle"] for l in r["lignes"]] == ["Nom", "Naissance", "Photo"]
     assert connexion.verifier(c, "icloud")["ok"]
@@ -2089,7 +2092,9 @@ def test_29_connexion_verifier_n_ecrit_rien_synchroniser_ecrit_le_sur(c, service
     b = connexion.synchroniser(c, "treemich")
     assert tm.mariages == {("t-claire", "t-paul"): "2010-06-12"} and "Treemich" in b["message"]
     assert c.fiche("DDDD-4444")["mariage"] == "2010-06-12"
-    assert not any(e["libelle"] == "Mariage" for e in connexion.verifier(c, "treemich")["ecarts"])
+    r = connexion.verifier(c, "treemich")
+    assert not any(e["libelle"] == "Mariage" for e in r["ecarts"])
+    assert [(x["carnet"], x["treemich"], x["etat"]) for x in r["couples"]] == [("12/06/2010", "12/06/2010", "Identiques")]
     # Interrupteur de nuit par service ; Immich éteint : la nuit ne lie plus rien
     connexion.regler_nuit(c, "immich", False)
     assert not connexion.nuit_active(c, "immich")

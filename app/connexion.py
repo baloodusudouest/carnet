@@ -171,7 +171,10 @@ def _rapport_treemich(c: Carnet, d: dict) -> dict:
     if attendues:
         notes.append(f"{attendues} fiche(s) dont le groupe attend Treemich n'y sont pas reliées (tuile « Contact incomplet »).")
     notes += famille.pourquoi_rien(c, d)[:6]
-    return {"ok": True, "le": d.get("le"), "notes": notes, "ecarts": ecarts, "lignes": lignes}
+    if v["liste_couples"]:
+        notes.append("Dans Treemich, la date de mariage n'est pas dans « Life events » : elle est sur le lien du couple "
+                     "(Profile › Relatives › crayon du conjoint › Marriage anniversary).")
+    return {"ok": True, "le": d.get("le"), "notes": notes, "ecarts": ecarts, "lignes": lignes, "couples": v["liste_couples"]}
 
 
 def verifier(c: Carnet, service: str) -> dict:

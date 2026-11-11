@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 2.9.1 — 11 novembre 2026
+Après le retour de Julien : la date de mariage était bien dans Treemich, mais introuvable — Treemich la range sur le lien du couple, pas dans les évènements de la personne.
+- **Connexion › Treemich, « Vérifier »** affiche maintenant chaque couple avec la date côté carnet et la date côté Treemich, et dit où la trouver dans Treemich (Profile › Relatives › crayon du conjoint › Marriage anniversary).
+- Pendant la vérification de Treemich, carnet prévient qu'il relit l'arbre personne par personne et qu'il faut compter une minute.
+- Messages corrigés : ils ne renvoient plus vers « État » ni vers l'ancien interrupteur de Réglages ; après un redémarrage, carnet dit d'appuyer sur « Vérifier » dans Connexion › Treemich.
+- Rien ne change dans ce que carnet écrit. Tests : 106 du back, 28 d'interface.
+
 ## 2.9.0 — 11 novembre 2026
 carnet est réorganisé autour de son rôle : faire le lien entre iCloud, Immich, Treemich et les autres outils. Les bases ne changent pas (mêmes règles d'écriture, même base, mêmes adresses pour Home Assistant).
 - **Six onglets** : À traiter, Contacts, Groupes, Photos, Connexion, Réglages. « État » disparaît (son ancienne adresse ouvre Connexion). Sur iPhone, six icônes sans nom ; sur PC, le rail garde les noms.

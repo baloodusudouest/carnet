@@ -212,7 +212,7 @@ def pourquoi_rien(c: Carnet, d: dict | None) -> list[str]:
     if not c.cfg.treemich_email:
         return raisons + ["Treemich n'est pas configuré."]
     if d is None:
-        return raisons + ["Treemich n'a pas encore été relu depuis le démarrage : « Relire Immich et Treemich » dans État."]
+        return raisons + ["Treemich n'a pas encore été relu depuis le démarrage : appuie sur « Vérifier » dans Connexion › Treemich, ou attends la nuit."]
     if not _treemich_parle(d):
         return raisons + ["Treemich n'a pas répondu en entier à la dernière lecture"
                           + (f" ({d['erreur_treemich']})" if d.get("erreur_treemich") else "") + " : rien n'est accordé tant qu'il ne répond pas."]
@@ -322,6 +322,7 @@ def verifier(c: Carnet, rafraichir: bool = True) -> dict:
               f.get("deces") or "", d.get("deces_treemich", {}).get(t, ""))
     noms = {p["id"]: p["nom"] for p in d["treemich"]}
     nb_couples = 0
+    liste_couples: list[dict] = []     # 2.9.1 : chaque couple, avec la date de chaque côté
     for x in couples(d):
         uids = [reliees[t] for t in (x["a"], x["b"]) if t in reliees]
         if not uids:
@@ -335,6 +336,8 @@ def verifier(c: Carnet, rafraichir: bool = True) -> dict:
             ecarts.append({"sujet": "mariage", "libelle": "Mariage", "etat": etat, "etat_libelle": "Différentes entre les deux fiches",
                            "uid": uids[0], "nom": couple, "carnet": carnet, "treemich": date_lisible(x["mariage"]) if x["mariage"] else "",
                            "suite": suite("mariage", etat, uids[0])})
+            liste_couples.append({"couple": couple, "uid": uids[0], "carnet": carnet,
+                                  "treemich": date_lisible(x["mariage"]) if x["mariage"] else "", "etat": "Différentes entre les deux fiches"})
             continue
         carnet = next((v for v in cartes if v), "")
         etat = _comparer(carnet, x["mariage"])
@@ -343,12 +346,19 @@ def verifier(c: Carnet, rafraichir: bool = True) -> dict:
         if etat == "vide" and (x["divorce"] or (_unions(c).get((x["a"], x["b"])) or {}).get("sans")):
             etat = "identique"                    # pas de mariage ni PACS déclaré, ou couple divorcé sans date : rien d'attendu
         noter("mariage", etat, uids[0], couple, carnet, x["mariage"])
+        sans = (_unions(c).get((x["a"], x["b"])) or {}).get("sans")
+        liste_couples.append({"couple": couple, "uid": uids[0], "carnet": date_lisible(carnet) if carnet else "",
+                              "treemich": date_lisible(x["mariage"]) if _complete(x["mariage"]) else (x["mariage"] or ""),
+                              "etat": "Pas de mariage ni PACS" if sans and not carnet and not x["mariage"]
+                              else "Divorcés" if x["divorce"] and not carnet and not x["mariage"]
+                              else "Date à saisir (À traiter)" if etat == "vide" else ETATS[etat]})
     return {"treemich": True, "le": d.get("le"), "personnes": len(reliees), "couples": nb_couples, "actif": allume,
             "bilan": [{"sujet": s, "libelle": SUJETS[s], "sur": len(reliees) if s != "mariage" else nb_couples,
                        "identiques": bilan[s]["identique"], "vides": bilan[s]["vide"],
                        "ecarts": sum(n for e, n in bilan[s].items() if e not in ("identique", "vide"))} for s in SUJETS],
             "ecarts": sorted(ecarts, key=lambda e: (list(SUJETS).index(e["sujet"]), e["nom"].casefold())),
-            "sans_fiche": len(d["treemich"]) - len(reliees)}
+            "sans_fiche": len(d["treemich"]) - len(reliees),
+            "liste_couples": sorted(liste_couples, key=lambda x: x["couple"].casefold())}
 
 
 # ----------------------------------------------------------------- écritures
@@ -402,7 +412,7 @@ def accorder_maintenant(c: Carnet, forcer: bool = False) -> dict:
     from .nuit import PLAFOND
     bilan = {"ecrites": 0, "reportees": 0, "details": [], "treemich": 0}
     if not forcer and not actif(c, "famille"):
-        return {**bilan, "message": "L'accord des dates de famille est éteint (Réglages) : rien n'a été écrit."}
+        return {**bilan, "message": "L'accord des dates de famille est éteint (Connexion › Treemich, interrupteur « la nuit ») : rien n'a été écrit."}
     c.exiger_ecriture("Treemich")
     with c.ecriture(attendre=5):
         d = liaisons.donnees(c, rafraichir=True)
@@ -458,7 +468,7 @@ def appliquer(c: Carnet, d: dict | None, bilan: dict, plafond: int, fetes_aussi:
             if lu != a["apres"]:
                 regler(c, "famille", False)
                 message = (f"Treemich n'a pas rendu la date écrite ({a['texte']}) : l'accord des dates de famille "
-                           "est coupé. Vérifie dans Treemich, puis rallume-le dans Réglages.")
+                           "est coupé. Vérifie dans Treemich, puis rallume-le dans Connexion › Treemich.")
                 bilan["details"].append(message)
                 c.base.noter("automatique", message)
                 break

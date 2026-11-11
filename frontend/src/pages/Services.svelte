@@ -159,6 +159,9 @@
           {#if !cx.nuit}<p class="discret">La nuit de carnet est désactivée (CARNET_VEILLE_HEURE) : rien ne se fait tout seul.</p>{/if}
         {/if}
 
+        {#if attente === 'verifier' && choisi === 'treemich'}
+          <p class="discret" role="status">carnet relit l'arbre personne par personne : compte une minute. Rien n'est écrit.</p>
+        {/if}
         {#if rapport && !rapport.ok}
           <p class="alerte" role="alert">{service.nom} n'a pas répondu : {rapport.raison}</p>
         {:else if rapport}
@@ -172,6 +175,20 @@
                   {/each}
                 </tbody>
               </table>
+            {/if}
+            {#if rapport.couples?.length}
+              <h3 class="sous-titre">Mariages, couple par couple</h3>
+              <div class="defile">
+                <table class="verif couples">
+                  <thead><tr><th scope="col">Couple</th><th scope="col">carnet</th><th scope="col">Treemich</th><th scope="col"></th></tr></thead>
+                  <tbody>
+                    {#each rapport.couples as x}
+                      <tr><th scope="row"><a href={'#/contacts/' + encodeURIComponent(x.uid)}>{x.couple}</a></th>
+                        <td>{x.carnet || '—'}</td><td>{x.treemich || '—'}</td><td class="discret">{x.etat}</td></tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
             {/if}
             {#each rapport.notes as n}<p class="discret">{n}</p>{/each}
             {#if rapport.lignes.some((l) => l.sur) && !rapport.ecarts.length}
@@ -279,6 +296,11 @@
   .verif thead th { color: var(--color-mine); font-size: 0.78rem; font-weight: 600; }
   .verif thead th:first-child, .verif tbody th { width: 34%; text-align: left; }
   .verif tbody tr { border-top: 1px solid var(--color-couture); }
+  .verif.couples { max-width: 44rem; table-layout: auto; }
+  .verif.couples th, .verif.couples td { text-align: left; }
+  .verif.couples tbody th { width: auto; font-weight: 500; }
+  .sous-titre { font-size: 0.95rem; font-weight: 600; margin: 0.4rem 0 0; }
+  .defile { overflow-x: auto; }
   .verif td.ecart { color: var(--color-onglet); font-weight: 600; }
   .tout-bon { color: var(--color-valide); }
   .ecarts { display: grid; font-size: 0.92rem; max-height: 26rem; overflow-y: auto; }
