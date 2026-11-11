@@ -249,6 +249,108 @@ def apercu(c: Carnet) -> dict:
                         "points": len(etat["points"])}}
 
 
+# ----------------------------------------------------------------- vérification (2.8.5)
+
+ETATS = {"identique": "Identiques", "vide": "Vides des deux côtés", "carnet_seul": "Dans carnet seulement",
+         "treemich_seul": "Dans Treemich seulement", "different": "Différentes", "incomplet": "Incomplètes d'un côté"}
+SUJETS = {"naissance": "Naissance", "mariage": "Mariage", "deces": "Décès"}
+
+
+def _comparer(carnet: str, arbre: str) -> str:
+    """État d'une date entre la fiche et Treemich. « incomplet » : les deux côtés se recoupent mais
+    l'un n'a pas tout (fiche sans année, ou arbre qui n'a que l'année ou le mois) : rien ne se
+    contredit, rien n'est à écrire d'office."""
+    if arbre == "inconnue":                    # décès enregistré sans date dans l'arbre
+        return "incomplet" if carnet else "treemich_seul"
+    if not carnet and not arbre:
+        return "vide"
+    if not arbre:
+        return "carnet_seul"
+    if not carnet:
+        return "treemich_seul"
+    if carnet == arbre:
+        return "identique"
+    if carnet.startswith("--") and len(arbre) == 10 and arbre[5:] == carnet[2:]:
+        return "incomplet"
+    if len(arbre) < 10 and len(carnet) == 10 and carnet.startswith(arbre):
+        return "incomplet"
+    return "different"
+
+
+def verifier(c: Carnet, rafraichir: bool = True) -> dict:
+    """Compare, date par date, les fiches reliées à Treemich et l'arbre lui-même : naissance et
+    décès par personne, mariage par couple. Treemich est relu à l'instant (rafraichir). Rien n'est
+    écrit. Chaque écart dit ce qui va se passer : écriture prévue, point dans « À traiter », ou
+    interrupteur éteint."""
+    from . import liaisons
+    d = liaisons.donnees(c, rafraichir=rafraichir)
+    if not _treemich_parle(d):
+        return {"treemich": False, "raison": d.get("erreur_treemich") or (d.get("erreurs") or ["Treemich n'a pas répondu."])[0],
+                "le": d.get("le")}
+    fiches, reliees = c.fiches(), _reliees(c)
+    allume = actif(c, "famille")
+    a_traiter = {(p["motif"], p["uid"]) for p in traiter.liste(c)}
+    bilan = {s: {e: 0 for e in ETATS} for s in SUJETS}
+    ecarts: list[dict] = []
+
+    def suite(sujet: str, etat: str, uid: str) -> str:
+        if etat == "incomplet":
+            return "Rien n'est fait d'office : complète la date du côté où elle manque."
+        if sujet == "naissance":
+            if ("date", uid) in a_traiter:
+                return "Un point t'attend dans « À traiter »."
+            return "La fiche sera complétée la nuit." if etat == "treemich_seul" else "À corriger à la main : ouvre la fiche."
+        if etat == "different":
+            return "Un point t'attend dans « À traiter » : carnet n'écrase rien."
+        if not allume:
+            return "L'accord avec Treemich est éteint : rien ne sera écrit tant que tu ne l'allumes pas."
+        return "Sera écrit dans Treemich." if etat == "carnet_seul" else "Sera écrit dans iCloud."
+
+    def noter(sujet, etat, uid, nom, carnet, arbre):
+        bilan[sujet][etat] += 1
+        if etat not in ("identique", "vide"):
+            ecarts.append({"sujet": sujet, "libelle": SUJETS[sujet], "etat": etat, "etat_libelle": ETATS[etat], "uid": uid, "nom": nom,
+                           "carnet": date_lisible(carnet) if carnet else "", "treemich": "sans date" if arbre == "inconnue"
+                           else (date_lisible(arbre) if len(arbre) in (7, 10) and "-" in arbre[:3] or len(arbre) == 10 else arbre),
+                           "suite": suite(sujet, etat, uid)})
+
+    for t, uid in sorted(reliees.items(), key=lambda x: nom_affiche(fiches[x[1]]).casefold()):
+        f, nom = fiches[uid], nom_affiche(fiches[uid])
+        noter("naissance", _comparer(f.get("anniversaire") or "", d["naissances_treemich"].get(t, "")), uid, nom,
+              f.get("anniversaire") or "", d["naissances_treemich"].get(t, ""))
+        noter("deces", _comparer(f.get("deces") or "", d.get("deces_treemich", {}).get(t, "")), uid, nom,
+              f.get("deces") or "", d.get("deces_treemich", {}).get(t, ""))
+    noms = {p["id"]: p["nom"] for p in d["treemich"]}
+    nb_couples = 0
+    for x in couples(d):
+        uids = [reliees[t] for t in (x["a"], x["b"]) if t in reliees]
+        if not uids:
+            continue
+        nb_couples += 1
+        couple = " et ".join(noms.get(t, "?") for t in (x["a"], x["b"]))
+        cartes = sorted({fiches[u].get("mariage") or "" for u in uids})
+        if len([v for v in cartes if v]) > 1:
+            etat, carnet = "different", " / ".join(date_lisible(v) for v in cartes if v)
+            bilan["mariage"][etat] += 1
+            ecarts.append({"sujet": "mariage", "libelle": "Mariage", "etat": etat, "etat_libelle": "Différentes entre les deux fiches",
+                           "uid": uids[0], "nom": couple, "carnet": carnet, "treemich": date_lisible(x["mariage"]) if x["mariage"] else "",
+                           "suite": suite("mariage", etat, uids[0])})
+            continue
+        carnet = next((v for v in cartes if v), "")
+        etat = _comparer(carnet, x["mariage"])
+        if etat == "identique" and "" in cartes and len(uids) > 1:
+            etat = "treemich_seul"                # l'un des deux conjoints n'a pas encore la date sur sa fiche
+        if etat == "vide" and (x["divorce"] or (_unions(c).get((x["a"], x["b"])) or {}).get("sans")):
+            etat = "identique"                    # pas de mariage ni PACS déclaré, ou couple divorcé sans date : rien d'attendu
+        noter("mariage", etat, uids[0], couple, carnet, x["mariage"])
+    return {"treemich": True, "le": d.get("le"), "personnes": len(reliees), "couples": nb_couples, "actif": allume,
+            "bilan": [{"sujet": s, "libelle": SUJETS[s], "sur": len(reliees) if s != "mariage" else nb_couples,
+                       "identiques": bilan[s]["identique"], "vides": bilan[s]["vide"],
+                       "ecarts": sum(n for e, n in bilan[s].items() if e not in ("identique", "vide"))} for s in SUJETS],
+            "ecarts": sorted(ecarts, key=lambda e: (list(SUJETS).index(e["sujet"]), e["nom"].casefold())),
+            "sans_fiche": len(d["treemich"]) - len(reliees)}
+
+
 # ----------------------------------------------------------------- écritures
 
 def _noter(c: Carnet, a: dict) -> None:
@@ -487,4 +589,4 @@ def defaire(c: Carnet, ident: int) -> dict:
 
 
 __all__ = ["INTERRUPTEURS", "actif", "regler", "apercu", "appliquer", "examiner", "memoriser", "fetes_a_ecrire",
-           "ecrire_partout", "sans_union", "sans_union_declaree", "divorces", "marquer_decede", "journal", "defaire"]
+           "ecrire_partout", "verifier", "sans_union", "sans_union_declaree", "divorces", "marquer_decede", "journal", "defaire"]
