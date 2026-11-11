@@ -42,7 +42,7 @@
     ['LinkedIn (Connections.csv)', 'LinkedIn, Préférences, Confidentialité des données, « Obtenir une copie de vos données » : coche « Relations ». Le fichier arrive par courriel sous quelques minutes.'],
     ['Facebook', 'Facebook, Paramètres, « Télécharger vos informations » : format JSON, ne coche que « Amis ». Dépose l\'archive .zip telle quelle.'],
     ['Instagram', 'Instagram, Paramètres, Espace Comptes, « Télécharger vos informations » : format JSON, ne coche que « Abonnés et abonnements ».'],
-    ['Telegram', 'Pas de fichier : la connexion se fait dans État, section Réseaux.'],
+    ['Telegram', 'Pas de fichier : la connexion se fait dans Réglages, section Réseaux.'],
   ]
 </script>
 

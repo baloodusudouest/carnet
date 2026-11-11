@@ -4,18 +4,19 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **2.8.3 sur `main`** (accord immédiat des dates de famille et raisons affichées ; Julien a une 2.8 en service et a allumé l'accord avec Treemich) ; avant elle, 2.8.2 (2.8.0, plus le logo par société et l'harmonisation des noms de société dans « À traiter »), pas encore en service chez Julien (il a la 2.7.0). La 2.8.0 contient tout le dossier [`docs/2.8-dossier.md`](docs/2.8-dossier.md) sauf trois écarts notés dans le journal des versions : Réseaux resté dans État, journal des écritures automatiques dans Réglages, pas de shadcn-svelte.
-- Les deux interrupteurs (fêtes, dates de famille) sont **éteints** : rien n'a encore été écrit tout seul.
+- **2.8.4 sur `main`** : la 2.8 complète (attentes et manques, Photos, champs nouveaux, fêtes et dates de famille, import unique, suppression confirmée, logo par société, noms de société, accord immédiat avec Treemich, Réseaux dans Réglages). Julien a une 2.8 en service.
+- Interrupteurs : Julien a allumé « dates de famille » le 11/11 ; « fêtes » est éteint à la livraison.
 - Conseil : [`docs/2.8-conseil.md`](docs/2.8-conseil.md). Essai sur le vrai iCloud : [`docs/essai-2.8.md`](docs/essai-2.8.md).
-- Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md) (à remettre à jour pour la 2.8 à la prochaine réouverture).
+- Dossier « tel que construit » : [`docs/dossier.md`](docs/dossier.md), à jour pour la 2.8.4.
 
 ## Prochaine étape
 
 1. Julien met la 2.8.0 en service **en lecture seule un jour** (`CARNET_LECTURE_SEULE=oui`), copie de `/state` avant. Il vérifie : les nombres de la famille « Manques » (la sonde donnait 437 fiches incomplètes, 406 sans photo, 59 sans téléphone, avant l'exemption des fiches d'entreprise et sans la colonne Fête), le tableau des attentes, la liste « ce que carnet écrirait ».
 2. Il enlève la lecture seule, puis allume « fêtes » ; une semaine plus tard, « dates de famille ». Relire « Écrit par carnet tout seul » après chaque première nuit.
 3. À voir à l'usage : le calendrier des fêtes (prénoms introuvables dans la ligne « Sans fête »), le logo glissé depuis Google Images sur iPhone et sur PC, l'écriture réelle d'un mariage dans Treemich (jamais essayée sur la vraie installation).
-4. Restes possibles pour une 2.8.1 : déplacer Réseaux d'État vers Réglages ; route unique d'évènements pour Home Assistant.
-5. Après une semaine d'usage : document du socle et planche de couleurs.
+4. Home Assistant ne lit pas encore `/ha/fetes` ni les mariages de `/ha/anniversaires` : à brancher (master doc HA) pour que les annonces existent.
+5. Idée gardée : route unique d'évènements pour Home Assistant.
+6. Après une semaine d'usage : document du socle et planche de couleurs.
 
 ## Décisions tranchées
 

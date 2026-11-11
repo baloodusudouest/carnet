@@ -29,5 +29,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
-      - run: python -m playwright install --with-deps chromium
+      # Si les serveurs de paquets d'Ubuntu ne répondent pas (vu le 11/11/2026), le navigateur est
+      # installé seul : les tests d'écran tournent quand même, sans les polices supplémentaires.
+      - run: python -m playwright install --with-deps chromium || python -m playwright install chromium
       - run: python -m pytest -q tests/interface
