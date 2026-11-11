@@ -298,7 +298,11 @@ class Treemich:
             if curseur:
                 params["cursor"] = curseur
             corps = self._get("/relationships", **params)
-            res += [{"de": r["fromPersonId"], "vers": r["toPersonId"], "type": r["type"]}
+            # Un lien de conjoint porte la date de mariage et de divorce du couple (Treemich range
+            # ces évènements sur le couple, jamais sur une personne)
+            res += [{"de": r["fromPersonId"], "vers": r["toPersonId"], "type": r["type"],
+                     "mariage": (r.get("marriageAnniversaryDate") or "")[:10],
+                     "divorce": (r.get("divorceDate") or "")[:10]}
                     for r in corps.get("relationships", [])]
             curseur = corps.get("nextCursor")
             if not curseur:
@@ -319,6 +323,34 @@ class Treemich:
                 return f"{e['year']:04d}" + (f"-{e['month']:02d}" if e.get("month") else "") + \
                     (f"-{e['day']:02d}" if e.get("month") and e.get("day") else "")
         return ""
+
+    def evenements(self, pid: str) -> dict:
+        """{naissance, deces} lus en un seul appel (dates « AAAA-MM-JJ », partielles ou vides)."""
+        def date(e: dict) -> str:
+            if not e.get("year"):
+                return ""
+            return f"{e['year']:04d}" + (f"-{e['month']:02d}" if e.get("month") else "") + \
+                (f"-{e['day']:02d}" if e.get("month") and e.get("day") else "")
+        res = {"naissance": "", "deces": ""}
+        for e in self._get(f"/people/{pid}/life-events").get("lifeEvents", []):
+            cle = {"BIRTH": "naissance", "DEATH": "deces"}.get(e.get("eventType"))
+            if cle and not res[cle]:
+                res[cle] = date(e)
+                if cle == "deces" and not res[cle]:
+                    res[cle] = "inconnue"      # décès enregistré sans date
+        return res
+
+    def maj_mariage(self, a: str, b: str, date: str | None) -> None:
+        """Date de mariage du couple (None : l'effacer). Seul ce champ est envoyé : le divorce
+        n'est jamais touché."""
+        r = self._appel("PATCH", f"/people/{a}/relationships", json={"toPersonId": b, "marriageAnniversaryDate": date})
+        if r.status_code >= 400:
+            raise ErreurLien(f"Treemich a refusé la date de mariage ({r.status_code}).")
+
+    def maj_deces(self, pid: str, date: str | None) -> None:
+        r = self._appel("PATCH", f"/people/{pid}", json={"deathDate": date})
+        if r.status_code >= 400:
+            raise ErreurLien(f"Treemich a refusé la date de décès ({r.status_code}).")
 
     def exporter_gedcom(self) -> bytes:
         r = self._appel("GET", "/export/gedcom")

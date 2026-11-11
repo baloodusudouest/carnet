@@ -655,6 +655,11 @@ def ha_anniversaires():
     return sorties.ha_anniversaires(carnet())
 
 
+@app.get("/ha/fetes")
+def ha_fetes():
+    return sorties.ha_fetes(carnet())
+
+
 @app.get("/ha/invite")
 def ha_invite(nom: str = ""):
     try:

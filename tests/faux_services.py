@@ -78,6 +78,11 @@ class FauxImmich:
 class FauxTreemich:
     def __init__(self):
         self.ecrits: list[tuple[str, object]] = []
+        self.mariages: dict[tuple[str, str], str] = {}     # (a, b) triés → date ; rangé sur le couple
+        self.divorces: dict[tuple[str, str], str] = {}
+        self.deces: dict[str, str] = {}
+        self.oublie = False                                # vrai : accepte l'écriture mais ne la garde pas
+        self.muet = False                                  # vrai : ne répond plus (503)
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self)
@@ -86,8 +91,24 @@ class FauxTreemich:
         chemin = r.url.path
         if chemin == "/auth/login":
             return httpx.Response(200, json={}, headers={"set-cookie": "s=1; Path=/"})
+        if self.muet:
+            return httpx.Response(503)
         if r.method == "PATCH":
-            self.ecrits.append((chemin, json.loads(r.content)))
+            corps = json.loads(r.content)
+            self.ecrits.append((chemin, corps))
+            if not self.oublie:
+                if chemin.endswith("/relationships") and "marriageAnniversaryDate" in corps:
+                    cle = tuple(sorted((chemin.split("/")[2], corps["toPersonId"])))
+                    if corps["marriageAnniversaryDate"]:
+                        self.mariages[cle] = corps["marriageAnniversaryDate"]
+                    else:
+                        self.mariages.pop(cle, None)
+                elif "deathDate" in corps:
+                    pid = chemin.split("/")[2]
+                    if corps["deathDate"]:
+                        self.deces[pid] = corps["deathDate"]
+                    else:
+                        self.deces.pop(pid, None)
             return httpx.Response(200, json={})
         if chemin == "/people":
             return httpx.Response(200, json={"people": [
@@ -96,10 +117,18 @@ class FauxTreemich:
                 {"id": "t-paul", "name": "Paul MARTIN", "profile": {"gender": "MALE"},
                  "externalIdentities": [{"provider": "IMMICH", "providerPersonId": "im-paul"}]}]})
         if chemin == "/relationships":
+            cle = ("t-claire", "t-paul")
             return httpx.Response(200, json={"relationships": [
-                {"fromPersonId": "t-claire", "toPersonId": "t-paul", "type": "SPOUSE_OF"}], "nextCursor": None})
-        if chemin == "/people/t-claire/life-events":
-            return httpx.Response(200, json={"lifeEvents": [{"eventType": "BIRTH", "year": 1985, "month": 3, "day": 14}]})
+                {"fromPersonId": "t-claire", "toPersonId": "t-paul", "type": "SPOUSE_OF",
+                 "marriageAnniversaryDate": self.mariages.get(cle), "divorceDate": self.divorces.get(cle)}],
+                "nextCursor": None})
         if chemin.endswith("/life-events"):
-            return httpx.Response(200, json={"lifeEvents": [{"eventType": "BIRTH", "year": 1983, "month": 1, "day": 9}]})
+            pid = chemin.split("/")[2]
+            naissance = {"eventType": "BIRTH", "year": 1985, "month": 3, "day": 14} if pid == "t-claire" \
+                else {"eventType": "BIRTH", "year": 1983, "month": 1, "day": 9}
+            evenements = [naissance]
+            if pid in self.deces:
+                a, m, j = (int(x) for x in self.deces[pid].split("-"))
+                evenements.append({"eventType": "DEATH", "year": a, "month": m, "day": j})
+            return httpx.Response(200, json={"lifeEvents": evenements})
         return httpx.Response(404)

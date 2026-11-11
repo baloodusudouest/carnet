@@ -1598,3 +1598,155 @@ def test_28_memes_nombres_que_la_sonde(c, services):
     assert personnes
     for cle in ("telephone", "photo", "societe"):       # informations sans exemption
         assert sum(1 for x in attentes.tout(c).values() if cle in x["manques"]) == b["total_manques"].get(cle, 0)
+
+
+# ================================================================ 2.8 : fêtes et dates de famille
+
+def _relier_le_couple(c):
+    liaisons.lier(c, "AAAA-1111", "treemich", "t-claire")
+    liaisons.lier(c, "DDDD-4444", "treemich", "t-paul")
+    return liaisons.donnees(c, rafraichir=True)
+
+
+def _ecrire_champ(c, uid, **champs):
+    f = c.fiche(uid)
+    f.update(champs)
+    return actions.valider(c, uid, f, etag_vu=actions._etag(c, uid))
+
+
+def test_28_fetes_eteintes_puis_ecrites(c, services):
+    from app import attentes, famille
+    attentes.regler(c, "Urgence", "fete", True)                       # Claire est dans Urgence
+    prevues = famille.fetes_a_ecrire(c)
+    assert [(a["uid"], a["apres"]) for a in prevues] == [("AAAA-1111", "--08-11")]
+    assert famille.apercu(c)["fetes"]["actif"] is False
+    # Interrupteur éteint : la nuit n'écrit aucune fête
+    avant = len(services["icloud"].ecritures)
+    nuit.passer(c, "test")
+    assert not c.fiche("AAAA-1111").get("fete")
+    assert not any("Fête" in t for _, t in services["icloud"].ecritures[avant:])
+    # Home Assistant l'annonce quand même, d'après le calendrier
+    assert [(e["prenom"], e["jour"], e["mois"]) for e in sorties.ha_fetes(c)["fetes"]] == [("Claire", 11, 8)]
+    # Allumé : écrite avec le libellé « Fête », sans année, et inscrite au journal des écritures automatiques
+    famille.regler(c, "fetes", True)
+    nuit.passer(c, "test")
+    assert c.fiche("AAAA-1111")["fete"] == "--08-11"
+    texte = services["icloud"].texte("AAAA-1111")
+    assert "X-ABLabel:Fête" in texte and "X-APPLE-OMIT-YEAR=1604:1604-08-11" in texte
+    assert "X-ABRELATEDNAMES" in texte and "PHOTO" in texte             # le reste de la carte n'a pas bougé
+    j = famille.journal(c)
+    assert [(x["sujet"], x["service"], x["apres"]) for x in j] == [("fete", "icloud", "--08-11")]
+    assert famille.fetes_a_ecrire(c) == []
+    # Une fête saisie à la main n'est jamais remplacée
+    _ecrire_champ(c, "AAAA-1111", fete="12/08")
+    assert c.fiche("AAAA-1111")["fete"] == "--08-12" and famille.fetes_a_ecrire(c) == []
+    # Défaire coupe l'interrupteur, et refuse si la valeur a changé depuis
+    with pytest.raises(ErreurCarnet):
+        famille.defaire(c, j[0]["id"])
+    _ecrire_champ(c, "AAAA-1111", fete="11/08")
+    famille.defaire(c, j[0]["id"])
+    assert not c.fiche("AAAA-1111").get("fete") and not famille.actif(c, "fetes")
+    assert "Fête" not in services["icloud"].texte("AAAA-1111")
+
+
+def test_28_mariage_rempli_jamais_ecrase(c, services):
+    from app import famille
+    tm = services["treemich"]
+    d = _relier_le_couple(c)
+    # Aucune date nulle part : un point « date manquante », aucune écriture prévue
+    assert famille.examiner(c, d)["actions"] == []
+    assert [p["donnees"]["couple"] for p in points(c, "mariage")] == ["Claire MARTIN et Paul MARTIN"]
+    # « Pas de mariage ni PACS » : la question n'est plus posée, et le filtre retrouve les deux fiches
+    actions.repondre(c, points(c, "mariage")[0]["id"], "sans")
+    assert not points(c, "mariage") and famille.sans_union_declaree(c) == {"AAAA-1111", "DDDD-4444"}
+    famille.sans_union(c, "t-claire", "t-paul", False)
+    # Date saisie sur une seule carte : carnet prévoit de remplir l'autre carte et Treemich
+    _ecrire_champ(c, "AAAA-1111", mariage="12/06/2010")
+    prevues = famille.examiner(c, d)["actions"]
+    assert sorted((a["service"], a["sujet"], a["apres"]) for a in prevues) == \
+        [("icloud", "mariage", "2010-06-12"), ("treemich", "mariage", "2010-06-12")]
+    assert not points(c, "mariage")
+    # Interrupteur éteint : rien ne part
+    nuit.passer(c, "test")
+    assert not tm.mariages and not c.fiche("DDDD-4444").get("mariage")
+    # Allumé : l'autre carte et Treemich sont remplis, avec le libellé « Mariage »
+    famille.regler(c, "famille", True)
+    nuit.passer(c, "test")
+    assert tm.mariages == {("t-claire", "t-paul"): "2010-06-12"}
+    assert c.fiche("DDDD-4444")["mariage"] == "2010-06-12"
+    assert "X-ABLabel:Mariage" in services["icloud"].texte("DDDD-4444") and "X-PERSO:garder" in services["icloud"].texte("DDDD-4444")
+    assert {(x["service"], x["sujet"]) for x in famille.journal(c)} == {("icloud", "mariage"), ("treemich", "mariage")}
+    assert [m["nom"] for m in sorties.ha_anniversaires(c)["mariages"]] != []
+    # Une date effacée d'un côté n'est jamais effacée de l'autre : elle est remise
+    _ecrire_champ(c, "DDDD-4444", mariage="")
+    d = liaisons.donnees(c, rafraichir=True)
+    assert [(a["service"], a["uid"]) for a in famille.examiner(c, d)["actions"]] == [("icloud", "DDDD-4444")]
+    # Deux dates différentes : un point, aucune écriture ; « Ignorer » ne repose pas la question
+    _ecrire_champ(c, "DDDD-4444", mariage="13/06/2010")
+    assert famille.examiner(c, d)["actions"] == []
+    p = points(c, "mariage_different")
+    assert len(p) == 1 and len(p[0]["donnees"]["valeurs"]) == 3
+    actions.repondre(c, p[0]["id"], "ignorer")
+    assert not points(c, "mariage_different")
+    nuit.passer(c, "test")
+    assert c.fiche("DDDD-4444")["mariage"] == "2010-06-13" and tm.mariages[("t-claire", "t-paul")] == "2010-06-12"
+    # Une date change : la question revient ; la réponse écrit la date choisie partout
+    _ecrire_champ(c, "DDDD-4444", mariage="14/06/2010")
+    p = points(c, "mariage_different")
+    actions.repondre(c, p[0]["id"], "ecrire", "12/06/2010")
+    assert c.fiche("DDDD-4444")["mariage"] == c.fiche("AAAA-1111")["mariage"] == "2010-06-12"
+    assert not points(c, "mariage_different")
+    # Divorce lu dans Treemich : l'anniversaire de mariage n'est plus annoncé
+    tm.divorces[("t-claire", "t-paul")] = "2020-01-01"
+    liaisons.donnees(c, rafraichir=True)
+    assert famille.divorces(c) == {"AAAA-1111", "DDDD-4444"} and sorties.ha_anniversaires(c)["mariages"] == []
+
+
+def test_28_treemich_qui_ne_garde_pas_coupe_l_interrupteur(c, services):
+    from app import famille
+    d = _relier_le_couple(c)
+    _ecrire_champ(c, "AAAA-1111", mariage="12/06/2010")
+    _ecrire_champ(c, "DDDD-4444", mariage="12/06/2010")
+    famille.regler(c, "famille", True)
+    services["treemich"].oublie = True
+    nuit.passer(c, "test")
+    assert not famille.actif(c, "famille")
+    assert any("coupé" in x["message"] for x in c.base.journal("automatique"))
+
+
+def test_28_deces_croix_et_silence(c, services):
+    from app import attentes, famille
+    tm = services["treemich"]
+    d = _relier_le_couple(c)
+    attentes.regler(c, "Urgence", "treemich", True)
+    attentes.regler(c, "Urgence", "courriel", True)
+    # Date de décès saisie sur l'iPhone (libellé « Décès ») : la fiche est décédée dès la lecture
+    ic = services["icloud"]
+    ic.modifier_sur_iphone("DDDD-4444", ic.texte("DDDD-4444").replace(
+        "UID:", "item9.X-ABDATE:2024-02-03\r\nitem9.X-ABLabel:Décès\r\nUID:"))
+    with c.ecriture():
+        icloud.relire(c)
+    assert c.fiche("DDDD-4444")["deces"] == "2024-02-03" and "DDDD-4444" in attentes.decedes(c)
+    assert completude.resume(c)["DDDD-4444"]["decede"] is True
+    assert "Paul MARTIN" not in [a["nom"] for a in sorties.ha_anniversaires(c)["anniversaires"]]
+    # Prévu vers Treemich ; écrit seulement interrupteur allumé, et une fiche en relecture n'est pas touchée
+    assert [(a["service"], a["sujet"], a["apres"]) for a in famille.examiner(c, d)["actions"]
+            if a["sujet"] == "deces"] == [("treemich", "deces", "2024-02-03")]
+    famille.regler(c, "famille", True)
+    nuit.passer(c, "test")
+    assert tm.deces == {"t-paul": "2024-02-03"}
+    # Dans l'autre sens : un décès de l'arbre rejoint la carte iCloud
+    tm.deces["t-claire"] = "2025-05-06"
+    nuit.passer(c, "test")
+    assert c.fiche("AAAA-1111")["deces"] == "2025-05-06" and "X-ABLabel:Décès" in ic.texte("AAAA-1111")
+    assert attentes.tout(c)["AAAA-1111"]["manques"] == []
+    # Treemich muet : le dernier état connu est gardé
+    tm.muet = True
+    c.treemich().connecte = True
+    liaisons.donnees(c, rafraichir=True)
+    assert "AAAA-1111" in attentes.decedes(c)
+    tm.muet = False
+    # Case « décédé(e) » sans date, propre à carnet
+    assert famille.marquer_decede(c, "BBBB-2222", True)["decede"] is True
+    assert attentes.decedes(c)["BBBB-2222"] == ""
+    assert famille.marquer_decede(c, "BBBB-2222", False)["decede"] is False

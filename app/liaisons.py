@@ -31,7 +31,7 @@ def donnees(c: Carnet, rafraichir: bool = False) -> dict:
         c.oublier("liens")
 
     def calcul():
-        res = {"immich": [], "treemich": [], "relations": [], "naissances_treemich": {}, "erreurs": [],
+        res = {"immich": [], "treemich": [], "relations": [], "naissances_treemich": {}, "deces_treemich": {}, "erreurs": [],
                "le": iso(maintenant())}
         if c.cfg.immich_cle:
             im = c.immich()
@@ -50,12 +50,17 @@ def donnees(c: Carnet, rafraichir: bool = False) -> dict:
                 for p in res["treemich"]:
                     if p["id"] in lies:   # dates lues seulement pour les personnes liées (Treemich limite les appels)
                         try:
-                            res["naissances_treemich"][p["id"]] = tm.naissance(p["id"])
+                            ev = tm.evenements(p["id"])
+                            res["naissances_treemich"][p["id"]] = ev["naissance"]
+                            if ev["deces"]:
+                                res["deces_treemich"][p["id"]] = ev["deces"]
                         except ErreurLien as exc:
                             res["erreurs"].append(str(exc))
                             break
             except ErreurLien as exc:
                 res["erreurs"].append(str(exc))
+            from . import famille
+            famille.memoriser(c, res)   # dernier état connu des couples et des décès (2.8)
         return res
     return c.memo("liens", calcul, duree=DUREE_CACHE)
 

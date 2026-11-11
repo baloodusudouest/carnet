@@ -182,6 +182,18 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
         if action == "pas_lui":
             reseaux.refuser(c, uid, d["service"], d["ext_id"])
             return {"ok": True}
+    if motif in ("mariage", "mariage_different"):
+        from . import famille
+        if action == "sans" and motif == "mariage":
+            return famille.sans_union(c, d["a"], d["b"])
+        if action == "ecrire":
+            reliees = famille._reliees(c)
+            res = famille.ecrire_partout(c, "mariage", str(valeur or ""), [reliees[t] for t in (d["a"], d["b"]) if t in reliees],
+                                         a=d["a"], b=d["b"])
+            return res
+    if motif == "deces_different" and action == "ecrire":
+        from . import famille
+        return famille.ecrire_partout(c, "deces", str(valeur or ""), [uid], treemich=d["treemich"])
     if motif == "doublon" and action == "distincts":
         traiter.ignorer(c, motif, cle)
         return {"ok": True}
