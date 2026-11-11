@@ -1,5 +1,15 @@
 # Journal des versions
 
+## 2.11.0 — 11 novembre 2026
+- **Photos : les tuiles « Portraits » et « Affiches » montrent tous les contacts** qui peuvent en recevoir une (reliés à Immich, ou d'une société dont le logo est gardé), y compris ceux qui ont déjà une photo. Le nombre de la tuile compte ce qui manque. « Affiches » remplace « Affiches à préparer ».
+  - Chaque contact montre jusqu'à 5 propositions, telles qu'elles seraient posées. **La première est le choix de carnet** : visage entier (déjà exigé), grand, la personne seule sur la photo si possible, et plutôt au centre ; pour un contact de société, le logo.
+  - Toucher une autre proposition la retient et coche le contact. « Poser les photos cochées » ou « Préparer les affiches cochées » traite le lot (20 à la fois).
+  - **Rien n'est coché d'office pour un contact qui a déjà une photo** : « Cocher ce qui manque ici » ne coche que les contacts sans photo. Un remplacement est annoncé à côté du bouton.
+  - Les contacts reliés avant cette version doivent être relus une fois dans Immich : cocher, puis « Chercher les propositions ». Cette recherche n'écrit rien.
+- **La photo posée devient le visage de la personne dans Immich** (depuis l'onglet Photos, depuis la fiche, et la nuit). Si Immich refuse (clé sans le droit de modifier les personnes), la photo de la fiche reste posée et le refus est dit.
+- Non fait : la photo de profil dans Treemich (son API n'a pas pu être vérifiée) ; le kit d'urgence n'a pas de photos dans son livre des contacts, il n'y a donc rien à lui renvoyer.
+- Tests : 111 du back, 31 d'interface.
+
 ## 2.10.0 — 11 novembre 2026
 - **Toucher la photo d'une fiche en modification ouvre une fenêtre de propositions** : jusqu'à 5 pour la photo du contact, jusqu'à 5 pour son affiche.
   - Contact relié à Immich : ses meilleurs visages, montrés tels qu'ils seraient posés (photo carrée, affiche cadrée). « Chercher d'autres photos dans Immich » relance la recherche. carnet garde maintenant 12 visages par personne au lieu de 6.

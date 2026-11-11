@@ -24,6 +24,27 @@ VISAGE_MIN = 250          # côté minimal du visage sur la photo d'origine (pix
 ALBUM = "Affiches de contacts"
 
 
+def note_portrait(x: dict) -> float:
+    """Le choix de carnet (2.11) : un visage entier (déjà exigé), grand, la personne seule sur la
+    photo si possible, et plutôt au centre. Les candidats trouvés avant la 2.11 n'ont pas le
+    nombre de visages : ils sont notés sur la taille et le centrage seulement."""
+    x1, y1, x2, y2 = x["boite"]
+    ecart = min(1.0, (abs((x1 + x2) / 2 - 0.5) + abs((y1 + y2) / 2 - 0.45)) * 1.5)   # 0 au centre
+    visages = x.get("visages")
+    seul = 1.6 if visages == 1 else 1.0 if visages in (None, 2) else 0.75
+    return min(x["taille"], 1200) * seul * (1 - 0.5 * ecart)
+
+
+def note_affiche(x: dict) -> float:
+    cadre = images.cadre_affiche(x["boite"], x["ratio"]) if x.get("ratio") else None
+    return cadre[1] * note_portrait(x) if cadre else 0.0
+
+
+def a_jour(cands: list[dict]) -> bool:
+    """Vrai si la recherche a été faite depuis la 2.11 (elle sait si la personne est seule)."""
+    return all("visages" in x for x in cands)
+
+
 def _immich_de(c: Carnet, uid: str) -> str:
     immich_id = c.liaison(uid).get("immich")
     if not immich_id:
@@ -41,8 +62,8 @@ def candidats(c: Carnet, uid: str, rafraichir: bool = False) -> list[dict]:
     trouves = []
     try:
         for photo in im.photos_de(immich_id, PHOTOS_EXAMINEES):
-            visage = next((v for v in im.visages_photo(photo["id"])
-                           if (v.get("person") or {}).get("id") == immich_id), None)
+            tous = im.visages_photo(photo["id"])
+            visage = next((v for v in tous if (v.get("person") or {}).get("id") == immich_id), None)
             boite = images.boite_relative(visage) if visage else None
             if not boite or not images.entier(boite):
                 continue
@@ -50,6 +71,7 @@ def candidats(c: Carnet, uid: str, rafraichir: bool = False) -> list[dict]:
             if taille < VISAGE_MIN:
                 continue
             trouves.append({"asset": photo["id"], "boite": list(boite), "taille": taille, "type": photo["type"],
+                            "visages": len(tous),
                             "le": (photo["le"] or "")[:10],
                             "ratio": round(visage["imageWidth"] / visage["imageHeight"], 4)
                             if visage.get("imageWidth") and visage.get("imageHeight") else None})
@@ -57,7 +79,7 @@ def candidats(c: Carnet, uid: str, rafraichir: bool = False) -> list[dict]:
         raise ErreurCarnet(str(exc))
     finally:
         im.fermer()
-    trouves = sorted(trouves, key=lambda x: -x["taille"])[:CANDIDATS]
+    trouves = sorted(trouves, key=lambda x: -note_portrait(x))[:CANDIDATS]
     c.base.executer("INSERT INTO portraits(uid, candidats, le) VALUES (?,?,?) "
                     "ON CONFLICT(uid) DO UPDATE SET candidats = excluded.candidats, le = excluded.le",
                     (uid, json.dumps(trouves), iso(maintenant())))
@@ -103,7 +125,29 @@ def poser(c: Carnet, uid: str, asset: str, origine: str = "manuel") -> dict:
                           etag_vu=actions._etag(c, uid))
     c.base.executer("UPDATE portraits SET asset = ?, manuel = ?, le = ? WHERE uid = ?",
                     (asset, int(origine == "manuel"), iso(maintenant()), uid))
+    res["immich"] = vignette_immich(c, uid, asset)
     return res
+
+
+def vignette_immich(c: Carnet, uid: str, asset: str) -> str:
+    """2.11 : la photo choisie devient aussi le visage de la personne dans Immich (et donc partout
+    où Immich le montre). La fiche iCloud est déjà écrite : un refus d'Immich ne l'annule pas, il
+    est dit. Renvoie « ok », ou la raison du refus."""
+    immich_id = c.liaison(uid).get("immich")
+    if not immich_id:
+        return "non relié"
+    try:
+        c.exiger_ecriture("Immich")
+        im = c.immich()
+        try:
+            im.definir_couverture(immich_id, asset)
+        finally:
+            im.fermer()
+    except (ErreurLien, ErreurCarnet) as exc:
+        log.warning("Vignette Immich non mise à jour : %s", exc)
+        return str(exc)
+    c.base.noter("photos", "Visage de la personne mis à jour dans Immich", {"uid": uid})
+    return "ok"
 
 
 def apercu_candidat(c: Carnet, asset: str) -> bytes | None:
@@ -172,11 +216,14 @@ def propositions(c: Carnet, uid: str, rafraichir: bool = False) -> dict:
     f = c.fiche(uid)
     if c.liaison(uid).get("immich"):
         cands = candidats(c, uid, rafraichir)
-        cadrables = [x for x in cands if x.get("ratio") and images.cadre_affiche(x["boite"], x["ratio"])]
-        cadrables.sort(key=lambda x: -images.cadre_affiche(x["boite"], x["ratio"])[1] * x["taille"])
-        return {"mode": "immich", "societe": f.get("societe", ""),
-                "photos": [{"cle": x["asset"], "le": x["le"]} for x in cands[:PROPOSITIONS]],
-                "affiches": [{"cle": x["asset"], "le": x["le"]} for x in cadrables[:PROPOSITIONS]]}
+        cands = sorted(cands, key=lambda x: -note_portrait(x))        # la première est le choix de carnet
+        cadrables = sorted((x for x in cands if note_affiche(x) > 0), key=lambda x: -note_affiche(x))
+
+        def ligne(x):
+            return {"cle": x["asset"], "le": x["le"], "seul": x.get("visages") == 1}
+        return {"mode": "immich", "societe": f.get("societe", ""), "a_jour": a_jour(cands),
+                "photos": [ligne(x) for x in cands[:PROPOSITIONS]],
+                "affiches": [ligne(x) for x in cadrables[:PROPOSITIONS]]}
     if not f.get("societe"):
         return {"mode": "rien", "societe": "", "photos": [], "affiches": [],
                 "raison": "Ce contact n'est pas relié à Immich et n'a pas de société : relie-le dans le bloc Liaisons, "
@@ -204,6 +251,12 @@ def apercu_proposition(c: Carnet, uid: str, sorte: str, cle: str) -> bytes:
     """Petite image d'une proposition : la photo carrée telle qu'elle serait posée, ou l'affiche."""
     f = c.fiche(uid)
     if c.liaison(uid).get("immich"):
+        return c.memo(f"apercu:{uid}:{sorte}:{cle}", lambda: _apercu_immich(c, uid, sorte, cle), duree=3600)
+    return _apercu_logo(c, uid, f, sorte, cle)
+
+
+def _apercu_immich(c: Carnet, uid: str, sorte: str, cle: str) -> bytes:
+    if True:
         cand = next((x for x in candidats(c, uid) if x["asset"] == cle), None)
         if not cand:
             raise ErreurCarnet("Cette photo n'est plus proposée : relance la recherche.")
@@ -221,6 +274,9 @@ def apercu_proposition(c: Carnet, uid: str, sorte: str, cle: str) -> bytes:
                 else images.portrait(contenu, cand["boite"])[0]
         except ValueError:
             raise ErreurCarnet("Visage trop serré sur cette photo.")
+
+
+def _apercu_logo(c: Carnet, uid: str, f: dict, sorte: str, cle: str) -> bytes:
     if sorte == "affiche":
         logo = _logo_de(c, uid)
         if not logo:

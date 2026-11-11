@@ -4,7 +4,8 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **2.10.0 sur `main`** (11/11/2026) : fenêtre de propositions (5 photos, 5 affiches) ouverte en touchant la photo d'une fiche en modification ; affiche du logo à la couleur de la société.
+- **2.11.0 sur `main`** (11/11/2026) : Photos, tuiles « Portraits » et « Affiches » pour tous les contacts avec le choix de carnet (`photos.note_portrait`), pose par lot des choix (`galerie.poser_choix`, `preparer_choix`), visage de la personne mis à jour dans Immich (`photos.vignette_immich`). **Pas vue sur les vraies données.** À vérifier au premier essai : la clé Immich de carnet a-t-elle le droit `person.update` ; Treemich montre-t-il le nouveau visage tout seul (sinon, chercher dans son API comment écrire la photo de profil).
+- **2.10.0** (11/11/2026) : fenêtre de propositions (5 photos, 5 affiches) ouverte en touchant la photo d'une fiche en modification ; affiche du logo à la couleur de la société.
 - 2.9.2 (11/11/2026) : mariages par couple dans `/ha/anniversaires` ; côté Home Assistant, `maison/anniversaires.yaml` v2 lit les mariages et `/ha/fetes` (master doc HA 1.50).
 - 2.9.1 (11/11/2026) : liste des couples dans Connexion › Treemich, messages corrigés. Vérifié sur l'installation de Julien le 11/11 : l'écriture d'un mariage dans Treemich fonctionne (lue dans l'arbre) ; « Vérifier » sur Treemich prend environ 50 secondes.
 - 2.9.0 (11/11/2026) : réorganisation en six onglets (À traiter en tuiles, Contacts, Groupes, Photos, Connexion avec une icône par service, Réglages). Faite sans dossier ni conseil préalables, à la demande de Julien ; le dossier tel que construit a été mis à jour après le code.
@@ -46,6 +47,8 @@ Restes de la 2.8, toujours valables :
 
 - L'historique du dépôt a été réécrit le 11/11/2026 sur toutes les branches (adresse locale, dossier personnel et noms réels utilisés en exemples remplacés). Un ancien clone doit être refait, pas fusionné. Les références des anciennes demandes de fusion sur GitHub gardent l'ancien historique : seul leur support peut les purger. Les images antérieures à la 2.10.0 sont à supprimer du registre.
 - Rien de personnel dans le dépôt public : exemples inventés pour les sociétés, les chemins et les adresses.
+- 2.11 : les candidats trouvés avant la 2.11 n'ont pas le nombre de visages (`photos.a_jour`) : l'écran demande de les relire. Une relecture coûte une soixantaine d'appels à Immich par contact : toujours par lots.
+- 2.11 : la vignette Immich n'a pas d'annulation (Immich ne dit pas quelle photo servait avant).
 - 2.10 : la « couleur de la société » est calculée depuis le logo (`logos.couleurs`), elle n'est pas enregistrée. L'affiche du logo n'est faite que pour un contact non relié à Immich ; une personne reliée garde une affiche en photo.
 - 2.10 : l'affiche du logo n'a été vue que sur des logos d'essai ; à juger sur de vrais logos (fond blanc opaque, logo très large, logo monochrome).
 - Treemich n'affiche pas le mariage dans « Life events » : il est sur le lien du couple (Profile › Relatives › crayon du conjoint). Ne pas conclure qu'une date n'est pas partie sans regarder là, ou la liste des couples de Connexion › Treemich.

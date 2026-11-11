@@ -1,6 +1,12 @@
-"""Onglet Photos (carnet 2.8) : quatre files, traitées par lots, et le logo déposé à la main.
+"""Onglet Photos (carnet 2.8, revu en 2.11) : quatre files, traitées par lots, et le logo déposé à la main.
 
-Files :
+2.11 : « Portraits » et « Affiches » portent sur TOUS les contacts qui peuvent en recevoir une
+(reliés à Immich, ou d'une société dont le logo est gardé), y compris ceux qui ont déjà une photo.
+Chaque contact montre ses propositions ; la première est le choix de carnet (visage entier, grand,
+personne seule et centrée si possible, sinon le logo). Rien n'est posé sans avoir été coché : une
+photo déjà en place n'est jamais remplacée d'office. Le compteur de la tuile ne compte que ce qui manque.
+
+Files (avant la 2.11 : « portraits » = reliées sans photo, « a_preparer » = avec photo sans affiche) :
 - portraits  : fiches reliées à Immich, sans photo ;
 - logos      : fiches sans photo qui portent une société et ne sont pas reliées à Immich. Le logo
                se choisit **par société** : il est posé sur toutes ses fiches sans photo, et gardé
@@ -17,6 +23,7 @@ principal est le logo déposé : glissé depuis une autre fenêtre, collé, ou c
 from __future__ import annotations
 
 import base64
+import json
 import io
 import ipaddress
 import socket
@@ -48,30 +55,41 @@ def files(c: Carnet) -> dict:
     connus = {l["cle"] for l in c.base.tous("SELECT cle FROM logos_societes")}
     portraits_connus = {l["uid"] for l in c.base.tous("SELECT uid FROM portraits WHERE candidats != '[]'")}
     affiches = {l["uid"]: l["posee"] for l in c.base.tous("SELECT uid, posee FROM affiches")}
-    res = {"portraits": [], "logos": [], "a_preparer": [], "a_poser": []}
+    res = {"portraits": [], "logos": [], "affiches": [], "a_poser": []}
+    cherches_portraits = {l["uid"]: json.loads(l["candidats"]) for l in c.base.tous("SELECT uid, candidats FROM portraits")}
     for uid, f in fiches.items():
         if uid in morts:
             continue
         immich = bool(liens.get(uid, {}).get("immich"))
-        if not f.get("a_photo"):
-            if immich:
-                res["portraits"].append(_ligne(uid, f, candidat=uid in portraits_connus))
-            elif f.get("societe"):
-                recherche = cherches.get(uid)
-                res["logos"].append(_ligne(uid, f, domaine=bool(logos.domaine_de(f, domaine_pro)),
-                                           cherche=bool(recherche), trouves=recherche["trouves"] if recherche else 0,
-                                           cle=cle_societe(f), connu=cle_societe(f) in connus,
-                                           google=recherche_google(f)))
-        elif immich and uid not in affiches:
-            res["a_preparer"].append(_ligne(uid, f))
-        # 2.10 : sans portrait possible, l'affiche se fait depuis le logo gardé pour la société
-        if not immich and f.get("societe") and cle_societe(f) in connus and uid not in affiches:
-            res["a_preparer"].append(_ligne(uid, f, logo=True))
+        logo = not immich and bool(f.get("societe")) and cle_societe(f) in connus
+        if not f.get("a_photo") and not immich and f.get("societe"):
+            recherche = cherches.get(uid)
+            res["logos"].append(_ligne(uid, f, domaine=bool(logos.domaine_de(f, domaine_pro)),
+                                       cherche=bool(recherche), trouves=recherche["trouves"] if recherche else 0,
+                                       cle=cle_societe(f), connu=cle_societe(f) in connus,
+                                       google=recherche_google(f)))
+        if immich or logo:
+            cands = cherches_portraits.get(uid)
+            # « cherche » : la recherche Immich a été faite depuis la 2.11 (un logo gardé est toujours prêt)
+            pret = logo or (cands is not None and photos.a_jour(cands))
+            commun = {"mode": "immich" if immich else "logo", "cherche": pret,
+                      "aucune": immich and cands is not None and photos.a_jour(cands) and not cands}
+            res["portraits"].append(_ligne(uid, f, a_photo=bool(f.get("a_photo")), **commun))
+            res["affiches"].append(_ligne(uid, f, a_photo=bool(f.get("a_photo")),
+                                          affiche=None if uid not in affiches else "posée" if affiches[uid] else "prête",
+                                          **commun))
         if uid in affiches and not affiches[uid]:
             res["a_poser"].append(_ligne(uid, f))
-    for liste in res.values():
-        liste.sort(key=lambda x: x["nom"].casefold())
-    return {"files": res, "nombres": {k: len(v) for k, v in res.items()}, "lot_max": LOT_MAX}
+    # Ce qui manque d'abord, puis par nom
+    res["portraits"].sort(key=lambda x: (x["a_photo"], x["nom"].casefold()))
+    res["affiches"].sort(key=lambda x: (x["affiche"] is not None, x["nom"].casefold()))
+    for cle in ("logos", "a_poser"):
+        res[cle].sort(key=lambda x: x["nom"].casefold())
+    nombres = {"logos": len(res["logos"]), "a_poser": len(res["a_poser"]),
+               "portraits": sum(1 for x in res["portraits"] if not x["a_photo"]),
+               "affiches": sum(1 for x in res["affiches"] if x["affiche"] is None)}
+    return {"files": res, "nombres": nombres, "lot_max": LOT_MAX,
+            "totaux": {"portraits": len(res["portraits"]), "affiches": len(res["affiches"])}}
 
 
 def recherche_google(f: dict) -> str:
@@ -108,6 +126,66 @@ def poser_portraits(c: Carnet, uids: list[str]) -> dict:
 def preparer_affiches(c: Carnet, uids: list[str]) -> dict:
     c.exiger_ecriture("Immich")
     return _par_lot(c, uids, lambda uid: photos.preparer_affiche(c, uid))
+
+
+# ------------------------------------------------------------ 2.11 : propositions pour tous, pose des choix
+
+def chercher_propositions(c: Carnet, uids: list[str]) -> dict:
+    """Relit dans Immich les photos de chaque contact coché (une soixantaine d'appels par contact :
+    par lots). N'écrit rien, ni dans iCloud ni dans Immich."""
+    def un(uid):
+        if not c.liaison(uid).get("immich"):
+            return False
+        photos.candidats(c, uid, rafraichir=True)
+    return _par_lot(c, uids, un)
+
+
+def _choix(corps: list) -> list[tuple[str, str]]:
+    return [(str(x.get("uid")), str(x.get("cle"))) for x in corps if isinstance(x, dict) and x.get("uid") and x.get("cle") is not None]
+
+
+def poser_choix(c: Carnet, choix: list[dict]) -> dict:
+    """Pose, pour chaque contact coché, la photo choisie à l'écran (celle de carnet si l'on n'a rien
+    touché). Relié à Immich : le portrait découpé, et le visage de la personne dans Immich suit.
+    Sinon : le logo gardé pour la société. Une photo en place est remplacée — c'est pourquoi rien
+    n'arrive ici sans avoir été coché."""
+    c.exiger_ecriture("iCloud")
+    par_uid = dict(_choix(choix))
+    refus_immich: list[str] = []
+
+    def un(uid):
+        cle = par_uid[uid]
+        if c.liaison(uid).get("immich"):
+            res = photos.poser(c, uid, cle, origine="Photos")
+            if res.get("immich") not in ("ok", "non relié"):
+                refus_immich.append(nom_affiche(c.fiche(uid)))
+            return
+        logo = photos._logo_de(c, uid, int(cle)) if cle.isdigit() else None
+        if logo is None:
+            raise ErreurCarnet("logo introuvable : relance la recherche.")
+        from . import actions
+        photo = photos.images.alleger((logos.photo(logo), "image/jpeg"))
+        actions.valider(c, uid, c.fiche(uid), photo=photo, origine="Photos", motif="logo en photo",
+                        etag_vu=actions._etag(c, uid))
+        retenir_logo(c, c.fiche(uid), logo)
+    bilan = _par_lot(c, list(par_uid), un)
+    if refus_immich:
+        bilan["erreurs"] = (bilan["erreurs"] + [f"Visage non mis à jour dans Immich pour : {', '.join(refus_immich[:8])}."])[:10]
+    return bilan
+
+
+def preparer_choix(c: Carnet, choix: list[dict]) -> dict:
+    """Prépare l'affiche choisie pour chaque contact coché (photo d'Immich, ou couleur du logo)."""
+    c.exiger_ecriture("Immich")
+    par_uid = dict(_choix(choix))
+
+    def un(uid):
+        cle = par_uid[uid]
+        if c.liaison(uid).get("immich"):
+            photos.preparer_affiche(c, uid, asset=cle)
+        else:
+            photos.preparer_affiche(c, uid, couleur=int(cle) if cle.isdigit() else None)
+    return _par_lot(c, list(par_uid), un)
 
 
 def marquer_posees(c: Carnet, uids: list[str]) -> dict:

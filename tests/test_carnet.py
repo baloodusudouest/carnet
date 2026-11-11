@@ -2171,7 +2171,98 @@ def test_210_propositions_de_photo_et_d_affiche(c, services):
     a = photos.preparer_affiche(c, "CCCC-3333", couleur=3)
     assert a["immich"] and photos.affiches(c)[-1]["source"] == "logo"
     assert galerie.logo_connu(c, galerie.cle_societe(c.fiche("CCCC-3333"))) == tampon.getvalue()
-    # La file « Affiches à préparer » compte maintenant les contacts de société qui ont un logo gardé
+    # La file des affiches compte les contacts de société qui ont un logo gardé (2.11 : file « affiches »)
     c.base.executer("DELETE FROM affiches WHERE uid = ?", ("CCCC-3333",))
-    assert any(x["uid"] == "CCCC-3333" and x.get("logo") for x in galerie.files(c)["files"]["a_preparer"])
+    assert any(x["uid"] == "CCCC-3333" and x["mode"] == "logo" and x["affiche"] is None
+               for x in galerie.files(c)["files"]["affiches"])
     assert galerie.preparer_affiches(c, ["CCCC-3333"])["faits"] == 1
+
+
+def test_211_le_choix_de_carnet_prefere_la_personne_seule_et_centree():
+    """Visage entier (déjà exigé), grand, personne seule si possible, plutôt au centre."""
+    centre, coin = [0.4, 0.35, 0.6, 0.55], [0.05, 0.05, 0.25, 0.25]
+    seule = {"asset": "a", "boite": centre, "taille": 400, "visages": 1, "ratio": 0.75}
+    groupe = {"asset": "b", "boite": centre, "taille": 500, "visages": 4, "ratio": 0.75}
+    excentree = {"asset": "c", "boite": coin, "taille": 400, "visages": 1, "ratio": 0.75}
+    ancienne = {"asset": "d", "boite": centre, "taille": 400, "ratio": 0.75}            # trouvée avant la 2.11
+    notes = {x["asset"]: photos.note_portrait(x) for x in (seule, groupe, excentree, ancienne)}
+    assert notes["a"] > notes["b"] and notes["a"] > notes["c"] and notes["a"] > notes["d"] > 0
+    assert photos.a_jour([seule, groupe]) and not photos.a_jour([seule, ancienne])
+
+
+def test_211_propositions_pour_tous_et_pose_des_choix(c, services):
+    """Portraits et Affiches portent sur tous les contacts reliés, même ceux qui ont déjà une photo ;
+    rien n'est posé sans choix ; la photo posée devient le visage de la personne dans Immich."""
+    from app import galerie
+    im = services["immich"]
+    im.photos["im-paul"] = ["p1", "p2"]
+    liaisons.lier(c, "DDDD-4444", "immich", "im-paul")
+    ligne = next(x for x in galerie.files(c)["files"]["portraits"] if x["uid"] == "DDDD-4444")
+    assert ligne["mode"] == "immich" and ligne["cherche"] is False                     # pas encore relu dans Immich
+    avant = len(im.ecrits)
+    r = galerie.chercher_propositions(c, ["DDDD-4444", "CCCC-3333"])                   # la seconde n'est pas reliée
+    assert r["faits"] == 1 and len(im.ecrits) == avant                                 # chercher n'écrit rien
+    f = galerie.files(c)
+    ligne = next(x for x in f["files"]["portraits"] if x["uid"] == "DDDD-4444")
+    assert ligne["cherche"] is True and not ligne["aucune"]
+    assert f["nombres"]["portraits"] == sum(1 for x in f["files"]["portraits"] if not x["a_photo"])
+    assert f["totaux"]["portraits"] == len(f["files"]["portraits"])
+    p = photos.propositions(c, "DDDD-4444")
+    assert p["a_jour"] and [x["cle"] for x in p["photos"]] == ["p1", "p2"] and p["photos"][0]["seul"]
+    # On choisit la seconde proposition, pas celle de carnet
+    r = galerie.poser_choix(c, [{"uid": "DDDD-4444", "cle": "p2"}])
+    assert r["faits"] == 1 and not r["erreurs"]
+    assert ("PUT", "/api/people/im-paul", {"featureFaceAssetId": "p2"}) in im.ecrits   # Immich suit
+    assert c.fiche("DDDD-4444").get("a_photo")
+    ligne = next(x for x in galerie.files(c)["files"]["portraits"] if x["uid"] == "DDDD-4444")
+    assert ligne["a_photo"] is True                                                    # toujours dans la liste, pour en changer
+    # Une proposition qui n'existe pas est refusée, sans rien écrire
+    avant = len(im.ecrits)
+    r = galerie.poser_choix(c, [{"uid": "DDDD-4444", "cle": "inconnue"}])
+    assert r["faits"] == 0 and r["erreurs"] and len(im.ecrits) == avant
+    # Affiche : la photo choisie
+    r = galerie.preparer_choix(c, [{"uid": "DDDD-4444", "cle": "p1"}])
+    assert r["faits"] == 1 and next(a for a in photos.affiches(c) if a["uid"] == "DDDD-4444")["source"] == "p1"
+    ligne = next(x for x in galerie.files(c)["files"]["affiches"] if x["uid"] == "DDDD-4444")
+    assert ligne["affiche"] == "prête"
+
+
+def test_211_immich_qui_refuse_n_annule_pas_la_photo(c, services, monkeypatch):
+    from app import galerie, liens
+    liaisons.lier(c, "DDDD-4444", "immich", "im-paul")
+    galerie.chercher_propositions(c, ["DDDD-4444"])
+
+    def refus(self, pid, asset):
+        raise liens.ErreurLien("Immich a refusé la photo de la personne (403).")
+    monkeypatch.setattr(liens.Immich, "definir_couverture", refus)
+    r = galerie.poser_choix(c, [{"uid": "DDDD-4444", "cle": "p1"}])
+    assert r["faits"] == 1 and c.fiche("DDDD-4444").get("a_photo")                     # la fiche est écrite
+    assert any("Immich" in e for e in r["erreurs"])                                    # et le refus est dit
+
+
+def test_211_lecture_seule_et_routes(c, services):
+    import dataclasses
+    from fastapi.testclient import TestClient
+    from app import galerie, main
+    from app.garde import LectureSeule
+    liaisons.lier(c, "DDDD-4444", "immich", "im-paul")
+    galerie.chercher_propositions(c, ["DDDD-4444"])
+    main.ETAT["carnet"] = c
+    with TestClient(main.app) as client:
+        for chemin in ("/api/photos/propositions", "/api/photos/portraits/choix", "/api/photos/affiches/choix"):
+            assert client.post(chemin, json={}).status_code == 401, chemin
+        assert client.post("/api/connexion", json={"mot_de_passe": "secret"}).status_code == 200
+        f = client.get("/api/photos").json()
+        assert {"portraits", "affiches", "logos", "a_poser"} == set(f["files"]) == set(f["nombres"])
+        assert client.get("/api/contacts/DDDD-4444/propositions/photo/p1").status_code == 200
+        c.cfg = dataclasses.replace(c.cfg, lecture_seule=True)
+        avant = len(services["immich"].ecrits)
+        for chemin in ("/api/photos/portraits/choix", "/api/photos/affiches/choix"):
+            assert client.post(chemin, json={"choix": [{"uid": "DDDD-4444", "cle": "p1"}]}).status_code == 400, chemin
+    with pytest.raises(LectureSeule):
+        galerie.poser_choix(c, [{"uid": "DDDD-4444", "cle": "p1"}])
+    with pytest.raises(LectureSeule):
+        galerie.preparer_choix(c, [{"uid": "DDDD-4444", "cle": "p1"}])
+    assert photos.vignette_immich(c, "DDDD-4444", "p1") != "ok"                        # refusé au plus près d'Immich
+    assert len(services["immich"].ecrits) == avant and not c.fiche("DDDD-4444").get("a_photo")
+    main.ETAT.clear()

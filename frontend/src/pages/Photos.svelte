@@ -1,6 +1,9 @@
 <script>
   // Onglet Photos (2.8) : quatre files, traitées par lots. Rien n'est écrit dans iCloud sans que
   // l'image ait été vue : on coche, on regarde, puis on pose.
+  // 2.11 : « Portraits » et « Affiches » montrent TOUS les contacts qui peuvent en recevoir une, avec
+  // cinq propositions chacun. La première est le choix de carnet ; on peut en toucher une autre.
+  // Une photo déjà en place n'est jamais cochée d'office.
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import { dire, erreur, etat, rafraichirAccueil, rafraichirContacts } from '../lib/etat.svelte.js'
@@ -11,10 +14,10 @@
   const FILES = [
     { cle: 'logos', nom: 'Logos', vide: 'Aucune fiche de société sans photo.',
       aide: 'Une ligne par société. Glisse ou colle son logo, ou lance la recherche sur son site quand elle en a un : il est posé sur toutes ses fiches sans photo, et gardé pour les suivantes. Une fiche qui a déjà une photo la garde.' },
-    { cle: 'portraits', nom: 'Portraits', vide: 'Aucun contact relié à Immich sans photo.',
-      aide: 'Contacts reliés à Immich, sans photo. Le portrait est découpé dans la meilleure photo de la personne.' },
-    { cle: 'a_preparer', nom: 'Affiches à préparer', vide: 'Aucune affiche à préparer.',
-      aide: 'Contacts avec une photo, sans affiche. L\'affiche (image plein écran quand le contact appelle) est déposée dans l\'album Immich « Affiches de contacts ».' },
+    { cle: 'portraits', nom: 'Portraits', vide: 'Aucun contact relié à Immich, ni société avec un logo gardé.',
+      aide: 'Tous les contacts reliés à Immich ou dont la société a un logo. Le nombre de la tuile compte ceux qui n\'ont pas de photo. Carnet propose d\'abord la photo où le visage est entier, grand, la personne seule et au centre si possible ; touche une autre proposition pour la préférer. La photo posée devient aussi le visage de la personne dans Immich.' },
+    { cle: 'affiches', nom: 'Affiches', vide: 'Aucun contact relié à Immich, ni société avec un logo gardé.',
+      aide: 'Les mêmes contacts. Le nombre de la tuile compte ceux qui n\'ont pas d\'affiche. L\'affiche (image plein écran quand le contact appelle) est déposée dans l\'album Immich « Affiches de contacts » ; elle se pose ensuite à la main sur l\'iPhone.' },
     { cle: 'a_poser', nom: 'Affiches à poser', vide: 'Aucune affiche en attente.',
       aide: 'Affiches prêtes dans Immich. La pose se fait à la main sur l\'iPhone (Contacts, Modifier, Photo et affiche) ; coche ici celles qui sont faites.' },
   ]
@@ -26,9 +29,17 @@
   let trouves = $state({})    // uid → logos en attente d'un choix : [{ n, depose }]
   let choix = $state({})      // uid → n du logo retenu
   let version = $state(0)
+  // 2.11
+  let manque = $state(false)   // ne montrer que ce qui manque
+  let montrees = $state(20)    // lignes affichées (on avance par paquets)
+  let props = $state({})       // uid → propositions lues ({ photos, affiches }), null pendant la lecture
+  let retenu = $state({})      // uid → clé de la proposition retenue (par défaut : la première, celle de carnet)
+  const aChoix = $derived(file === 'portraits' || file === 'affiches')
+  const sorte = $derived(file === 'affiches' ? 'affiche' : 'photo')
+  const fait = (x) => (file === 'affiches' ? x.affiche !== null : x.a_photo)
 
   const courante = $derived(FILES.find((f) => f.cle === file))
-  const filtrees = $derived((donnees?.files[file] || []).filter((x) => !groupe || x.groupes.includes(groupe)))
+  const filtrees = $derived((donnees?.files[file] || []).filter((x) => (!groupe || x.groupes.includes(groupe)) && (!aChoix || !manque || !fait(x))))
   // Logos : une ligne par société. Le logo choisi est posé sur toutes ses fiches sans photo ;
   // une fiche qui a déjà une photo n'est pas dans la file et n'est jamais touchée.
   const lignes = $derived.by(() => {
@@ -47,27 +58,46 @@
   const groupes = $derived([...new Set((donnees?.files[file] || []).flatMap((x) => x.groupes))].sort((a, b) => a.localeCompare(b, 'fr')))
   const lot = $derived(donnees?.lot_max || 20)
   const cochees = $derived(lignes.filter((x) => coches.has(x.uid)).map((x) => x.uid))
+  const visibles = $derived(aChoix ? lignes.slice(0, montrees) : lignes)
+  const liste = (x) => (props[x.uid] ? (file === 'affiches' ? props[x.uid].affiches : props[x.uid].photos) : [])
+  const cleDe = (x) => retenu[file + ':' + x.uid] ?? liste(x)[0]?.cle
+  // Cochés et pas encore relus dans Immich : à chercher. Cochés avec une proposition : prêts.
+  const aChercher = $derived(lignes.filter((x) => coches.has(x.uid) && x.mode === 'immich' && !x.cherche).map((x) => x.uid))
+  const prets = $derived(lignes.filter((x) => coches.has(x.uid) && cleDe(x) !== undefined).map((x) => ({ uid: x.uid, cle: cleDe(x) })))
+  const remplacees = $derived(lignes.filter((x) => coches.has(x.uid) && cleDe(x) !== undefined && fait(x)).length)
+
+  // Les propositions des lignes affichées sont lues une à une (les images, elles, à la demande)
+  $effect(() => {
+    if (!aChoix) return
+    const suivant = visibles.find((x) => x.cherche && !x.aucune && props[x.uid] === undefined)
+    if (!suivant) return
+    props[suivant.uid] = null
+    api.get(`/api/contacts/${encodeURIComponent(suivant.uid)}/propositions`)
+      .then((r) => { props[suivant.uid] = r })
+      .catch(() => { props[suivant.uid] = { photos: [], affiches: [] } })
+  })
   // Prêtes à poser : un logo trouvé ou déposé à l'instant, ou le logo déjà gardé pour la société
   const logosChoisis = $derived(lignes.filter((x) => choix[x.uid] !== undefined || x.connu).map((x) => ({ uid: x.uid, n: choix[x.uid] ?? 0 })))
 
   async function charger() {
     try { donnees = await api.get('/api/photos') } catch (e) { erreur(e) }
   }
-  function changerFile(cle) { file = cle; groupe = ''; coches = new Set() }
+  function changerFile(cle) { file = cle; groupe = ''; coches = new Set(); montrees = 20 }
   function basculer(uid) {
     const s = new Set(coches)
     s.has(uid) ? s.delete(uid) : s.add(uid)
     coches = s
   }
   // Jamais « tout cocher » au-delà d'un lot : on avance par paquets que l'on peut regarder
-  function cocherLot() { coches = new Set(lignes.slice(0, lot).map((x) => x.uid)) }
+  // 2.11 : dans Portraits et Affiches, on ne coche d'office que ce qui manque — jamais un remplacement
+  function cocherLot() { coches = new Set((aChoix ? visibles.filter((x) => !fait(x) && !x.aucune) : lignes).slice(0, lot).map((x) => x.uid)) }
 
   async function enFond(chemin, corps) {
     attente = true
     try {
       await tache('photos', chemin, corps, 'photos')
       dire(etat.accueil?.tache?.message || 'Terminé.')
-      coches = new Set(); choix = {}; trouves = {}
+      coches = new Set(); choix = {}; trouves = {}; props = {}; retenu = {}; version += 1
       await Promise.all([charger(), rafraichirContacts(), rafraichirAccueil()])
     } catch (e) { erreur(e) } finally { attente = false }
   }
@@ -128,7 +158,11 @@
             {#each groupes as g}<option value={g}>{g} ({donnees.files[file].filter((x) => x.groupes.includes(g)).length} fiches)</option>{/each}
           </select>
         {/if}
-        {#if file !== 'logos' || lignes.some((x) => x.domaine)}
+        {#if aChoix}
+          <label class="bascule"><input type="checkbox" bind:checked={manque} onchange={() => { coches = new Set(); montrees = 20 }} />
+            Seulement {file === 'affiches' ? 'sans affiche' : 'sans photo'}</label>
+          <button class="bouton" onclick={cocherLot}>Cocher ce qui manque ici</button>
+        {:else if file !== 'logos' || lignes.some((x) => x.domaine)}
           <button class="bouton" onclick={cocherLot}>Cocher {lignes.length > lot ? `les ${lot} premières` : 'tout'}</button>
         {/if}
         {#if coches.size}<button class="bouton" onclick={() => (coches = new Set())}>Tout décocher</button>{/if}
@@ -142,20 +176,24 @@
           {/if}
           <button class="bouton bouton-principal" disabled={attente || !logosChoisis.length}
                   onclick={() => enFond('/api/photos/logos/poser', { choix: logosChoisis })}>Poser les logos ({logosChoisis.length} société{logosChoisis.length > 1 ? 's' : ''})</button>
-        {:else if file === 'portraits'}
-          <button class="bouton bouton-principal" disabled={attente || !cochees.length}
-                  onclick={() => enFond('/api/photos/portraits', { uids: cochees })}>Poser les portraits ({cochees.length})</button>
-        {:else if file === 'a_preparer'}
-          <button class="bouton bouton-principal" disabled={attente || !cochees.length}
-                  onclick={() => enFond('/api/photos/affiches', { uids: cochees })}>Préparer les affiches ({cochees.length})</button>
+        {:else if aChoix}
+          {#if aChercher.length}
+            <button class="bouton" disabled={attente} onclick={() => enFond('/api/photos/propositions', { uids: aChercher })}>
+              {attente ? 'Recherche…' : `Chercher les propositions (${aChercher.length})`}</button>
+          {/if}
+          <button class="bouton bouton-principal" disabled={attente || !prets.length}
+                  onclick={() => enFond(file === 'affiches' ? '/api/photos/affiches/choix' : '/api/photos/portraits/choix', { choix: prets })}>
+            {file === 'affiches' ? 'Préparer les affiches cochées' : 'Poser les photos cochées'} ({prets.length})</button>
+          {#if remplacees}<span class="discret">dont {remplacees} en remplacement de {file === 'affiches' ? 'l\'affiche' : 'la photo'} actuelle</span>{/if}
+          {#if cochees.length > lot}<span class="discret">Par lots de {lot} : le reste attend le lot suivant.</span>{/if}
         {:else}
           <button class="bouton bouton-principal" disabled={attente || !cochees.length} onclick={marquerPosees}>Marquer comme posées ({cochees.length})</button>
         {/if}
       </div>
 
       <ul class="liste">
-        {#each lignes as x (x.uid)}
-          <li class="fiche" class:logo={file === 'logos'}>
+        {#each visibles as x (x.uid)}
+          <li class="fiche" class:logo={file === 'logos'} class:choix={aChoix}>
             <label class="qui">
               {#if file !== 'logos' || x.domaine}
                 <input type="checkbox" checked={coches.has(x.uid)} onchange={() => basculer(x.uid)} aria-label={'Cocher ' + x.nom} />
@@ -167,12 +205,15 @@
               {:else if file === 'a_poser'}
                 <img class="apercu-affiche" src={`/api/contacts/${encodeURIComponent(x.uid)}/affiche`} alt="" loading="lazy" />
               {:else}
-                <Avatar uid={x.uid} nom={x.nom} photo={file !== 'logos' && file !== 'portraits'} taille={40} />
+                {#key version}<Avatar uid={x.uid} nom={x.nom} photo={file === 'a_poser' || (aChoix && x.a_photo)} taille={40} />{/key}
               {/if}
               <span class="texte">
                 <a class="nom" href={'#/contacts/' + encodeURIComponent(x.uid)}>{x.nom}</a>
                 {#if file === 'logos'}
                   <span class="discret detail">{x.nb} fiche(s) sans photo{x.noms.length ? ' : ' + x.noms.slice(0, 4).join(', ') + (x.noms.length > 4 ? '…' : '') : ''}</span>
+                {:else if aChoix}
+                  <span class="discret detail">{[file === 'affiches' ? (x.affiche === null ? 'sans affiche' : 'affiche ' + x.affiche) : (x.a_photo ? 'a déjà une photo' : 'sans photo'),
+                    x.societe !== x.nom ? x.societe : '', x.groupes.join(', ')].filter(Boolean).join(' · ')}</span>
                 {:else}
                   <span class="discret detail">{[x.societe !== x.nom ? x.societe : '', x.groupes.join(', ')].filter(Boolean).join(' · ')}</span>
                 {/if}
@@ -185,6 +226,29 @@
                 {/if}
               </span>
             </label>
+            {#if aChoix}
+              {#if x.aucune}
+                <span class="discret etat-logo">Aucune photo utilisable dans Immich (visage entier et assez grand).</span>
+              {:else if !x.cherche}
+                <span class="discret etat-logo">Pas encore cherché dans Immich : coche puis « Chercher les propositions ».</span>
+              {:else if !props[x.uid]}
+                <span class="discret etat-logo">Lecture des propositions…</span>
+              {:else if !liste(x).length}
+                <span class="discret etat-logo">{file === 'affiches' ? 'Aucune photo ne laisse assez de place autour du visage pour une affiche.' : 'Aucune proposition.'}</span>
+              {:else}
+                <div class="propositions" role="group" aria-label={'Propositions pour ' + x.nom}>
+                  {#each liste(x) as pr, i (pr.cle)}
+                    <button class="proposition" class:affiche={file === 'affiches'} aria-pressed={cleDe(x) === pr.cle}
+                            aria-label={`Proposition ${i + 1}` + (i === 0 ? ', choix de carnet' : '') + (pr.seul ? ', seul sur la photo' : '')}
+                            onclick={() => { retenu = { ...retenu, [file + ':' + x.uid]: pr.cle }; if (!coches.has(x.uid)) basculer(x.uid) }}>
+                      {#if pr.couleur}<span class="teinte" style:background={pr.couleur}></span>{/if}
+                      <img src={`/api/contacts/${encodeURIComponent(x.uid)}/propositions/${sorte}/${encodeURIComponent(pr.cle)}?v=${version}`} alt="" loading="lazy" />
+                      {#if i === 0}<span class="marque">carnet</span>{/if}
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            {/if}
             {#if file === 'logos'}
               {#if trouves[x.uid]?.length > 1}
                 <div class="candidats">
@@ -199,6 +263,9 @@
           </li>
         {/each}
       </ul>
+      {#if aChoix && lignes.length > montrees}
+        <button class="bouton" onclick={() => (montrees += 20)}>Voir les 20 suivants ({lignes.length - montrees} restants)</button>
+      {/if}
     {/if}
   {/if}
 </section>
@@ -232,6 +299,18 @@
   .candidat[aria-pressed='true'] { border-color: var(--color-onglet); }
   .candidat img { width: 100%; height: 100%; object-fit: contain; }
   .vide { padding: 2rem 0; }
+  .bascule { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.75rem; font-size: 0.9rem; }
+  .bascule input { width: 1.15rem; height: 1.15rem; accent-color: var(--color-onglet); }
+  .propositions { display: flex; gap: 0.45rem; flex-wrap: wrap; }
+  .proposition { position: relative; width: 64px; height: 64px; padding: 0; border-radius: 12px; overflow: hidden;
+    border: 2px solid transparent; outline: 1px solid var(--color-couture); background: var(--color-reliure); }
+  .proposition.affiche { width: 54px; height: 117px; border-radius: 9px; }
+  .proposition[aria-pressed='true'] { border-color: var(--color-onglet); outline-color: var(--color-onglet); }
+  .proposition img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .proposition .teinte { position: absolute; inset: 0; }
+  .proposition .teinte + img { position: relative; }
+  .marque { position: absolute; left: 0; right: 0; bottom: 0; font-size: 0.6rem; line-height: 1.5; text-align: center;
+    background: var(--color-onglet); color: var(--color-sur-onglet); font-weight: 600; }
   @media (min-width: 900px) {
     .tuiles { grid-template-columns: repeat(4, 1fr); }
     .fiche.logo { grid-template-columns: minmax(0, 1fr) minmax(16rem, 22rem); align-items: center; }

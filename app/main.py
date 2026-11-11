@@ -527,6 +527,27 @@ def photos_affiches(corps: dict = Body(...)):
     return _fond("photos", lambda: _bilan_lot(galerie.preparer_affiches(c, _uids(corps)), "affiche(s) préparée(s)"))
 
 
+@app.post("/api/photos/propositions")
+def photos_propositions(corps: dict = Body(...)):
+    """2.11 : relit Immich pour les contacts cochés. Lecture seule : rien n'est écrit ailleurs que chez carnet."""
+    c = carnet()
+    return _fond("photos", lambda: _bilan_lot(galerie.chercher_propositions(c, _uids(corps)), "contact(s) relu(s) dans Immich"))
+
+
+@app.post("/api/photos/portraits/choix")
+def photos_portraits_choix(corps: dict = Body(...)):
+    c = carnet()
+    c.exiger_ecriture("iCloud")
+    return _fond("photos", lambda: _bilan_lot(galerie.poser_choix(c, list(corps.get("choix") or [])), "photo(s) posée(s)"))
+
+
+@app.post("/api/photos/affiches/choix")
+def photos_affiches_choix(corps: dict = Body(...)):
+    c = carnet()
+    c.exiger_ecriture("Immich")
+    return _fond("photos", lambda: _bilan_lot(galerie.preparer_choix(c, list(corps.get("choix") or [])), "affiche(s) préparée(s)"))
+
+
 @app.post("/api/photos/posees")
 def photos_posees(corps: dict = Body(...)):
     return galerie.marquer_posees(carnet(), _uids(corps))

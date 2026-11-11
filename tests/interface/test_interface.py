@@ -527,3 +527,36 @@ def test_210_toucher_la_photo_ouvre_cinq_propositions(page):
     affiches.first.click()
     page.wait_for_selector(".message >> text=Affiche prête")
     page.wait_for_function("!document.querySelector('dialog[open]')")
+
+
+# ------------------------------------------------------------------ 2.11 : propositions pour tous les contacts
+
+def test_211_portraits_propositions_puis_pose(page):
+    """Portraits : un contact relié à Immich montre ses propositions une fois cherchées ; la première
+    est le choix de carnet ; rien n'est coché d'office pour un contact qui a déjà une photo."""
+    page.click("nav.onglets a[aria-label='Photos']")
+    page.wait_for_selector("nav[aria-label='Files'] .tuile")
+    page.locator("nav[aria-label='Files'] .tuile", has=page.locator(".nom-tuile", has_text=re.compile("^Portraits$"))).click()
+    lignes = page.locator("li.fiche.choix")
+    if not lignes.count():
+        pytest.skip("aucun contact relié à Immich dans le jeu de démonstration")
+    ligne = lignes.first
+    nom = ligne.locator("a.nom").inner_text()
+    if ligne.get_by_text("Pas encore cherché").count():
+        ligne.get_by_role("checkbox").check()
+        page.get_by_role("button", name=re.compile(r"Chercher les propositions \(\d+\)")).click()
+    ligne = page.locator("li.fiche.choix", has_text=nom)
+    groupe = ligne.get_by_role("group", name=re.compile("Propositions pour"))
+    groupe.wait_for(timeout=20000)
+    premiere = groupe.get_by_role("button").first
+    assert "choix de carnet" in premiere.get_attribute("aria-label")
+    assert premiere.get_attribute("aria-pressed") == "true"                    # le choix de carnet est retenu par défaut
+    assert not ligne.get_by_role("checkbox").is_checked()                      # mais rien n'est coché d'office
+    poser = page.get_by_role("button", name=re.compile(r"Poser les photos cochées \(0\)"))
+    assert poser.is_disabled()
+    premiere.click()                                                           # toucher une proposition coche le contact
+    assert ligne.get_by_role("checkbox").is_checked()
+    page.get_by_role("button", name=re.compile(r"Poser les photos cochées \(1\)")).click()
+    page.locator("li.fiche.choix", has_text=nom).get_by_text("a déjà une photo").wait_for(timeout=20000)
+    largeur = page.evaluate("[document.documentElement.scrollWidth, window.innerWidth]")
+    assert largeur[0] <= largeur[1]
