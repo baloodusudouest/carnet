@@ -44,6 +44,8 @@ Restes de la 2.8, toujours valables :
 
 ## Pièges
 
+- L'historique du dépôt a été réécrit le 11/11/2026 sur toutes les branches (adresse locale, dossier personnel et noms réels utilisés en exemples remplacés). Un ancien clone doit être refait, pas fusionné. Les références des anciennes demandes de fusion sur GitHub gardent l'ancien historique : seul leur support peut les purger. Les images antérieures à la 2.10.0 sont à supprimer du registre.
+- Rien de personnel dans le dépôt public : exemples inventés pour les sociétés, les chemins et les adresses.
 - 2.10 : la « couleur de la société » est calculée depuis le logo (`logos.couleurs`), elle n'est pas enregistrée. L'affiche du logo n'est faite que pour un contact non relié à Immich ; une personne reliée garde une affiche en photo.
 - 2.10 : l'affiche du logo n'a été vue que sur des logos d'essai ; à juger sur de vrais logos (fond blanc opaque, logo très large, logo monochrome).
 - Treemich n'affiche pas le mariage dans « Life events » : il est sur le lien du couple (Profile › Relatives › crayon du conjoint). Ne pas conclure qu'une date n'est pas partie sans regarder là, ou la liste des couples de Connexion › Treemich.
