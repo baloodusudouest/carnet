@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.11.2 — 12 novembre 2026
+- **Nom associé** : pendant la saisie, carnet propose les noms des contacts du carnet (sauf la fiche elle-même). On peut toujours écrire à la main le nom de quelqu'un qui n'y est pas.
+- Tests : 112 du back, 32 d'interface.
+
 ## 2.11.1 — 12 novembre 2026
 - **Treemich reprend le visage** : après qu'une photo posée a changé le visage de la personne dans Immich, carnet demande à Treemich de le recopier (Treemich garde sa propre copie, qui ne suit pas toute seule). Par lot, la reprise se fait une fois le lot posé. Si Immich a refusé, Treemich n'est pas sollicité.
 - Immich refait sa vignette en tâche de fond : carnet lui laisse trois secondes. Si Treemich montre encore l'ancien visage, « Importer depuis Immich » dans Treemich le corrige.

@@ -4,7 +4,8 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **2.11.1 sur `main`** (12/11/2026) : Treemich reprend le visage après Immich (`photos.vignette_treemich`, adresse `POST /people/{id}/thumbnail/import/immich` relevée dans l'interface de Treemich le 12/11). **Pas vue sur les vraies données** : vérifier que trois secondes suffisent à Immich pour refaire sa vignette.
+- **2.11.2 sur `main`** (12/11/2026) : un nom associé se choisit parmi les noms du carnet (`Editeur.svelte`, liste `noms-du-carnet` tirée de `/api/contacts`) ou s'écrit à la main.
+- **2.11.1** (12/11/2026) : Treemich reprend le visage après Immich (`photos.vignette_treemich`, adresse `POST /people/{id}/thumbnail/import/immich` relevée dans l'interface de Treemich le 12/11). **Pas vue sur les vraies données** : vérifier que trois secondes suffisent à Immich pour refaire sa vignette.
 - **2.11.0** (11/11/2026) : Photos, tuiles « Portraits » et « Affiches » pour tous les contacts avec le choix de carnet (`photos.note_portrait`), pose par lot des choix (`galerie.poser_choix`, `preparer_choix`), visage de la personne mis à jour dans Immich (`photos.vignette_immich`). **Pas vue sur les vraies données.** À vérifier au premier essai : la clé Immich de carnet a-t-elle le droit `person.update` ; (Treemich : réglé en 2.11.1.)
 - **2.10.0** (11/11/2026) : fenêtre de propositions (5 photos, 5 affiches) ouverte en touchant la photo d'une fiche en modification ; affiche du logo à la couleur de la société.
 - 2.9.2 (11/11/2026) : mariages par couple dans `/ha/anniversaires` ; côté Home Assistant, `maison/anniversaires.yaml` v2 lit les mariages et `/ha/fetes` (master doc HA 1.50).

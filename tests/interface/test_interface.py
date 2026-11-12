@@ -560,3 +560,20 @@ def test_211_portraits_propositions_puis_pose(page):
     page.locator("li.fiche.choix", has_text=nom).get_by_text("a déjà une photo").wait_for(timeout=20000)
     largeur = page.evaluate("[document.documentElement.scrollWidth, window.innerWidth]")
     assert largeur[0] <= largeur[1]
+
+
+def test_2112_nom_associe_propose_les_noms_du_carnet(page):
+    page.goto(page.url.split("#")[0] + "#/contacts/DDDD-4444")
+    page.get_by_role("button", name="Modifier les informations").click()
+    bloc = page.locator("fieldset", has_text="Noms associés")
+    bloc.get_by_role("button", name="Ajouter").click()
+    champ = bloc.get_by_label("Noms associés").last
+    assert champ.get_attribute("list") == "noms-du-carnet"
+    page.wait_for_function("document.querySelectorAll('#noms-du-carnet option').length > 2")
+    noms = page.eval_on_selector_all("#noms-du-carnet option", "els => els.map(e => e.value)")
+    soi = " ".join(page.eval_on_selector_all(".simples input", "els => els.slice(0, 2).map(e => e.value)")).strip().lower()
+    assert len(noms) == len(set(noms)) and all(noms)
+    assert soi and soi not in [n.lower() for n in noms]                # la fiche ne se propose pas elle-même
+    champ.fill("Quelqu'un Hors Carnet")                                # écrire à la main reste possible
+    page.click("text=Voir les changements")
+    assert "Quelqu'un Hors Carnet" in page.locator(".apercu").inner_text()

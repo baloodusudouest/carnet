@@ -1,7 +1,17 @@
 <script>
   // Formulaire d'une fiche. Les formats (Prénom NOM, +33 6 …) sont appliqués par carnet à
   // l'aperçu : on peut saisir librement.
+  // 2.11.2 : un nom associé se choisit parmi les contacts du carnet, ou s'écrit à la main.
+  import { onMount } from 'svelte'
+  import { api } from '../lib/api.js'
   let { fiche = $bindable(), groupesConnus = [] } = $props()
+
+  let connus = $state([])            // noms du carnet, proposés pendant la saisie d'un nom associé
+  onMount(async () => {
+    try { connus = [...new Set((await api.get('/api/contacts')).map((c) => c.nom).filter(Boolean))] } catch { connus = [] }
+  })
+  const soi = $derived([fiche.prenom, fiche.nom].filter(Boolean).join(' ').toLocaleLowerCase('fr'))
+  const proposes = $derived(connus.filter((n) => n.toLocaleLowerCase('fr') !== soi))
 
   const TYPES = {
     telephones: ['mobile', 'domicile', 'travail', 'bureau', 'principal', 'autre'],
@@ -51,13 +61,20 @@
           <select bind:value={item.type} aria-label="Type">
             {#each TYPES[m.cle] as t}<option value={t}>{t}</option>{/each}
           </select>
-          <input type={m.saisie} bind:value={item.valeur} aria-label={m.nom} />
+          {#if m.cle === 'noms_associes'}
+            <input type="text" bind:value={item.valeur} aria-label={m.nom} list="noms-du-carnet"
+                   placeholder="Choisir dans le carnet, ou écrire" autocomplete="off" autocapitalize="words" />
+          {:else}
+            <input type={m.saisie} bind:value={item.valeur} aria-label={m.nom} />
+          {/if}
           <button class="bouton retirer" onclick={() => retirer(m.cle, i)} aria-label="Retirer">✕</button>
         </div>
       {/each}
       <button class="bouton ajouter" onclick={() => ajouter(m.cle, m.vide)}>Ajouter</button>
     </fieldset>
   {/each}
+
+  <datalist id="noms-du-carnet">{#each proposes as n}<option value={n}></option>{/each}</datalist>
 
   <fieldset>
     <legend class="discret">Adresses</legend>
