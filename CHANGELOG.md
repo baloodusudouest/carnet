@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 2.12.0 — 12 novembre 2026
+- **Photos : « Relancer la recherche pour tous »**, dans Portraits et dans Affiches. Carnet relit Immich pour tous les contacts reliés, d'une traite, et refait son choix de photo et d'affiche pour chacun. Une confirmation précède ; l'avancement s'affiche (« 12 sur 240 »). Rien n'est posé ni changé dans iCloud ou Immich.
+- **Les choix faits se replient** : un contact dont tu viens de choisir la photo (ou l'affiche) dans Photos disparaît de la liste des propositions. Le bouton à l'œil, « Afficher les N déjà choisis », les remontre. Une nouvelle recherche, pour lui ou pour tous, le fait revenir. Les photos posées avant cette version ne sont pas repliées.
+- Treemich a son icône : un arbre, à la place des lettres « Tr » (fiches, liste, Connexion).
+- Tests : 113 du back, 33 d'interface.
+
 ## 2.11.2 — 12 novembre 2026
 - **Nom associé** : pendant la saisie, carnet propose les noms des contacts du carnet (sauf la fiche elle-même). On peut toujours écrire à la main le nom de quelqu'un qui n'y est pas.
 - Tests : 112 du back, 32 d'interface.

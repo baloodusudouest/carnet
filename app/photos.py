@@ -83,7 +83,14 @@ def candidats(c: Carnet, uid: str, rafraichir: bool = False) -> list[dict]:
     c.base.executer("INSERT INTO portraits(uid, candidats, le) VALUES (?,?,?) "
                     "ON CONFLICT(uid) DO UPDATE SET candidats = excluded.candidats, le = excluded.le",
                     (uid, json.dumps(trouves), iso(maintenant())))
+    if rafraichir:                              # nouvelle recherche : la ligne se remontre dans Photos
+        c.base.executer("DELETE FROM choisis WHERE uid = ?", (uid,))
     return trouves
+
+
+def retenir_choix(c: Carnet, uid: str, sorte: str) -> None:
+    """2.12 : le choix est fait pour ce contact ; Photos replie sa ligne jusqu'à la prochaine recherche."""
+    c.base.executer("INSERT OR REPLACE INTO choisis(uid, sorte, le) VALUES (?,?,?)", (uid, sorte, iso(maintenant())))
 
 
 def _image_haute(im, cand: dict) -> bytes:
@@ -125,6 +132,7 @@ def poser(c: Carnet, uid: str, asset: str, origine: str = "manuel", suites: bool
                           etag_vu=actions._etag(c, uid))
     c.base.executer("UPDATE portraits SET asset = ?, manuel = ?, le = ? WHERE uid = ?",
                     (asset, int(origine == "manuel"), iso(maintenant()), uid))
+    retenir_choix(c, uid, "photo")
     res["immich"] = vignette_immich(c, uid, asset)
     if res["immich"] == "ok" and suites:
         res["treemich"] = vignette_treemich(c, uid)
@@ -369,6 +377,7 @@ def preparer_affiche(c: Carnet, uid: str, asset: str | None = None, logo: bytes 
         im.fermer()
     c.base.executer("INSERT OR REPLACE INTO affiches(uid, source, immich, posee, le) VALUES (?,?,?,NULL,?)",
                     (uid, source, nouvel, iso(maintenant())))
+    retenir_choix(c, uid, "affiche")
     c.base.noter("photos", "Affiche préparée dans l'album Immich", {"uid": uid})
     return {"uid": uid, "immich": nouvel}
 

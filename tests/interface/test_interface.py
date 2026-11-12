@@ -537,6 +537,9 @@ def test_211_portraits_propositions_puis_pose(page):
     page.click("nav.onglets a[aria-label='Photos']")
     page.wait_for_selector("nav[aria-label='Files'] .tuile")
     page.locator("nav[aria-label='Files'] .tuile", has=page.locator(".nom-tuile", has_text=re.compile("^Portraits$"))).click()
+    oeil = page.get_by_role("button", name=re.compile(r"Afficher les \d+ déjà choisi"))
+    if oeil.count():                                                           # 2.12 : les choix déjà faits sont repliés
+        oeil.click()
     lignes = page.locator("li.fiche.choix")
     if not lignes.count():
         pytest.skip("aucun contact relié à Immich dans le jeu de démonstration")
@@ -557,7 +560,11 @@ def test_211_portraits_propositions_puis_pose(page):
     premiere.click()                                                           # toucher une proposition coche le contact
     assert ligne.get_by_role("checkbox").is_checked()
     page.get_by_role("button", name=re.compile(r"Poser les photos cochées \(1\)")).click()
+    if not page.get_by_role("button", name=re.compile(r"Masquer les \d+ déjà choisi")).count():
+        page.get_by_role("button", name=re.compile(r"Afficher les \d+ déjà choisi")).click(timeout=20000)   # le choix fait, la ligne se replie
     page.locator("li.fiche.choix", has_text=nom).get_by_text("a déjà une photo").wait_for(timeout=20000)
+    page.get_by_role("button", name=re.compile(r"Masquer les \d+ déjà choisi")).click()
+    assert not page.locator("li.fiche.choix", has_text=nom).count()
     largeur = page.evaluate("[document.documentElement.scrollWidth, window.innerWidth]")
     assert largeur[0] <= largeur[1]
 
@@ -577,3 +584,20 @@ def test_2112_nom_associe_propose_les_noms_du_carnet(page):
     champ.fill("Quelqu'un Hors Carnet")                                # écrire à la main reste possible
     page.click("text=Voir les changements")
     assert "Quelqu'un Hors Carnet" in page.locator(".apercu").inner_text()
+
+
+def test_212_relancer_la_recherche_pour_tous(page):
+    page.click("nav.onglets a[aria-label='Photos']")
+    page.wait_for_selector("nav[aria-label='Files'] .tuile")
+    for tuile in ("Portraits", "Affiches"):
+        page.locator("nav[aria-label='Files'] .tuile", has=page.locator(".nom-tuile", has_text=re.compile(f"^{tuile}$"))).click()
+        bouton = page.get_by_role("button", name=re.compile(r"Relancer la recherche pour tous \(\d+\)"))
+        if not bouton.count():
+            pytest.skip("aucun contact relié à Immich dans le jeu de démonstration")
+        bouton.click()                                                  # jamais en un seul geste
+        groupe = page.get_by_role("group", name="Relancer la recherche")
+        assert "Rien n'est posé" in groupe.inner_text()
+        groupe.get_by_role("button", name="Non").click()
+    page.get_by_role("button", name=re.compile(r"Relancer la recherche pour tous")).click()
+    page.get_by_role("group", name="Relancer la recherche").get_by_role("button", name="Oui, relancer").click()
+    page.get_by_text(re.compile(r"contact\(s\) relu\(s\) dans Immich")).first.wait_for(timeout=30000)

@@ -2255,6 +2255,8 @@ def test_211_lecture_seule_et_routes(c, services):
         f = client.get("/api/photos").json()
         assert {"portraits", "affiches", "logos", "a_poser"} == set(f["files"]) == set(f["nombres"])
         assert client.get("/api/contacts/DDDD-4444/propositions/photo/p1").status_code == 200
+        arbre = client.get("/api/logo-reseau/treemich")                                 # 2.11.3 : un arbre, plus « Tr »
+        assert arbre.status_code == 200 and arbre.headers["content-type"].startswith("image/svg") and b"<svg" in arbre.content
         c.cfg = dataclasses.replace(c.cfg, lecture_seule=True)
         avant = len(services["immich"].ecrits)
         for chemin in ("/api/photos/portraits/choix", "/api/photos/affiches/choix"):
@@ -2266,6 +2268,27 @@ def test_211_lecture_seule_et_routes(c, services):
     assert photos.vignette_immich(c, "DDDD-4444", "p1") != "ok"                        # refusé au plus près d'Immich
     assert len(services["immich"].ecrits) == avant and not c.fiche("DDDD-4444").get("a_photo")
     main.ETAT.clear()
+
+
+def test_212_relancer_la_recherche_pour_tous(c, services):
+    from app import galerie
+    liaisons.lier(c, "DDDD-4444", "immich", "im-paul")
+    avant_ecrits, avant_lus = len(services["immich"].ecrits), None
+    r = galerie.chercher_toutes(c)
+    assert r["faits"] >= 1 and r["restants"] == 0 and not r["erreurs"]
+    assert photos.candidats(c, "DDDD-4444")                                            # les propositions sont là
+    assert len(services["immich"].ecrits) == avant_ecrits                              # rien n'est écrit dans Immich
+    assert not c.fiche("DDDD-4444").get("a_photo")                                     # ni posé dans iCloud
+    # Le choix fait replie la ligne dans Photos ; une nouvelle recherche la remontre
+    ligne = lambda: next(x for x in galerie.files(c)["files"]["portraits"] if x["uid"] == "DDDD-4444")
+    assert not ligne()["choisi"]
+    galerie.poser_choix(c, [{"uid": "DDDD-4444", "cle": photos.candidats(c, "DDDD-4444")[0]["asset"]}])
+    assert ligne()["choisi"] and ligne()["a_photo"]
+    galerie.chercher_propositions(c, ["DDDD-4444"])
+    assert not ligne()["choisi"]
+    galerie.poser_choix(c, [{"uid": "DDDD-4444", "cle": photos.candidats(c, "DDDD-4444")[0]["asset"]}])
+    galerie.chercher_toutes(c)
+    assert not ligne()["choisi"] and ligne()["a_photo"]                                # la photo posée, elle, reste
 
 
 def test_2111_treemich_reprend_le_visage_apres_immich(c, services, monkeypatch):

@@ -4,7 +4,8 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
-- **2.11.2 sur `main`** (12/11/2026) : un nom associé se choisit parmi les noms du carnet (`Editeur.svelte`, liste `noms-du-carnet` tirée de `/api/contacts`) ou s'écrit à la main.
+- **2.12.0 sur `main`** (12/11/2026) : « Relancer la recherche pour tous » dans Photos (`galerie.chercher_toutes`, `POST /api/photos/propositions` avec `tous`), sans limite de lot, lecture seule d'Immich. Table `choisis` : un choix fait dans Photos replie la ligne (`photos.retenir_choix`), une recherche la remontre. **Durée sur les vraies données inconnue** (une soixantaine d'appels par contact). Icône de Treemich, un arbre dessiné par carnet (`main.ARBRE`, servi par `/api/logo-reseau/treemich`).
+- **2.11.2** (12/11/2026) : un nom associé se choisit parmi les noms du carnet (`Editeur.svelte`, liste `noms-du-carnet` tirée de `/api/contacts`) ou s'écrit à la main.
 - **2.11.1** (12/11/2026) : Treemich reprend le visage après Immich (`photos.vignette_treemich`, adresse `POST /people/{id}/thumbnail/import/immich` relevée dans l'interface de Treemich le 12/11). **Pas vue sur les vraies données** : vérifier que trois secondes suffisent à Immich pour refaire sa vignette.
 - **2.11.0** (11/11/2026) : Photos, tuiles « Portraits » et « Affiches » pour tous les contacts avec le choix de carnet (`photos.note_portrait`), pose par lot des choix (`galerie.poser_choix`, `preparer_choix`), visage de la personne mis à jour dans Immich (`photos.vignette_immich`). **Pas vue sur les vraies données.** À vérifier au premier essai : la clé Immich de carnet a-t-elle le droit `person.update` ; (Treemich : réglé en 2.11.1.)
 - **2.10.0** (11/11/2026) : fenêtre de propositions (5 photos, 5 affiches) ouverte en touchant la photo d'une fiche en modification ; affiche du logo à la couleur de la société.

@@ -30,16 +30,20 @@
   let choix = $state({})      // uid → n du logo retenu
   let version = $state(0)
   // 2.11
+  let voirChoisis = $state(false)   // 2.12 : les contacts dont le choix est fait sont repliés ; l'œil les remontre
+  const nbChoisis = $derived((donnees?.files[file] || []).filter((x) => x.choisi && (!groupe || x.groupes.includes(groupe))).length)
   let manque = $state(false)   // ne montrer que ce qui manque
   let montrees = $state(20)    // lignes affichées (on avance par paquets)
   let props = $state({})       // uid → propositions lues ({ photos, affiches }), null pendant la lecture
   let retenu = $state({})      // uid → clé de la proposition retenue (par défaut : la première, celle de carnet)
+  let relance = $state(false)   // 2.12 : confirmation avant de relancer la recherche pour tout le monde
+  const relies = $derived((donnees?.files[file] || []).filter((x) => x.mode === 'immich').length)
   const aChoix = $derived(file === 'portraits' || file === 'affiches')
   const sorte = $derived(file === 'affiches' ? 'affiche' : 'photo')
   const fait = (x) => (file === 'affiches' ? x.affiche !== null : x.a_photo)
 
   const courante = $derived(FILES.find((f) => f.cle === file))
-  const filtrees = $derived((donnees?.files[file] || []).filter((x) => (!groupe || x.groupes.includes(groupe)) && (!aChoix || !manque || !fait(x))))
+  const filtrees = $derived((donnees?.files[file] || []).filter((x) => (!groupe || x.groupes.includes(groupe)) && (!aChoix || !manque || !fait(x)) && (!aChoix || voirChoisis || !x.choisi)))
   // Logos : une ligne par société. Le logo choisi est posé sur toutes ses fiches sans photo ;
   // une fiche qui a déjà une photo n'est pas dans la file et n'est jamais touchée.
   const lignes = $derived.by(() => {
@@ -82,7 +86,7 @@
   async function charger() {
     try { donnees = await api.get('/api/photos') } catch (e) { erreur(e) }
   }
-  function changerFile(cle) { file = cle; groupe = ''; coches = new Set(); montrees = 20 }
+  function changerFile(cle) { relance = false; voirChoisis = false; file = cle; groupe = ''; coches = new Set(); montrees = 20 }
   function basculer(uid) {
     const s = new Set(coches)
     s.has(uid) ? s.delete(uid) : s.add(uid)
@@ -162,6 +166,13 @@
           <label class="bascule"><input type="checkbox" bind:checked={manque} onchange={() => { coches = new Set(); montrees = 20 }} />
             Seulement {file === 'affiches' ? 'sans affiche' : 'sans photo'}</label>
           <button class="bouton" onclick={cocherLot}>Cocher ce qui manque ici</button>
+          {#if nbChoisis}
+            <button class="bouton oeil" aria-pressed={voirChoisis} onclick={() => { voirChoisis = !voirChoisis; coches = new Set(); montrees = 20 }}
+                    title="Contacts dont tu as déjà choisi {file === 'affiches' ? 'l\'affiche' : 'la photo'} ici">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" />{#if !voirChoisis}<path d="M4 4l16 16" />{/if}</svg>
+              {voirChoisis ? 'Masquer' : 'Afficher'} les {nbChoisis} déjà choisi{nbChoisis > 1 ? 's' : ''}</button>
+          {/if}
         {:else if file !== 'logos' || lignes.some((x) => x.domaine)}
           <button class="bouton" onclick={cocherLot}>Cocher {lignes.length > lot ? `les ${lot} premières` : 'tout'}</button>
         {/if}
@@ -186,6 +197,17 @@
             {file === 'affiches' ? 'Préparer les affiches cochées' : 'Poser les photos cochées'} ({prets.length})</button>
           {#if remplacees}<span class="discret">dont {remplacees} en remplacement de {file === 'affiches' ? 'l\'affiche' : 'la photo'} actuelle</span>{/if}
           {#if cochees.length > lot}<span class="discret">Par lots de {lot} : le reste attend le lot suivant.</span>{/if}
+          {#if relies}
+            {#if relance}
+              <span class="relance" role="group" aria-label="Relancer la recherche">
+                <span>Relire Immich pour {relies} contact(s) ? Cela peut durer plusieurs minutes. Rien n'est posé : seules les propositions changent, pour les photos et les affiches.</span>
+                <button class="bouton bouton-principal" disabled={attente} onclick={() => { relance = false; enFond('/api/photos/propositions', { tous: true }) }}>Oui, relancer</button>
+                <button class="bouton" onclick={() => (relance = false)}>Non</button>
+              </span>
+            {:else}
+              <button class="bouton" disabled={attente} onclick={() => (relance = true)}>{attente ? 'Recherche…' : `Relancer la recherche pour tous (${relies})`}</button>
+            {/if}
+          {/if}
         {:else}
           <button class="bouton bouton-principal" disabled={attente || !cochees.length} onclick={marquerPosees}>Marquer comme posées ({cochees.length})</button>
         {/if}
@@ -301,6 +323,8 @@
   .vide { padding: 2rem 0; }
   .bascule { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.75rem; font-size: 0.9rem; }
   .bascule input { width: 1.15rem; height: 1.15rem; accent-color: var(--color-onglet); }
+  .oeil { display: inline-flex; align-items: center; gap: 0.4rem; }
+  .relance { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; flex-basis: 100%; }
   .propositions { display: flex; gap: 0.45rem; flex-wrap: wrap; }
   .proposition { position: relative; width: 64px; height: 64px; padding: 0; border-radius: 12px; overflow: hidden;
     border: 2px solid transparent; outline: 1px solid var(--color-couture); background: var(--color-reliure); }

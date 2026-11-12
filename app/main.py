@@ -531,6 +531,8 @@ def photos_affiches(corps: dict = Body(...)):
 def photos_propositions(corps: dict = Body(...)):
     """2.11 : relit Immich pour les contacts cochés. Lecture seule : rien n'est écrit ailleurs que chez carnet."""
     c = carnet()
+    if corps.get("tous"):                       # 2.12 : tout le monde, d'une traite
+        return _fond("photos", lambda: _bilan_lot(galerie.chercher_toutes(c), "contact(s) relu(s) dans Immich"))
     return _fond("photos", lambda: _bilan_lot(galerie.chercher_propositions(c, _uids(corps)), "contact(s) relu(s) dans Immich"))
 
 
@@ -798,8 +800,18 @@ def sauvegarde_fichier(nom: str):
     return FileResponse(chemin, media_type="text/vcard", filename=chemin.name)
 
 
+ARBRE = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<rect width="32" height="32" rx="6" fill="#e6f0e2"/>
+<path d="M14.6 27v-7.2h2.8V27z" fill="#7a5a3c"/>
+<circle cx="16" cy="10.5" r="6.2" fill="#3f7d4a"/><circle cx="10.4" cy="15.2" r="5" fill="#4f9159"/><circle cx="21.6" cy="15.2" r="5" fill="#4f9159"/>
+<circle cx="16" cy="16.6" r="4.6" fill="#5ea367"/>
+</svg>"""
+
+
 @app.get("/api/logo-reseau/{service}")
 def logo_reseau(service: str):
+    if service == "treemich":                   # 2.11.3 : un arbre dessiné par carnet, à la place des lettres « Tr »
+        return Response(ARBRE, media_type="image/svg+xml", headers={"Cache-Control": "private, max-age=604800"})
     png = reseaux.logo(carnet(), service)
     if not png:
         raise HTTPException(404, "Pas de logo")

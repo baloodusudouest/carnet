@@ -78,6 +78,14 @@ CREATE TABLE IF NOT EXISTS portraits (
     le         TEXT NOT NULL
 );
 -- Affiches plein écran (album Immich) et leur pose sur l'iPhone
+-- 2.12 : photo ou affiche choisie dans Photos depuis la dernière recherche (la ligne est alors repliée)
+CREATE TABLE IF NOT EXISTS choisis (
+    uid        TEXT NOT NULL,
+    sorte      TEXT NOT NULL,        -- « photo » ou « affiche »
+    le         TEXT NOT NULL,
+    PRIMARY KEY (uid, sorte)
+);
+
 CREATE TABLE IF NOT EXISTS affiches (
     uid        TEXT PRIMARY KEY,
     source     TEXT,                 -- asset Immich d'origine, ou « logo »

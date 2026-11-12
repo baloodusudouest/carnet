@@ -55,6 +55,7 @@ def files(c: Carnet) -> dict:
     connus = {l["cle"] for l in c.base.tous("SELECT cle FROM logos_societes")}
     portraits_connus = {l["uid"] for l in c.base.tous("SELECT uid FROM portraits WHERE candidats != '[]'")}
     affiches = {l["uid"]: l["posee"] for l in c.base.tous("SELECT uid, posee FROM affiches")}
+    choisis = {(l["uid"], l["sorte"]) for l in c.base.tous("SELECT uid, sorte FROM choisis")}
     res = {"portraits": [], "logos": [], "affiches": [], "a_poser": []}
     cherches_portraits = {l["uid"]: json.loads(l["candidats"]) for l in c.base.tous("SELECT uid, candidats FROM portraits")}
     for uid, f in fiches.items():
@@ -74,9 +75,11 @@ def files(c: Carnet) -> dict:
             pret = logo or (cands is not None and photos.a_jour(cands))
             commun = {"mode": "immich" if immich else "logo", "cherche": pret,
                       "aucune": immich and cands is not None and photos.a_jour(cands) and not cands}
-            res["portraits"].append(_ligne(uid, f, a_photo=bool(f.get("a_photo")), **commun))
+            res["portraits"].append(_ligne(uid, f, a_photo=bool(f.get("a_photo")),
+                                           choisi=(uid, "photo") in choisis and bool(f.get("a_photo")), **commun))
             res["affiches"].append(_ligne(uid, f, a_photo=bool(f.get("a_photo")),
                                           affiche=None if uid not in affiches else "posée" if affiches[uid] else "prête",
+                                          choisi=(uid, "affiche") in choisis and uid in affiches,
                                           **commun))
         if uid in affiches and not affiches[uid]:
             res["a_poser"].append(_ligne(uid, f))
@@ -140,6 +143,26 @@ def chercher_propositions(c: Carnet, uids: list[str]) -> dict:
     return _par_lot(c, uids, un)
 
 
+def chercher_toutes(c: Carnet) -> dict:
+    """2.12 : relance la recherche pour tous les contacts reliés à Immich, d'une traite (photos et
+    affiches sortent de la même lecture). Long : l'avancement est dit dans la tâche. N'écrit rien,
+    ni dans iCloud ni dans Immich ; les photos déjà posées ne bougent pas."""
+    uids = [x["uid"] for x in files(c)["files"]["portraits"] if x.get("mode") == "immich"]
+    c.base.executer("DELETE FROM choisis")       # tout le monde se remontre, contacts de société compris
+    faits, erreurs = 0, []
+    for i, uid in enumerate(uids, start=1):
+        if c.tache.get("etat") == "en_cours":
+            c.tache = {**c.tache, "message": f"Recherche dans Immich : {i} sur {len(uids)}…"}
+        try:
+            photos.candidats(c, uid, rafraichir=True)
+            faits += 1
+        except ErreurCarnet as exc:
+            f = c.fiches().get(uid)
+            erreurs.append(f"{nom_affiche(f) if f else 'Fiche'} : {exc}")
+    c.oublier()
+    return {"faits": faits, "restants": 0, "erreurs": erreurs[:10]}
+
+
 def _choix(corps: list) -> list[tuple[str, str]]:
     return [(str(x.get("uid")), str(x.get("cle"))) for x in corps if isinstance(x, dict) and x.get("uid") and x.get("cle") is not None]
 
@@ -171,6 +194,7 @@ def poser_choix(c: Carnet, choix: list[dict]) -> dict:
         actions.valider(c, uid, c.fiche(uid), photo=photo, origine="Photos", motif="logo en photo",
                         etag_vu=actions._etag(c, uid))
         retenir_logo(c, c.fiche(uid), logo)
+        photos.retenir_choix(c, uid, "photo")
     bilan = _par_lot(c, list(par_uid), un)
     # Treemich reprend les visages une fois le lot posé : Immich a eu le temps de refaire ses vignettes
     refus_treemich = [nom_affiche(c.fiche(uid)) for i, uid in enumerate(a_reprendre)
