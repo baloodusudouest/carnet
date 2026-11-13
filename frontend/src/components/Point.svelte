@@ -14,6 +14,8 @@
   // Société écrite de plusieurs façons : l'écriture la plus fréquente est proposée, on peut en taper une autre
   let ecriture = $state(point.donnees.variantes?.[0]?.nom || '')
   let autre = $state('')
+  // 2.18 : plusieurs portables : pro ou perso pour chacun (le « travail » actuel est proposé pro)
+  let roles = $state(Object.fromEntries((point.donnees.numeros || []).map((n) => [n.valeur, n.type === 'travail' ? 'pro' : 'perso'])))
   const retenue = $derived(ecriture === '__autre' ? autre.trim() : ecriture)
   const aChanger = $derived(point.motif === 'societe'
     ? d.fiches - (d.variantes.find((v) => v.nom === retenue)?.nombre || 0) : 0)
@@ -97,6 +99,17 @@
       <ul class="ecarts">
         {#each d.ecarts as e}<li><span class="avant">{e.avant}</span> <span class="apres">{e.apres}</span></li>{/each}
       </ul>
+    {:else if point.motif === 'portables'}
+      <fieldset class="choix">
+        <legend class="discret">Pro (écrit « travail ») ou perso (écrit « mobile ») ?</legend>
+        {#each d.numeros as n}
+          <div class="portable">
+            <span class="numero">{n.affichage} <span class="discret">({n.type})</span></span>
+            <label><input type="radio" name={'role-' + point.id + n.valeur} value="pro" bind:group={roles[n.valeur]} /> Pro</label>
+            <label><input type="radio" name={'role-' + point.id + n.valeur} value="perso" bind:group={roles[n.valeur]} /> Perso</label>
+          </div>
+        {/each}
+      </fieldset>
     {:else if point.motif === 'emoji'}
       <p>{d.emoji} dans {d.champs.join(', ')}, mais pas dans le groupe {d.groupe}.</p>
     {:else if point.motif === 'liaison'}
@@ -184,6 +197,9 @@
       <button class="bouton bouton-principal" disabled={attente || !retenue || !aChanger} onclick={() => faire('choisir', retenue)}>
         {attente ? 'Écriture…' : `Écrire sur ${aChanger} fiche${aChanger > 1 ? 's' : ''}`}</button>
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer', null, 'Noté : ces écritures ne seront plus rapprochées.')}>Pas la même société</button>
+    {:else if point.motif === 'portables'}
+      <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('choisir', roles, 'Types des portables écrits dans iCloud.')}>Écrire dans iCloud</button>
+      <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Laisser comme ça</button>
     {:else if point.motif === 'mariage'}
       <button class="bouton bouton-principal" disabled={attente || !saisie.trim()} onclick={() => faire('ecrire', saisie, 'Date de mariage écrite partout.')}>Écrire la date</button>
       <button class="bouton" disabled={attente} onclick={() => faire('sans', null, 'Noté : la question ne sera plus posée pour ce couple.')}>Pas de mariage ni PACS</button>
@@ -213,6 +229,9 @@
   .conflit dd { grid-column: 1 / -1; }
   .etiquette { display: inline-block; min-width: 3.2rem; color: var(--color-mine); font-size: 0.8rem; }
   .ecarts { display: grid; gap: 0.2rem; }
+  .portable { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; padding: 0.3rem 0; }
+  .portable .numero { flex: 1 1 12rem; font-variant-numeric: tabular-nums; }
+  .portable label { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2.75rem; }
   .choix { display: grid; gap: 0.35rem; }
   .choix label { display: flex; align-items: center; gap: 0.5rem; min-height: 2.5rem; }
   a { color: var(--color-papier); text-decoration-color: var(--color-tranche); }

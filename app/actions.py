@@ -169,6 +169,19 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
         res = valider(c, uid, c.fiche(uid), origine="À traiter", motif="mise en forme", etag_vu=_etag(c, uid), forcer=forcer)
         traiter.ignorer(c, motif, cle)
         return res
+    if motif == "portables" and action == "choisir":
+        # valeur : {numéro E.164: "pro" | "perso"} ; pro → « travail », perso → « mobile », choix gardé contre les règles
+        choix = valeur if isinstance(valeur, dict) else {}
+        if not choix or set(choix.values()) - {"pro", "perso"}:
+            raise ErreurCarnet("Dis pour chaque numéro s'il est pro ou perso.")
+        f = c.fiche(uid)
+        for t in f.get("telephones") or []:
+            if t.get("valeur") in choix:
+                t["type"] = "travail" if choix[t["valeur"]] == "pro" else "mobile"
+                t["type_choisi"] = True
+        res = valider(c, uid, f, origine="À traiter", motif="portables pro / perso", etag_vu=_etag(c, uid))
+        traiter.ignorer(c, motif, cle)
+        return res
     if motif == "emoji" and action == "appliquer":
         f = c.fiche(uid)
         f["groupes"] = sorted(set(f.get("groupes", [])) | {d["groupe"]})

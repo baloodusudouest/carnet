@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.18.0 — 14 novembre 2026
+- **Plusieurs portables sur une fiche : à traiter.** Quand une fiche a deux portables ou plus et qu'aucun n'est noté « travail » à côté d'un « mobile », elle arrive dans À traiter (tuile Mise en forme) : pour chaque numéro, Pro (écrit « travail ») ou Perso (écrit « mobile »), puis « Écrire dans iCloud ». Le choix est gardé contre les règles de groupe. « Laisser comme ça » ne repose plus la question pour ces numéros.
+
 ## 2.17.5 — 13 novembre 2026
 - **Le type d'un téléphone changé à la main est gardé.** Dans une fiche d'un groupe « travail » (Collègues, Clients, Artisans et services) ou « proches » (Famille, Amis…), la règle du groupe remettait en silence le type imposé : passer un portable de « travail » à « mobile » donnait « Aucun changement », et « Écrire dans iCloud » restait grisé. Désormais, à l'enregistrement d'une fiche, un numéro déjà présent garde le type affiché dans l'éditeur ; les règles de groupe ne s'appliquent qu'aux numéros nouveaux, et restent proposées dans À traiter.
 

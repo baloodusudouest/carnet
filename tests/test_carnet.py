@@ -2417,3 +2417,22 @@ def test_type_de_telephone_choisi_a_la_main_l_emporte_sur_le_groupe(c, services)
     actions.valider(c, "DDDD-4444", actions.apercu(c, "DDDD-4444", f)["fiche"])
     assert [t["type"] for t in c.fiche("DDDD-4444")["telephones"]] == ["mobile"]           # le choix tient
     assert normalisation.regle_proches({"groupes": ["Collègues"], "telephones": [{"valeur": "+33612345678", "type": "mobile"}]})["telephones"][0]["type"] == "travail"
+
+
+def test_plusieurs_portables_pro_ou_perso(c, services):
+    """2.18 : deux portables sans « travail » et « mobile » parmi eux → à traiter ; le choix est écrit et tient."""
+    import copy
+    from app import traiter
+    f = copy.deepcopy(c.fiche("DDDD-4444"))
+    f["groupes"] = ["Famille"]
+    f["telephones"] = [{"valeur": "+33 6 12 34 56 78", "type": "mobile"}, {"valeur": "+33 6 98 76 54 32", "type": "mobile"}]
+    actions.valider(c, "DDDD-4444", f)
+    c.oublier()
+    p = next(x for x in traiter.liste(c) if x["motif"] == "portables" and x["uid"] == "DDDD-4444")
+    assert p["tuile"] == "forme" and len(p["donnees"]["numeros"]) == 2
+    a, b = (n["valeur"] for n in p["donnees"]["numeros"])
+    actions.repondre(c, p["id"], "choisir", {a: "perso", b: "pro"})
+    types = {t["valeur"]: t["type"] for t in c.fiche("DDDD-4444")["telephones"]}
+    assert types == {a: "mobile", b: "travail"}
+    c.oublier()
+    assert not any(x["motif"] == "portables" and x["uid"] == "DDDD-4444" for x in traiter.liste(c))

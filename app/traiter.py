@@ -25,6 +25,7 @@ TITRES = {
     "nom": "Nom à reporter", "relations": "Liens familiaux", "reseau": "Réseau à rattacher",
     "mariage": "Date de mariage manquante", "mariage_different": "Dates de mariage différentes",
     "deces_different": "Dates de décès différentes", "societe": "Société écrite de plusieurs façons",
+    "portables": "Plusieurs portables : lequel est pro, lequel perso ?",
 }
 ORDRE = list(TITRES)
 ENREGISTRES = {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit", "import", "linkedin", "reseau"}
@@ -39,7 +40,7 @@ TUILES = [
     ("treemich", "Treemich non synchronisé", {"relations", "mariage", "mariage_different", "deces_different"}),
     ("doublons", "Doublons", {"doublon"}),
     ("societes", "Sociétés", {"societe"}),
-    ("forme", "Mise en forme", {"forme", "emoji"}),
+    ("forme", "Mise en forme", {"forme", "emoji", "portables"}),
     ("reseaux", "Réseaux", {"reseau"}),
     ("imports", "Imports", {"import", "linkedin"}),
     ("incomplet", "Contact incomplet", set()),
@@ -108,6 +109,13 @@ def calcules(c) -> list[dict]:
             point("forme", uid, f"{uid}|{empreinte(ecarts)}", {"ecarts": ecarts})
         for m in normalisation.emojis_sans_groupe(f):
             point("emoji", uid, f"{uid}|{m['groupe']}", m)
+        # 2.18 : plusieurs portables sans « travail » ET « mobile » parmi eux : lequel est le pro, lequel le perso ?
+        portables = [t for t in f.get("telephones") or [] if t.get("valide") and
+                     (t.get("nature_choisie") or normalisation.nature(t.get("valeur", ""))) == "mobile"]
+        if len(portables) >= 2 and not {"travail", "mobile"} <= {t.get("type") for t in portables}:
+            point("portables", uid, f"{uid}|{empreinte(sorted(t['valeur'] for t in portables))}",
+                  {"numeros": [{"valeur": t["valeur"], "affichage": t.get("affichage") or t["valeur"],
+                                "type": t.get("type") or "autre"} for t in portables]})
     from . import societes
     for p in societes.points(c):
         point(p["motif"], p["uid"], p["cle"], p["donnees"])
