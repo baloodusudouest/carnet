@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.17.1 — 13 novembre 2026
+- **Vérifier Synology montre la forme des différences**, valeurs masquées (chiffres → 9, lettres → a), pour la propriété qui diffère le plus : on voit si c'est le format d'un numéro, un type, une photo… sans aucune donnée. Vu le 13/11 : TEL diffère sur 504 fiches sur 573 (seule différence pour 106).
+
 ## 2.17.0 — 13 novembre 2026
 - **Synology Contacts se vérifie** (Connexion › Synology › Vérifier) : carnet relit Synology et dit, sans rien écrire, combien de cartes la copie créerait, modifierait ou retirerait, et quelles propriétés diffèrent (PHOTO, NOTE, X-…), avec le nombre de fiches pour chacune. De quoi décider avant « Forcer la copie » quand elle est bloquée. Aucun nom ni valeur dans le rapport.
 - Vu le 13/11 : la copie de la nuit est bloquée (524 fiches sur 573 changeraient d'un coup).

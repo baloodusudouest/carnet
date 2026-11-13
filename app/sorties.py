@@ -130,6 +130,16 @@ def _proprietes(texte: str) -> set[str]:
     return lignes
 
 
+def _nom_ligne(l: str) -> str:
+    return synchro._decouper(l)[1] or l.split(":", 1)[0].split(";", 1)[0].upper()
+
+
+def _masquer(l: str) -> str:
+    """La forme d'une ligne sans ses données : paramètres gardés, chiffres → 9, lettres → a (« tel;type=cell:+99 9 99… »)."""
+    tete, _, valeur = l.partition(":")
+    return tete + ":" + "".join("9" if ch.isdigit() else "a" if ch.isalpha() else ch for ch in valeur[:60])
+
+
 def apercu_synology(c: Carnet) -> dict:
     """2.17 : ce que la copie vers Synology changerait, sans rien écrire. Pour chaque fiche à modifier, les
     propriétés de la carte qui diffèrent (PHOTO, NOTE, X-…) ; aucun nom ni valeur dans le rapport."""
@@ -148,6 +158,7 @@ def apercu_synology(c: Carnet) -> dict:
     retirer = [u for u in distantes if u not in voulues]
     par_propriete: dict[str, int] = {}
     seule: dict[str, int] = {}
+    formes: dict[str, list] = {}                     # 2.17.1 : la forme des lignes qui diffèrent, valeurs masquées
     modifier = 0
     for uid, texte in voulues.items():
         d = distantes.get(uid)
@@ -155,9 +166,14 @@ def apercu_synology(c: Carnet) -> dict:
             continue
         modifier += 1
         ecart = _proprietes(texte) ^ _proprietes(d.texte)
-        noms = sorted({synchro._decouper(l)[1] or l.split(":", 1)[0].split(";", 1)[0].upper() for l in ecart})
+        noms = sorted({_nom_ligne(l) for l in ecart})
         for n in noms:
             par_propriete[n] = par_propriete.get(n, 0) + 1
+            if len(formes.setdefault(n, [])) < 3:
+                ici = sorted(_masquer(l) for l in _proprietes(texte) - _proprietes(d.texte) if _nom_ligne(l) == n)
+                la = sorted(_masquer(l) for l in _proprietes(d.texte) - _proprietes(texte) if _nom_ligne(l) == n)
+                if (ici, la) not in formes[n]:
+                    formes[n].append((ici[:2], la[:2]))
         if len(noms) == 1:
             seule[noms[0]] = seule.get(noms[0], 0) + 1
     touches = modifier + len(retirer)
@@ -169,9 +185,14 @@ def apercu_synology(c: Carnet) -> dict:
         notes.append("Ce qui diffère, par propriété de la carte : "
                      + ", ".join(f"{n} sur {k} fiche(s)" + (f" (seule différence pour {seule[n]})" if seule.get(n) else "")
                                  for n, k in tri[:8]) + ".")
+    if tri and formes.get(tri[0][0]):
+        f = formes[tri[0][0]][0]
+        notes.append(f"Exemple de {tri[0][0]} (valeurs masquées) — dans carnet : {' / '.join(f[0]) or 'absente'} ; "
+                     f"dans Synology : {' / '.join(f[1]) or 'absente'}.")
     return {"ok": True, "le": iso(maintenant()), "lignes": [], "ecarts": [], "notes": notes,
             "synology": {"creer": len(creer), "modifier": modifier, "retirer": len(retirer), "bloquee": bloquee,
-                         "proprietes": dict(tri), "seule": seule}}
+                         "proprietes": dict(tri), "seule": seule,
+                         "formes": {n: [{"carnet": a, "synology": b} for a, b in f] for n, f in formes.items()}}}
 
 
 # ================================================================ Home Assistant
