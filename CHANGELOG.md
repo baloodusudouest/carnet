@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.15.0 — 13 novembre 2026
+- **Sillage lit la liste des personnes dans carnet.** Nouvelle adresse `/sillage/personnes`, fermée tant que `CARNET_JETON_SILLAGE` n'est pas réglé, ouverte avec ce seul jeton (pas celui de Home Assistant). Elle rend les fiches liées à une personne d'Immich : identifiant de la fiche, nom, identifiant Immich, groupes, proche ou non, décédée ou non. Ni téléphone, ni adresse, ni date.
+- **Fiche : « Ouvrir dans Sillage »**, dans le bloc Liaisons, quand la fiche est liée à Immich et que `CARNET_SILLAGE_URL` (l'adresse de Sillage dans le navigateur) est réglée.
+- Tests : 114 du back.
+
 ## 2.14.0 — 13 novembre 2026
 - **Connexion commune.** Connecté à l'Anneau, on n'a plus à se connecter ici : l'appli accepte le cookie « maison_session » que l'Anneau pose, quand elle est servie par la même adresse que lui. Le cookie est signé avec le mot de passe commun : une appli qui a un autre mot de passe continue de demander le sien. Il vaut trente jours, ou jusqu'au changement du mot de passe ; « Se déconnecter » le retire du navigateur.
 

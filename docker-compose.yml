@@ -30,6 +30,8 @@ services:
       - CARNET_TREEMICH_EMAIL=${CARNET_TREEMICH_EMAIL:-}
       - CARNET_TREEMICH_PASSWORD=${CARNET_TREEMICH_PASSWORD:-}
       - CARNET_HA_TOKEN=${CARNET_HA_TOKEN:-}
+      - CARNET_JETON_SILLAGE=${SILLAGE_CARNET_JETON:-}     # 2.15 : jeton de Sillage (/sillage/personnes) ; vide : adresse fermée
+      - CARNET_SILLAGE_URL=${CARNET_SILLAGE_URL:-}         # 2.15 : adresse de Sillage dans le navigateur (lien de la fiche)
       - CARNET_LINKEDIN_CLIENT_ID=${CARNET_LINKEDIN_CLIENT_ID:-}
       - CARNET_LINKEDIN_CLIENT_SECRET=${CARNET_LINKEDIN_CLIENT_SECRET:-}
       - CARNET_TELEGRAM_API_ID=${CARNET_TELEGRAM_API_ID:-}      # import ponctuel des contacts Telegram

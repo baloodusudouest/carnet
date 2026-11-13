@@ -1,6 +1,7 @@
 """Application FastAPI de carnet 2 : interface (3 onglets), API et adresses Home Assistant."""
 from __future__ import annotations
 
+import hmac
 import asyncio
 import json
 import logging
@@ -87,6 +88,11 @@ async def garde(request: Request, appel):
         attendu = f"Bearer {jeton}"
         if not jeton or request.headers.get("authorization", "") != attendu:
             return JSONResponse({"detail": "Jeton Home Assistant manquant ou invalide."}, status_code=401)
+    elif chemin.startswith("/sillage/"):
+        # 2.15 : Sillage lit la liste des personnes liées à Immich, avec son propre jeton
+        jeton = carnet().cfg.sillage_jeton
+        if not jeton or not hmac.compare_digest(request.headers.get("authorization", ""), f"Bearer {jeton}"):
+            return JSONResponse({"detail": "Jeton de Sillage manquant ou invalide."}, status_code=401)
     # Sans session : seulement l'envoi du mot de passe et la question « suis-je connecté ? ».
     # La lecture de /api/connexion (l'état des services, 2.9) exige une session comme le reste.
     elif chemin.startswith("/api/") and not (chemin == "/api/session"
@@ -94,7 +100,7 @@ async def garde(request: Request, appel):
         if not ETAT["sessions"].connecte(request.cookies):
             return JSONResponse({"detail": "Connexion nécessaire."}, status_code=401)
     reponse = await appel(request)
-    if chemin.startswith(("/api/", "/ha/")):
+    if chemin.startswith(("/api/", "/ha/", "/sillage/")):
         reponse.headers["Cache-Control"] = "no-store"
     return reponse
 
@@ -275,7 +281,10 @@ def contact(uid: str):
                      "attendue": "fete" in attentes.attendues(f, attentes.par_groupe(c))},
             "deces": {"date": attentes.decedes(c).get(uid), "decede": uid in attentes.decedes(c),
                       "coche": bool(c.base.un("SELECT 1 FROM deces WHERE uid = ? AND origine = 'main'", (uid,)))},
-            "google_logo": galerie.recherche_google(f)}
+            "google_logo": galerie.recherche_google(f),
+            # 2.15 : le chemin de vie de la personne, si la fiche est liée à Immich et que Sillage a une adresse
+            "sillage": (f"{c.cfg.sillage_adresse}/#/chemin/{c.liaisons().get(uid, {}).get('immich')}"
+                        if c.cfg.sillage_adresse and c.liaisons().get(uid, {}).get("immich") else "")}
 
 
 @app.get("/api/completude")
@@ -957,6 +966,13 @@ def reseau_rattacher(service: str, corps: dict = Body(...)):
 def linkedin_rattacher(corps: dict = Body(...)):
     linkedin.rattacher(carnet(), str(corps.get("url")), corps.get("uid") or None)
     return {"ok": True}
+
+
+# ================================================================ Sillage (Bearer)
+
+@app.get("/sillage/personnes")
+def sillage_personnes():
+    return sorties.sillage_personnes(carnet())
 
 
 # ================================================================ Home Assistant (Bearer)

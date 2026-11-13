@@ -341,6 +341,8 @@
             {/each}
           {/if}
         {/if}
+        {#if donnees.sillage}<p class="liaison"><span>Son chemin de vie en photos</span>
+          <a class="bouton" href={donnees.sillage} target="_blank" rel="noopener">Ouvrir dans Sillage</a></p>{/if}
         {#if donnees.linkedin}<p class="discret">LinkedIn : {[donnees.linkedin.fonction, donnees.linkedin.societe].filter(Boolean).join(', ') || donnees.linkedin.url}</p>{/if}
       </div>
 

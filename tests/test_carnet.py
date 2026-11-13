@@ -505,6 +505,20 @@ def test_home_assistant_adresses(c):
         assert any(a["annee"] is None for a in ann)          # sans année : null
         liaisons.lier(c, "DDDD-4444", "immich", "im-paul")
         assert client.get("/ha/personnes", headers=h).json()["personnes"] == [{"nom": "Paul MARTIN", "immich": True}]
+        # 2.15 : la liste pour Sillage, fermée sans jeton, et avec son jeton à elle (pas celui de Home Assistant)
+        assert client.get("/sillage/personnes").status_code == 401
+        assert client.get("/sillage/personnes", headers=h).status_code == 401
+        assert client.get("/sillage/personnes", headers={"Authorization": "Bearer "}).status_code == 401   # pas de jeton réglé : fermé
+        import dataclasses
+        c.cfg = dataclasses.replace(c.cfg, sillage_jeton="jeton-sillage", sillage_adresse="http://sillage.exemple")
+        liste = client.get("/sillage/personnes", headers={"Authorization": "Bearer jeton-sillage"}).json()["personnes"]
+        assert [(p["carnet_id"], p["immich_id"], p["decede"]) for p in liste] == [("DDDD-4444", "im-paul", False)]
+        assert set(liste[0]) == {"carnet_id", "nom", "immich_id", "groupes", "proche", "decede"}
+        connecter = client.post("/api/connexion", json={"mot_de_passe": "secret"})
+        assert connecter.status_code == 200
+        if True:
+            assert client.get("/api/contacts/DDDD-4444").json()["sillage"] == "http://sillage.exemple/#/chemin/im-paul"
+            assert client.get("/api/contacts/AAAA-1111").json()["sillage"] == ""
         assert client.get("/ha/invite", params={"nom": "Paul MARTIN (2026-08-16 → 2026-08-23)"}, headers=h).json()["naissance"] == "1983-01-09"
         assert client.get("/ha/invite", params={"nom": "Personne"}, headers=h).status_code == 404
         statut = client.get("/status").json()

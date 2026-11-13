@@ -156,6 +156,16 @@ def ha_personnes(c: Carnet) -> dict:
                           if p["immich_id"] or p["proche"]]}
 
 
+def sillage_personnes(c: Carnet) -> dict:
+    """2.15 : les fiches liées à une personne d'Immich, pour la liste d'ouverture de Sillage.
+    Le nom est celui de la fiche ; la date de naissance n'est pas donnée (celle d'Immich fait foi dans Sillage)."""
+    from . import attentes
+    morts = attentes.decedes(c)
+    return {"personnes": [{"carnet_id": p["carnet_id"], "nom": p["nom_carnet"], "immich_id": p["immich_id"],
+                           "groupes": p["groupes"], "proche": p["proche"], "decede": p["carnet_id"] in morts}
+                          for p in contacts_ha(c) if p["immich_id"]]}
+
+
 def ha_anniversaires(c: Carnet) -> dict:
     """Naissances, et depuis la 2.8 les mariages (clé « mariages »). Une personne décédée n'est
     plus annoncée ; un couple divorcé non plus."""
