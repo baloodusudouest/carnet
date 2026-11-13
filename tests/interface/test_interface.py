@@ -625,3 +625,40 @@ def test_213_cocher_tous_ceux_que_carnet_propose(page):
     assert not any(l.get_by_role("checkbox").is_checked() for l in sans.all())   # rien sans proposition
     page.get_by_role("button", name="Tout décocher").click()
     assert page.get_by_role("button", name=re.compile(r"Poser les photos cochées \(0\)")).is_disabled()
+
+
+def test_216_propositions_qui_ne_s_affichent_plus(page):
+    """Une proposition dont l'image ne se charge plus : la personne quitte la liste, un message le dit et propose la solution."""
+    page.click("nav.onglets a[aria-label='Photos']")
+    page.wait_for_selector("nav[aria-label='Files'] .tuile")
+    page.locator("nav[aria-label='Files'] .tuile", has=page.locator(".nom-tuile", has_text=re.compile("^Portraits$"))).click()
+    oeil = page.get_by_role("button", name=re.compile(r"Afficher les \d+ déjà choisi"))
+    if oeil.count():
+        oeil.click()
+    if not page.locator(".propositions").count():
+        try:
+            page.locator(".propositions").first.wait_for(timeout=3000)
+        except Exception:
+            pytest.skip("aucune proposition dans le jeu de démonstration")
+    avant = page.locator(".propositions").count()
+    motif = re.compile(r"/propositions/photo/")
+    page.route(motif, lambda route: route.fulfill(status=404, body=""))
+    try:
+        page.reload()
+        page.click("nav.onglets a[aria-label='Photos']")
+        page.locator("nav[aria-label='Files'] .tuile", has=page.locator(".nom-tuile", has_text=re.compile("^Portraits$"))).click()
+        oeil = page.get_by_role("button", name=re.compile(r"Afficher les \d+ déjà choisi"))
+        if oeil.count():
+            oeil.click()
+        message = page.get_by_role("status", name="Propositions qui ne s'affichent plus")
+        message.wait_for()
+        assert "problème d'affichage" in message.inner_text() and "n'est plus dans Immich" in message.inner_text()
+        assert message.get_by_role("button", name=re.compile("Refaire la recherche pour")).is_enabled()
+        page.wait_for_function("document.querySelectorAll('.propositions').length === 0")      # les personnes touchées sont retirées
+        message.get_by_role("button", name="Les afficher quand même").click()
+        page.locator(".propositions").first.wait_for()
+        assert page.locator(".propositions").count() >= 1 and avant >= 1
+        message.get_by_role("button", name="Les cacher").click()
+        page.wait_for_function("document.querySelectorAll('.propositions').length === 0")
+    finally:
+        page.unroute(motif)

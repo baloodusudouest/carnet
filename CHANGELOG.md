@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.16.0 — 13 novembre 2026
+- **Photos : les propositions qui ne s'affichent plus.** Quand l'image d'une proposition ne se charge pas (la photo n'est plus dans Immich : remplacée par une migration, ou supprimée), la personne est retirée de la liste de Portraits ou d'Affiches. Un message dit combien de personnes sont touchées et propose la solution : « Refaire la recherche pour ces N personnes », qui relit Immich pour elles seules. Rien n'est posé ; une photo déjà en place n'est pas touchée. « Les afficher quand même » les remet dans la liste ; une proposition cassée ne peut pas être posée tant qu'elle est cachée.
+- Tests : 114 du back, 35 d'interface.
+
 ## 2.15.0 — 13 novembre 2026
 - **Sillage lit la liste des personnes dans carnet.** Nouvelle adresse `/sillage/personnes`, fermée tant que `CARNET_JETON_SILLAGE` n'est pas réglé, ouverte avec ce seul jeton (pas celui de Home Assistant). Elle rend les fiches liées à une personne d'Immich : identifiant de la fiche, nom, identifiant Immich, groupes, proche ou non, décédée ou non. Ni téléphone, ni adresse, ni date.
 - **Fiche : « Ouvrir dans Sillage »**, dans le bloc Liaisons, quand la fiche est liée à Immich et que `CARNET_SILLAGE_URL` (l'adresse de Sillage dans le navigateur) est réglée.

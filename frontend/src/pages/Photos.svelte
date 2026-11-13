@@ -38,6 +38,19 @@
   let montrees = $state(20)    // lignes affichées (on avance par paquets)
   let props = $state({})       // uid → propositions lues ({ photos, affiches }), null pendant la lecture
   let retenu = $state({})      // uid → clé de la proposition retenue (par défaut : la première, celle de carnet)
+  // 2.16 : une proposition dont l'image ne s'affiche plus (la photo a quitté Immich : migration, suppression).
+  // La personne est retirée de la liste, comptée dans un message, et on propose de refaire sa recherche.
+  let casses = $state(new Set())      // « file:uid »
+  let voirCasses = $state(false)
+  const cassee = (x) => casses.has(file + ':' + x.uid)
+  const lesCasses = $derived(aChoix ? (donnees?.files[file] || []).filter(cassee) : [])
+  function imageCassee(x) { if (!cassee(x)) casses = new Set([...casses, file + ':' + x.uid]) }
+  async function reparer() {
+    const uids = lesCasses.map((x) => x.uid)
+    await enFond('/api/photos/propositions', { uids })
+    casses = new Set([...casses].filter((k) => !k.startsWith(file + ':')))
+    voirCasses = false
+  }
   let relance = $state(false)   // 2.12 : confirmation avant de relancer la recherche pour tout le monde
   const relies = $derived((donnees?.files[file] || []).filter((x) => x.mode === 'immich').length)
   const aChoix = $derived(file === 'portraits' || file === 'affiches')
@@ -45,7 +58,7 @@
   const fait = (x) => (file === 'affiches' ? x.affiche !== null : x.a_photo)
 
   const courante = $derived(FILES.find((f) => f.cle === file))
-  const filtrees = $derived((donnees?.files[file] || []).filter((x) => (!groupe || x.groupes.includes(groupe)) && (!aChoix || !manque || !fait(x)) && (!aChoix || voirChoisis || !x.choisi)))
+  const filtrees = $derived((donnees?.files[file] || []).filter((x) => (!groupe || x.groupes.includes(groupe)) && (!aChoix || !manque || !fait(x)) && (!aChoix || voirChoisis || !x.choisi) && (voirCasses || !cassee(x))))
   // Logos : une ligne par société. Le logo choisi est posé sur toutes ses fiches sans photo ;
   // une fiche qui a déjà une photo n'est pas dans la file et n'est jamais touchée.
   const lignes = $derived.by(() => {
@@ -232,6 +245,17 @@
         {/if}
       </div>
 
+      {#if lesCasses.length}
+        <div class="casses" role="status" aria-label="Propositions qui ne s'affichent plus">
+          <p><strong>{lesCasses.length} personne{lesCasses.length > 1 ? 's ont' : ' a'} un problème d'affichage</strong> : une photo proposée n'est plus dans Immich (remplacée par une migration, ou supprimée). {voirCasses ? '' : (lesCasses.length > 1 ? 'Elles sont retirées' : 'Elle est retirée') + ' de la liste en attendant.'}</p>
+          <p class="discret">La solution : refaire leur recherche. Carnet relit Immich pour {lesCasses.length > 1 ? 'ces personnes' : 'cette personne'} et propose les photos d'aujourd'hui. Rien n'est posé, et une photo déjà en place n'est pas touchée.</p>
+          <div class="actions">
+            <button class="bouton bouton-principal" disabled={attente} onclick={reparer}>{attente ? 'Recherche…' : `Refaire la recherche pour ${lesCasses.length > 1 ? 'ces ' + lesCasses.length + ' personnes' : 'cette personne'}`}</button>
+            <button class="bouton" aria-pressed={voirCasses} onclick={() => (voirCasses = !voirCasses)}>{voirCasses ? 'Les cacher' : 'Les afficher quand même'}</button>
+          </div>
+        </div>
+      {/if}
+
       <ul class="liste">
         {#each visibles as x (x.uid)}
           <li class="fiche" class:logo={file === 'logos'} class:choix={aChoix}>
@@ -283,7 +307,7 @@
                             aria-label={`Proposition ${i + 1}` + (i === 0 ? ', choix de carnet' : '') + (pr.seul ? ', seul sur la photo' : '')}
                             onclick={() => { retenu = { ...retenu, [file + ':' + x.uid]: pr.cle }; if (!coches.has(x.uid)) basculer(x.uid) }}>
                       {#if pr.couleur}<span class="teinte" style:background={pr.couleur}></span>{/if}
-                      <img src={`/api/contacts/${encodeURIComponent(x.uid)}/propositions/${sorte}/${encodeURIComponent(pr.cle)}?v=${version}`} alt="" loading="lazy" />
+                      <img src={`/api/contacts/${encodeURIComponent(x.uid)}/propositions/${sorte}/${encodeURIComponent(pr.cle)}?v=${version}`} alt="" loading="lazy" onerror={() => imageCassee(x)} />
                       {#if i === 0}<span class="marque">carnet</span>{/if}
                     </button>
                   {/each}
@@ -344,6 +368,8 @@
   .bascule input { width: 1.15rem; height: 1.15rem; accent-color: var(--color-onglet); }
   .oeil { display: inline-flex; align-items: center; gap: 0.4rem; }
   .relance { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; flex-basis: 100%; }
+  .casses { margin: 0.6rem 0 0.9rem; padding: 0.8rem 1rem; border: 1px solid var(--attention, #c9a227); border-radius: 12px; display: grid; gap: 0.45rem; }
+  .casses p { margin: 0; }
   .propositions { display: flex; gap: 0.45rem; flex-wrap: wrap; }
   .proposition { position: relative; width: 64px; height: 64px; padding: 0; border-radius: 12px; overflow: hidden;
     border: 2px solid transparent; outline: 1px solid var(--color-couture); background: var(--color-reliure); }
