@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.14.0 — 13 novembre 2026
+- **Connexion commune.** Connecté à l'Anneau, on n'a plus à se connecter ici : l'appli accepte le cookie « maison_session » que l'Anneau pose, quand elle est servie par la même adresse que lui. Le cookie est signé avec le mot de passe commun : une appli qui a un autre mot de passe continue de demander le sien. Il vaut trente jours, ou jusqu'au changement du mot de passe ; « Se déconnecter » le retire du navigateur.
+
 ## 2.13.0 — 13 novembre 2026
 - **Photos : « Cocher tous ceux que carnet propose (N) »**, dans Portraits et dans Affiches. Un geste coche tous les contacts de la liste pour qui carnet a une proposition, y compris ceux qui ne sont pas encore affichés (au-delà des 20 premiers) et ceux qui ont déjà une photo. Le filtre de groupe et « Seulement sans photo » restreignent la sélection. Rien n'est posé : la pose reste par lots de 20, les suivants restent cochés. Pendant que carnet lit les propositions des contacts cochés plus bas, il l'indique (« Lecture des propositions : encore 12… »).
 - Tests : 113 du back, 34 d'interface.

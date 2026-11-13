@@ -4,6 +4,7 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
+- **2.14.0** (13/11/2026) : connexion commune avec l'Anneau — cookie `maison_session` (accepté ; `Sessions.connecte`, `commun_valide` dans `app/auth.py`). Jamais essayée sur la vraie installation.
 - **2.13.0 sur `main`** (13/11/2026) : « Cocher tous ceux que carnet propose » dans Portraits et Affiches (`Photos.svelte` : `proposables`, `cocherProposes`), coche aussi les lignes non affichées et les remplacements ; la pose reste par lots.
 - **2.12.0** (12/11/2026) : « Relancer la recherche pour tous » dans Photos (`galerie.chercher_toutes`, `POST /api/photos/propositions` avec `tous`), sans limite de lot, lecture seule d'Immich. Table `choisis` : un choix fait dans Photos replie la ligne (`photos.retenir_choix`), une recherche la remontre. **Durée sur les vraies données inconnue** (une soixantaine d'appels par contact). Icône de Treemich, un arbre dessiné par carnet (`main.ARBRE`, servi par `/api/logo-reseau/treemich`).
 - **2.11.2** (12/11/2026) : un nom associé se choisit parmi les noms du carnet (`Editeur.svelte`, liste `noms-du-carnet` tirée de `/api/contacts`) ou s'écrit à la main.
