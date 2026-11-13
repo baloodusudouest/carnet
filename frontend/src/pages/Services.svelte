@@ -121,7 +121,7 @@
 
     <div id="detail-service"></div>
     {#if !choisi}
-      <p class="discret">Touche un service pour le vérifier ou le synchroniser. Le chiffre ocre est le nombre de différences qui t'attendent dans « À traiter ».</p>
+      <p class="discret">Touche un service pour le vérifier ou le synchroniser. Le chiffre en couleur est le nombre de différences qui t'attendent dans « À traiter ».</p>
     {:else if choisi === 'attentes'}
       <Attentes />
     {:else if service}

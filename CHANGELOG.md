@@ -1,5 +1,9 @@
 # Journal des versions
 
+
+## 2.18.2 — 14 novembre 2026
+- **carnet passe en argent** (`#b7c0cc`, l'ocre avant). L'or est gardé pour l'Anneau, qui montre toutes les applis côte à côte : carnet, Sillage et l'Anneau avaient trois ors voisins qu'on ne distinguait plus. Boutons pleins, onglet actif, compteurs, anneau de progression et icône (onglet du navigateur, écran d'accueil) changent ; rien d'autre.
+
 ## 2.18.1 — 14 novembre 2026
 - **Deux portables : une icône par type.** Dans À traiter › Mise en forme, chaque portable de la fiche est affiché sur sa ligne, avec deux boutons à icône : une mallette « Travail » et un téléphone « Mobile ». Le type actuel est déjà allumé ; un toucher change le choix, puis « Écrire dans iCloud ». La question devient « lequel est travail, lequel mobile ? ».
 

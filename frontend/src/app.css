@@ -7,7 +7,7 @@
 }
 
 /* Habillage du socle (2.7.0) : minimalisme chaleureux. Du texte, des filets fins, de l'espace,
-   sur des neutres teintés vers l'ocre de carnet. L'ocre porte l'action attendue (bouton plein),
+   sur des neutres chauds. L'argent porte l'action attendue (bouton plein),
    le filtre actif et ce qui demande l'attention (compteur, motif d'un point, valeur modifiée).
    Sombre par défaut, clair quand l'appareil le demande. Les noms des couleurs sont ceux de
    l'ancien thème (cuir, papier…) pour ne toucher qu'à leurs valeurs. */
@@ -19,8 +19,8 @@
   --color-champ: #82776b;       /* bord des champs (contraste ≥ 3:1 sur le fond) */
   --color-papier: #f2ece2;      /* texte principal */
   --color-mine: #a89e91;        /* texte secondaire */
-  --color-onglet: #d9a441;      /* accent : l'ocre de carnet */
-  --color-sur-onglet: #23190a;  /* texte posé sur l'ocre */
+  --color-onglet: #b7c0cc;      /* accent : l'argent de carnet (2.18.2 ; l'ocre avant) */
+  --color-sur-onglet: #121821;  /* texte posé sur l'argent */
   --color-valide: #7fc493;
   --color-alerte: #ef7b72;
   --color-ombre: rgb(0 0 0 / 0.5);
@@ -31,8 +31,6 @@
 
 @layer base {
   html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
-  /* Clair : seulement quand l'appareil le demande. Mêmes rôles, valeurs inversées ; l'ocre est
-     assombri pour rester lisible sur fond clair. */
     body {
     background: var(--color-cuir); color: var(--color-papier);
     font-family: var(--font-sans); font-size: 15px; line-height: 1.5;
@@ -60,7 +58,7 @@
   }
   .bouton:hover { background: var(--color-reliure); }
   .bouton:disabled { opacity: 0.45; cursor: not-allowed; }
-  /* Le bouton plein est en ocre : un seul par bloc, l'action attendue */
+  /* Le bouton plein est en argent : un seul par bloc, l'action attendue */
   .bouton-principal { background: var(--color-onglet); border-color: var(--color-onglet); color: var(--color-sur-onglet); font-weight: 600; }
   .bouton-principal:hover { background: color-mix(in srgb, var(--color-onglet) 88%, var(--color-papier)); border-color: transparent; }
   .bouton-danger { border-color: color-mix(in srgb, var(--color-alerte) 60%, transparent); color: var(--color-alerte); }
