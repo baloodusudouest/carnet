@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.13.0 — 13 novembre 2026
+- **Photos : « Cocher tous ceux que carnet propose (N) »**, dans Portraits et dans Affiches. Un geste coche tous les contacts de la liste pour qui carnet a une proposition, y compris ceux qui ne sont pas encore affichés (au-delà des 20 premiers) et ceux qui ont déjà une photo. Le filtre de groupe et « Seulement sans photo » restreignent la sélection. Rien n'est posé : la pose reste par lots de 20, les suivants restent cochés. Pendant que carnet lit les propositions des contacts cochés plus bas, il l'indique (« Lecture des propositions : encore 12… »).
+- Tests : 113 du back, 34 d'interface.
+
 ## 2.12.0 — 12 novembre 2026
 - **Photos : « Relancer la recherche pour tous »**, dans Portraits et dans Affiches. Carnet relit Immich pour tous les contacts reliés, d'une traite, et refait son choix de photo et d'affiche pour chacun. Une confirmation précède ; l'avancement s'affiche (« 12 sur 240 »). Rien n'est posé ni changé dans iCloud ou Immich.
 - **Les choix faits se replient** : un contact dont tu viens de choisir la photo (ou l'affiche) dans Photos disparaît de la liste des propositions. Le bouton à l'œil, « Afficher les N déjà choisis », les remontre. Une nouvelle recherche, pour lui ou pour tous, le fait revenir. Les photos posées avant cette version ne sont pas repliées.

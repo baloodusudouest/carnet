@@ -4,6 +4,8 @@
   // 2.11 : « Portraits » et « Affiches » montrent TOUS les contacts qui peuvent en recevoir une, avec
   // cinq propositions chacun. La première est le choix de carnet ; on peut en toucher une autre.
   // Une photo déjà en place n'est jamais cochée d'office.
+  // 2.13 : « Cocher tous ceux que carnet propose » coche d'un geste tous les contacts de la liste qui
+  // ont une proposition, au-delà des lignes affichées. La pose reste par lots : les suivants restent cochés.
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import { dire, erreur, etat, rafraichirAccueil, rafraichirContacts } from '../lib/etat.svelte.js'
@@ -70,10 +72,17 @@
   const prets = $derived(lignes.filter((x) => coches.has(x.uid) && cleDe(x) !== undefined).map((x) => ({ uid: x.uid, cle: cleDe(x) })))
   const remplacees = $derived(lignes.filter((x) => coches.has(x.uid) && cleDe(x) !== undefined && fait(x)).length)
 
-  // Les propositions des lignes affichées sont lues une à une (les images, elles, à la demande)
+  // 2.13 : tous les contacts de la liste pour qui carnet a une proposition, affichés ou non
+  const proposables = $derived(aChoix ? lignes.filter((x) => x.cherche && !x.aucune) : [])
+  const enLecture = $derived(proposables.filter((x) => coches.has(x.uid) && !props[x.uid]).length)
+  function cocherProposes() { coches = new Set(proposables.map((x) => x.uid)) }
+
+  // Les propositions des lignes affichées, puis celles des contacts cochés plus bas, sont lues une à une
+  // (les images, elles, à la demande)
   $effect(() => {
     if (!aChoix) return
-    const suivant = visibles.find((x) => x.cherche && !x.aucune && props[x.uid] === undefined)
+    const aLire = (x) => x.cherche && !x.aucune && props[x.uid] === undefined
+    const suivant = visibles.find(aLire) || proposables.find((x) => coches.has(x.uid) && aLire(x))
     if (!suivant) return
     props[suivant.uid] = null
     api.get(`/api/contacts/${encodeURIComponent(suivant.uid)}/propositions`)
@@ -96,12 +105,12 @@
   // 2.11 : dans Portraits et Affiches, on ne coche d'office que ce qui manque — jamais un remplacement
   function cocherLot() { coches = new Set((aChoix ? visibles.filter((x) => !fait(x) && !x.aucune) : lignes).slice(0, lot).map((x) => x.uid)) }
 
-  async function enFond(chemin, corps) {
+  async function enFond(chemin, corps, garder = []) {
     attente = true
     try {
       await tache('photos', chemin, corps, 'photos')
       dire(etat.accueil?.tache?.message || 'Terminé.')
-      coches = new Set(); choix = {}; trouves = {}; props = {}; retenu = {}; version += 1
+      coches = new Set(garder); choix = {}; trouves = {}; props = {}; retenu = {}; version += 1
       await Promise.all([charger(), rafraichirContacts(), rafraichirAccueil()])
     } catch (e) { erreur(e) } finally { attente = false }
   }
@@ -116,6 +125,12 @@
       dire(`${n} logo(s) trouvé(s) sur ${r.resultats.length} société(s)` + (r.restants ? `, ${r.restants} en attente du lot suivant` : '') + '. Regarde-les avant de les poser.')
       await charger()
     } catch (e) { erreur(e) } finally { attente = false }
+  }
+  // Un lot à la fois : les contacts cochés au-delà du lot le restent pour le suivant
+  function poserLeLot() {
+    const envoi = prets.slice(0, lot), partis = new Set(envoi.map((x) => x.uid))
+    enFond(file === 'affiches' ? '/api/photos/affiches/choix' : '/api/photos/portraits/choix', { choix: envoi },
+           cochees.length > lot ? cochees.filter((uid) => !partis.has(uid)) : [])
   }
   function logoDepose(uid, r) {
     trouves = { ...trouves, [uid]: [{ n: r.n, depose: true }] }
@@ -166,6 +181,10 @@
           <label class="bascule"><input type="checkbox" bind:checked={manque} onchange={() => { coches = new Set(); montrees = 20 }} />
             Seulement {file === 'affiches' ? 'sans affiche' : 'sans photo'}</label>
           <button class="bouton" onclick={cocherLot}>Cocher ce qui manque ici</button>
+          {#if proposables.length}
+            <button class="bouton" onclick={cocherProposes} title="Tous les contacts de cette liste pour qui carnet a une proposition, affichés ou non">
+              Cocher tous ceux que carnet propose ({proposables.length})</button>
+          {/if}
           {#if nbChoisis}
             <button class="bouton oeil" aria-pressed={voirChoisis} onclick={() => { voirChoisis = !voirChoisis; coches = new Set(); montrees = 20 }}
                     title="Contacts dont tu as déjà choisi {file === 'affiches' ? 'l\'affiche' : 'la photo'} ici">
@@ -192,11 +211,11 @@
             <button class="bouton" disabled={attente} onclick={() => enFond('/api/photos/propositions', { uids: aChercher })}>
               {attente ? 'Recherche…' : `Chercher les propositions (${aChercher.length})`}</button>
           {/if}
-          <button class="bouton bouton-principal" disabled={attente || !prets.length}
-                  onclick={() => enFond(file === 'affiches' ? '/api/photos/affiches/choix' : '/api/photos/portraits/choix', { choix: prets })}>
-            {file === 'affiches' ? 'Préparer les affiches cochées' : 'Poser les photos cochées'} ({prets.length})</button>
+          <button class="bouton bouton-principal" disabled={attente || !prets.length} onclick={poserLeLot}>
+            {file === 'affiches' ? 'Préparer les affiches cochées' : 'Poser les photos cochées'} ({prets.length > lot ? `${lot} sur ${prets.length}` : prets.length})</button>
+          {#if enLecture}<span class="discret" role="status">Lecture des propositions : encore {enLecture}…</span>{/if}
           {#if remplacees}<span class="discret">dont {remplacees} en remplacement de {file === 'affiches' ? 'l\'affiche' : 'la photo'} actuelle</span>{/if}
-          {#if cochees.length > lot}<span class="discret">Par lots de {lot} : le reste attend le lot suivant.</span>{/if}
+          {#if cochees.length > lot}<span class="discret">Par lots de {lot} : les suivants restent cochés.</span>{/if}
           {#if relies}
             {#if relance}
               <span class="relance" role="group" aria-label="Relancer la recherche">

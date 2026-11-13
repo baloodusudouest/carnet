@@ -601,3 +601,27 @@ def test_212_relancer_la_recherche_pour_tous(page):
     page.get_by_role("button", name=re.compile(r"Relancer la recherche pour tous")).click()
     page.get_by_role("group", name="Relancer la recherche").get_by_role("button", name="Oui, relancer").click()
     page.get_by_text(re.compile(r"contact\(s\) relu\(s\) dans Immich")).first.wait_for(timeout=30000)
+
+
+def test_213_cocher_tous_ceux_que_carnet_propose(page):
+    """Un geste coche tous les contacts qui ont une proposition de carnet, sans rien poser."""
+    page.click("nav.onglets a[aria-label='Photos']")
+    page.wait_for_selector("nav[aria-label='Files'] .tuile")
+    page.locator("nav[aria-label='Files'] .tuile", has=page.locator(".nom-tuile", has_text=re.compile("^Portraits$"))).click()
+    oeil = page.get_by_role("button", name=re.compile(r"Afficher les \d+ déjà choisi"))
+    if oeil.count():
+        oeil.click()
+    bouton = page.get_by_role("button", name=re.compile(r"Cocher tous ceux que carnet propose \((\d+)\)"))
+    if not bouton.count():
+        pytest.skip("aucune proposition de carnet dans le jeu de démonstration")
+    nombre = int(re.search(r"\((\d+)\)", bouton.inner_text()).group(1))
+    bouton.click()
+    lot = 20
+    attendu = f"{lot} sur {nombre}" if nombre > lot else str(nombre)
+    page.get_by_role("button", name=re.compile(rf"Poser les photos cochées \({attendu}\)")).wait_for(timeout=20000)
+    proposees = page.locator("li.fiche.choix", has=page.get_by_role("group", name=re.compile("Propositions pour")))
+    assert proposees.count() and all(l.get_by_role("checkbox").is_checked() for l in proposees.all())
+    sans = page.locator("li.fiche.choix", has_text="Pas encore cherché")
+    assert not any(l.get_by_role("checkbox").is_checked() for l in sans.all())   # rien sans proposition
+    page.get_by_role("button", name="Tout décocher").click()
+    assert page.get_by_role("button", name=re.compile(r"Poser les photos cochées \(0\)")).is_disabled()
