@@ -662,3 +662,28 @@ def test_216_propositions_qui_ne_s_affichent_plus(page):
         page.wait_for_function("document.querySelectorAll('.propositions').length === 0")
     finally:
         page.unroute(motif)
+
+
+# ------------------------------------------------------------------ 2.18.1 : deux portables, deux icônes chacun
+
+def test_2181_portables_travail_ou_mobile_par_icones(page):
+    if not ouvrir_tuile(page, "Mise en forme"):
+        pytest.skip("déjà réglé par l'autre appareil (serveur partagé)")
+    point = page.locator("article.point", has_text="Plusieurs portables")
+    if not point.count():
+        pytest.skip("déjà réglé par l'autre appareil (serveur partagé)")
+    lignes = point.locator("li.portable")
+    assert lignes.count() == 2
+    for i in range(2):
+        groupe = lignes.nth(i).get_by_role("group")
+        assert groupe.get_by_role("button", name="Travail").count() == 1
+        assert groupe.get_by_role("button", name="Mobile").count() == 1
+        assert lignes.nth(i).locator("button[aria-pressed='true']").count() == 1   # un seul choisi par numéro
+    travail = lignes.nth(0).get_by_role("button", name="Travail")
+    travail.click()
+    assert travail.get_attribute("aria-pressed") == "true"
+    assert lignes.nth(0).get_by_role("button", name="Mobile").get_attribute("aria-pressed") == "false"
+    lignes.nth(1).get_by_role("button", name="Mobile").click()
+    assert travail.bounding_box()["height"] >= 44
+    point.get_by_role("button", name="Écrire dans iCloud").click()
+    page.wait_for_selector(".message >> text=Types des portables")

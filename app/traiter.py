@@ -25,7 +25,7 @@ TITRES = {
     "nom": "Nom à reporter", "relations": "Liens familiaux", "reseau": "Réseau à rattacher",
     "mariage": "Date de mariage manquante", "mariage_different": "Dates de mariage différentes",
     "deces_different": "Dates de décès différentes", "societe": "Société écrite de plusieurs façons",
-    "portables": "Plusieurs portables : lequel est pro, lequel perso ?",
+    "portables": "Plusieurs portables : lequel est travail, lequel mobile ?",
 }
 ORDRE = list(TITRES)
 ENREGISTRES = {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit", "import", "linkedin", "reseau"}

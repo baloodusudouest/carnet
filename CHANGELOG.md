@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.18.1 — 14 novembre 2026
+- **Deux portables : une icône par type.** Dans À traiter › Mise en forme, chaque portable de la fiche est affiché sur sa ligne, avec deux boutons à icône : une mallette « Travail » et un téléphone « Mobile ». Le type actuel est déjà allumé ; un toucher change le choix, puis « Écrire dans iCloud ». La question devient « lequel est travail, lequel mobile ? ».
+
 ## 2.18.0 — 14 novembre 2026
 - **Plusieurs portables sur une fiche : à traiter.** Quand une fiche a deux portables ou plus et qu'aucun n'est noté « travail » à côté d'un « mobile », elle arrive dans À traiter (tuile Mise en forme) : pour chaque numéro, Pro (écrit « travail ») ou Perso (écrit « mobile »), puis « Écrire dans iCloud ». Le choix est gardé contre les règles de groupe. « Laisser comme ça » ne repose plus la question pour ces numéros.
 

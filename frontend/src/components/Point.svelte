@@ -100,16 +100,23 @@
         {#each d.ecarts as e}<li><span class="avant">{e.avant}</span> <span class="apres">{e.apres}</span></li>{/each}
       </ul>
     {:else if point.motif === 'portables'}
-      <fieldset class="choix">
-        <legend class="discret">Pro (écrit « travail ») ou perso (écrit « mobile ») ?</legend>
+      <ul class="portables" aria-label="Portables de la fiche">
         {#each d.numeros as n}
-          <div class="portable">
-            <span class="numero">{n.affichage} <span class="discret">({n.type})</span></span>
-            <label><input type="radio" name={'role-' + point.id + n.valeur} value="pro" bind:group={roles[n.valeur]} /> Pro</label>
-            <label><input type="radio" name={'role-' + point.id + n.valeur} value="perso" bind:group={roles[n.valeur]} /> Perso</label>
-          </div>
+          <li class="portable">
+            <span class="numero">{n.affichage} <span class="discret">(aujourd'hui : {n.type})</span></span>
+            <span class="roles" role="group" aria-label={'Type de ' + n.affichage}>
+              <button type="button" class="role" aria-pressed={roles[n.valeur] === 'pro'} title="Travail"
+                      onclick={() => (roles = { ...roles, [n.valeur]: 'pro' })}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2M3 12h18"/></svg>
+                <span>Travail</span></button>
+              <button type="button" class="role" aria-pressed={roles[n.valeur] === 'perso'} title="Mobile"
+                      onclick={() => (roles = { ...roles, [n.valeur]: 'perso' })}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
+                <span>Mobile</span></button>
+            </span>
+          </li>
         {/each}
-      </fieldset>
+      </ul>
     {:else if point.motif === 'emoji'}
       <p>{d.emoji} dans {d.champs.join(', ')}, mais pas dans le groupe {d.groupe}.</p>
     {:else if point.motif === 'liaison'}
@@ -229,9 +236,15 @@
   .conflit dd { grid-column: 1 / -1; }
   .etiquette { display: inline-block; min-width: 3.2rem; color: var(--color-mine); font-size: 0.8rem; }
   .ecarts { display: grid; gap: 0.2rem; }
-  .portable { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; padding: 0.3rem 0; }
+  .portables { display: grid; gap: 0.4rem; margin: 0; padding: 0; list-style: none; }
+  .portable { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 1rem; padding: 0.35rem 0; border-top: 1px solid var(--color-filet, rgba(255,255,255,.1)); }
+  .portable:first-child { border-top: 0; }
   .portable .numero { flex: 1 1 12rem; font-variant-numeric: tabular-nums; }
-  .portable label { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 2.75rem; }
+  .roles { display: inline-flex; gap: 0.4rem; }
+  .role { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 2.75rem; padding: 0 0.8rem; border-radius: 999px;
+          border: 1px solid var(--color-filet, rgba(255,255,255,.15)); background: transparent; color: inherit; font: inherit; cursor: pointer; }
+  .role svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .role[aria-pressed='true'] { background: var(--color-mine, #e2c98a); border-color: var(--color-mine, #e2c98a); color: #1a1714; font-weight: 600; }
   .choix { display: grid; gap: 0.35rem; }
   .choix label { display: flex; align-items: center; gap: 0.5rem; min-height: 2.5rem; }
   a { color: var(--color-papier); text-decoration-color: var(--color-tranche); }
