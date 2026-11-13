@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.17.3 — 13 novembre 2026
+- **Les photos en lien vers iCloud ne bloquent plus la copie Synology.** Une photo de contact servie par iCloud est un lien signé qui change à chaque lecture de la carte : carnet croyait que 176 photos avaient changé (seule différence pour 172 fiches). Le lien ne compte plus ; une vraie nouvelle photo se voit toujours à ses autres champs (X-IMAGEHASH…).
+
 ## 2.17.2 — 13 novembre 2026
 - **La copie Synology n'est plus bloquée par ce que Synology réécrit.** Vu le 13/11 avec Vérifier : Synology Contacts réunit les types répétés (« TYPE=CELL;TYPE=VOICE;TYPE=PREF » devient « TYPE=CELL,VOICE,PREF »), retire le « ; » vide de fin des sociétés et ne garde pas les champs Apple « X-AB… » (dates et libellés personnalisés). carnet croyait donc que 504 fiches avaient changé de téléphone, et la copie de la nuit restait bloquée. Ces réécritures ne comptent plus comme des différences ; un vrai changement de numéro, de photo ou de société compte toujours.
 

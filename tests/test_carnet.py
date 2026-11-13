@@ -502,6 +502,9 @@ def test_synology_ce_qu_il_reecrit_ne_compte_pas(c, services):
     la = ("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:X\r\nFN:A\r\nORG:Société\r\n"
           "TEL;TYPE=CELL,VOICE,PREF:+33 6 00 00 00 00\r\nEND:VCARD\r\n")
     assert synchro.empreinte_synology(ici) == synchro.empreinte_synology(la)
+    lien = "PHOTO;VALUE=uri;TYPE=JPEG:https://p01-contacts.icloud.com/123/wt/ab12cd\r\n"
+    assert synchro.empreinte_synology(ici.replace("END:VCARD", lien + "END:VCARD")) == \
+        synchro.empreinte_synology(la.replace("END:VCARD", lien.replace("ab12cd", "zz99yy") + "END:VCARD"))   # lien signé
     autre = la.replace("+33 6 00 00 00 00", "+33 6 00 00 00 01")
     assert synchro.empreinte_synology(ici) != synchro.empreinte_synology(autre)                # un vrai changement compte
     syno = services["synology"]

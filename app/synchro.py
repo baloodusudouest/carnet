@@ -324,6 +324,10 @@ def ligne_comme_synology(l: str) -> str | None:
     params = sorted(autres) + ([f"type={','.join(sorted(types))}"] if types else [])
     if nom in _STRUCTURES:
         valeur = valeur.rstrip(";")
+    if nom == "PHOTO" and "value=uri" in params:
+        # 2.17.3 : une photo en lien vers iCloud porte une adresse signée qui change à chaque lecture de la carte ;
+        # ce n'est pas une nouvelle photo (vu le 13/11 : 172 fiches dont c'était la seule différence)
+        valeur = "lien"
     return ";".join([morceaux[0].lower(), *params]) + ":" + valeur.lower()
 
 
