@@ -492,6 +492,33 @@ def test_synology_apercu_sans_rien_ecrire(c, services):
     assert {u: syno.texte(u) for u in avant} == avant                                       # rien n'est écrit
 
 
+def test_synology_ce_qu_il_reecrit_ne_compte_pas(c, services):
+    """2.17.2 : Synology réunit les TYPE, retire le « ; » vide de fin d'ORG et ne garde pas les X-AB… :
+    ce n'est pas une différence (vu le 13/11 : 504 fiches « TEL » bloquaient la copie)."""
+    from app import synchro
+    ici = ("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:X\r\nFN:A\r\nORG:Société;\r\n"
+           "item1.TEL;type=CELL;type=VOICE;type=pref:+33 6 00 00 00 00\r\n"
+           "item2.X-ABDATE;type=pref:2001-01-01\r\nitem2.X-ABLABEL:_$!<Anniversary>!$_\r\nEND:VCARD\r\n")
+    la = ("BEGIN:VCARD\r\nVERSION:3.0\r\nUID:X\r\nFN:A\r\nORG:Société\r\n"
+          "TEL;TYPE=CELL,VOICE,PREF:+33 6 00 00 00 00\r\nEND:VCARD\r\n")
+    assert synchro.empreinte_synology(ici) == synchro.empreinte_synology(la)
+    autre = la.replace("+33 6 00 00 00 00", "+33 6 00 00 00 01")
+    assert synchro.empreinte_synology(ici) != synchro.empreinte_synology(autre)                # un vrai changement compte
+    syno = services["synology"]
+    sorties.copier_synology(c)
+    uid = "AAAA-1111"
+    texte = syno.texte(uid)
+    def fusion(l):                                   # comme Synology : « TEL;type=A;type=B:… » → « TEL;TYPE=A,B:… »
+        tete, _, val = l.partition(":")
+        nom, *params = tete.split(";")
+        types = [p.split("=", 1)[1] for p in params if p.lower().startswith("type=")]
+        return f"{nom};TYPE={','.join(types)}:{val}" if types else l
+    reecrit = "\r\n".join(fusion(l) if l.upper().startswith("TEL;") else l for l in texte.split("\r\n"))
+    assert reecrit != texte
+    syno.modifier_sur_iphone(uid, reecrit)
+    assert sorties.apercu_synology(c)["synology"]["modifier"] == 0
+
+
 def test_synology_ancienne_copie_remplacee(c, services):
     syno = services["synology"]
     for i in range(10):

@@ -82,7 +82,7 @@ def copier_synology(c: Carnet, forcer: bool = False, avancer=None) -> dict:
             d = distantes.get(uid)
             if d is None:
                 actions.append(("creer", uid, texte, None, dav.href_nouveau(uid)))
-            elif synchro.empreinte(d.texte) != synchro.empreinte(texte):
+            elif synchro.empreinte_synology(d.texte) != synchro.empreinte_synology(texte):
                 actions.append(("modifier", uid, texte, d.etag, d.href))
         for uid, d in distantes.items():
             if uid not in voulues:
@@ -120,14 +120,8 @@ def copier_synology(c: Carnet, forcer: bool = False, avancer=None) -> dict:
 
 
 def _proprietes(texte: str) -> set[str]:
-    """Les lignes d'une carte comme l'empreinte les voit (sans PRODID ni REV, sans groupe, en minuscules)."""
-    lignes = set()
-    for l in synchro.deplier(texte):
-        g, nom, _ = synchro._decouper(l)
-        if nom in ("PRODID", "REV"):
-            continue
-        lignes.add((l[len(g) + 1:] if g else l).lower())
-    return lignes
+    """Les lignes d'une carte comme la comparaison avec Synology les voit (synchro.ligne_comme_synology)."""
+    return {x for x in (synchro.ligne_comme_synology(l) for l in synchro.deplier(texte)) if x is not None}
 
 
 def _nom_ligne(l: str) -> str:
@@ -162,7 +156,7 @@ def apercu_synology(c: Carnet) -> dict:
     modifier = 0
     for uid, texte in voulues.items():
         d = distantes.get(uid)
-        if d is None or synchro.empreinte(d.texte) == synchro.empreinte(texte):
+        if d is None or synchro.empreinte_synology(d.texte) == synchro.empreinte_synology(texte):
             continue
         modifier += 1
         ecart = _proprietes(texte) ^ _proprietes(d.texte)

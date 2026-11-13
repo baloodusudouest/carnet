@@ -300,6 +300,39 @@ def empreinte(texte: str) -> str:
     return hashlib.sha256("\n".join(sorted(x.lower() for x in lignes)).encode()).hexdigest()
 
 
+# 2.17.2 : ce que Synology Contacts réécrit ou ne garde pas, sans rien changer au contenu
+_SYNOLOGY_NE_GARDE_PAS = ("X-ABDATE", "X-ABLABEL", "X-ABRELATEDNAMES", "X-ABADR", "X-ADDRESSBOOKSERVER-")
+_STRUCTURES = ("N", "ORG", "ADR")
+
+
+def ligne_comme_synology(l: str) -> str | None:
+    """Une ligne de carte sous une forme que Synology ne change pas : sans groupe, en minuscules, paramètres triés,
+    TYPE répétés réunis en un seul (« TYPE=CELL;TYPE=VOICE » = « TYPE=CELL,VOICE »), sans les « ; » vides de fin
+    des valeurs structurées (« ORG:Société; » = « ORG:Société »). None : une ligne que Synology ne garde pas."""
+    g, nom, valeur = _decouper(l)
+    if nom in ("PRODID", "REV") or nom.startswith(_SYNOLOGY_NE_GARDE_PAS):
+        return None
+    tete = (l[len(g) + 1:] if g else l).split(":", 1)[0]
+    morceaux = tete.split(";")
+    types, autres = set(), []
+    for p in morceaux[1:]:
+        cle, _, v = p.partition("=")
+        if cle.strip().lower() == "type":
+            types |= {x.strip().lower() for x in v.split(",") if x.strip()}
+        elif p.strip():
+            autres.append(p.strip().lower())
+    params = sorted(autres) + ([f"type={','.join(sorted(types))}"] if types else [])
+    if nom in _STRUCTURES:
+        valeur = valeur.rstrip(";")
+    return ";".join([morceaux[0].lower(), *params]) + ":" + valeur.lower()
+
+
+def empreinte_synology(texte: str) -> str:
+    """2.17.2 : l'empreinte d'une carte pour la comparer à sa copie dans Synology (voir ligne_comme_synology)."""
+    lignes = (ligne_comme_synology(l) for l in deplier(texte))
+    return hashlib.sha256("\n".join(sorted(x for x in lignes if x is not None)).encode()).hexdigest()
+
+
 def type_image(donnees: bytes) -> str:
     if donnees[:3] == b"\xff\xd8\xff":
         return "image/jpeg"

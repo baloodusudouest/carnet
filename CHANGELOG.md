@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.17.2 — 13 novembre 2026
+- **La copie Synology n'est plus bloquée par ce que Synology réécrit.** Vu le 13/11 avec Vérifier : Synology Contacts réunit les types répétés (« TYPE=CELL;TYPE=VOICE;TYPE=PREF » devient « TYPE=CELL,VOICE,PREF »), retire le « ; » vide de fin des sociétés et ne garde pas les champs Apple « X-AB… » (dates et libellés personnalisés). carnet croyait donc que 504 fiches avaient changé de téléphone, et la copie de la nuit restait bloquée. Ces réécritures ne comptent plus comme des différences ; un vrai changement de numéro, de photo ou de société compte toujours.
+
 ## 2.17.1 — 13 novembre 2026
 - **Vérifier Synology montre la forme des différences**, valeurs masquées (chiffres → 9, lettres → a), pour la propriété qui diffère le plus : on voit si c'est le format d'un numéro, un type, une photo… sans aucune donnée. Vu le 13/11 : TEL diffère sur 504 fiches sur 573 (seule différence pour 106).
 
