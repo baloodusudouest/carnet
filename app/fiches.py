@@ -72,8 +72,22 @@ def differences(avant: dict, apres: dict, photo: bool = False) -> list[dict]:
     return res
 
 
-def preparer(fiche: dict, region: str = "FR") -> dict:
-    """Fiche saisie dans l'interface → fiche normalisée (formats imposés, groupes par émoji)."""
+def preparer(fiche: dict, region: str = "FR", avant: dict | None = None) -> dict:
+    """Fiche saisie dans l'interface → fiche normalisée (formats imposés, groupes par émoji).
+    `avant` (2.17.5) : la fiche actuelle. Le type d'un numéro déjà sur la fiche est celui que tu vois dans l'éditeur,
+    gardé ou changé à la main : les règles de groupe (« travail » pour les collègues, « mobile » pour la famille…)
+    ne le défont pas en silence ; elles ne s'appliquent qu'aux numéros nouveaux (et restent proposées dans À traiter)."""
+    fiche = dict(fiche)
+    if avant:
+        types_avant = {normalisation.cle_telephone(t): t.get("type") for t in avant.get("telephones") or [] if t.get("valeur")}
+        tels = []
+        for t in fiche.get("telephones") or []:
+            t = dict(t)
+            n = normalisation.telephone(t.get("valeur", ""), t.get("type") or None, region)
+            if n and t.get("type") and normalisation.cle_telephone(n) in types_avant:
+                t["type_choisi"] = True              # numéro déjà sur la fiche : son type est celui affiché, gardé ou changé à la main
+            tels.append(t)
+        fiche["telephones"] = tels
     propre = normalisation.normaliser_fiche({k: v for k, v in fiche.items() if k != "a_photo"}, region)
     propre["photo"] = None
     return propre

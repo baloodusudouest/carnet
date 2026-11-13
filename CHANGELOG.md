@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.17.5 — 13 novembre 2026
+- **Le type d'un téléphone changé à la main est gardé.** Dans une fiche d'un groupe « travail » (Collègues, Clients, Artisans et services) ou « proches » (Famille, Amis…), la règle du groupe remettait en silence le type imposé : passer un portable de « travail » à « mobile » donnait « Aucun changement », et « Écrire dans iCloud » restait grisé. Désormais, à l'enregistrement d'une fiche, un numéro déjà présent garde le type affiché dans l'éditeur ; les règles de groupe ne s'appliquent qu'aux numéros nouveaux, et restent proposées dans À traiter.
+
 ## 2.17.4 — 13 novembre 2026
 - **« Voir les changements » explique un « Aucun changement ».** Un courriel sans « @ » (ou un site non reconnu) était écarté sans un mot, et une saisie qui revient au même une fois mise en forme (le même numéro écrit autrement) ne disait rien : le bouton « Écrire dans iCloud » restait grisé sans raison visible. L'aperçu le dit maintenant, en orange sous les changements.
 

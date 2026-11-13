@@ -18,7 +18,7 @@ from .normalisation import ValeurInvalide
 def apercu(c: Carnet, uid: str, fiche: dict) -> dict:
     """Ce qui partirait dans iCloud si on validait cette fiche (rien n'est écrit)."""
     try:
-        propre = F.preparer(fiche, c.cfg.region)
+        propre = F.preparer(fiche, c.cfg.region, avant=c.fiche(uid))
     except ValeurInvalide as exc:
         raise ErreurCarnet(str(exc))
     champs = F.differences(c.fiche(uid), propre)
@@ -62,7 +62,7 @@ def valider(c: Carnet, uid: str, fiche: dict, photo: tuple[bytes, str] | None = 
     écritures (À traiter, réseaux, photo…) laissent ces points en place : « Revenir » reste
     possible et la nuit continue d'ignorer la fiche."""
     try:
-        propre = F.preparer(fiche, c.cfg.region)
+        propre = F.preparer(fiche, c.cfg.region, avant=c.fiche(uid) if origine == "manuel" else None)
     except ValeurInvalide as exc:
         raise ErreurCarnet(str(exc))
     with c.ecriture(attendre=5):

@@ -2394,3 +2394,26 @@ def test_apercu_explique_un_courriel_ecarte(c, services):
     f["courriels"] = (f["courriels"] or []) + [{"valeur": "pas-une-adresse", "type": "travail"}]
     ap = actions.apercu(c, "DDDD-4444", f)
     assert ap["champs"] == [] and any("pas-une-adresse" in n for n in ap["notes"]) and any("revient au même" in n for n in ap["notes"])
+
+
+def test_type_de_telephone_choisi_a_la_main_l_emporte_sur_le_groupe(c, services):
+    """2.17.5 : dans un groupe « travail », un portable passé à la main en « mobile » le reste (la règle du groupe
+    le remettait en « travail » sans un mot : « Aucun changement »)."""
+    import copy
+    from app import normalisation
+    f = copy.deepcopy(c.fiche("DDDD-4444"))
+    f["groupes"] = ["Collègues"]
+    f["telephones"] = [{"valeur": "+33 6 12 34 56 78", "type": "mobile"}]
+    actions.valider(c, "DDDD-4444", f)
+    assert [t["type"] for t in c.fiche("DDDD-4444")["telephones"]] == ["travail"]           # la règle s'applique
+    f = copy.deepcopy(c.fiche("DDDD-4444"))
+    f["telephones"][0]["type"] = "mobile"                                                   # choix à la main
+    ap = actions.apercu(c, "DDDD-4444", f)
+    assert [d["champ"] for d in ap["champs"]] == ["telephones"]
+    actions.valider(c, "DDDD-4444", ap["fiche"])
+    assert [t["type"] for t in c.fiche("DDDD-4444")["telephones"]] == ["mobile"]
+    f = copy.deepcopy(c.fiche("DDDD-4444"))                                                  # plus tard, une autre modification
+    f["societe"] = "Ailleurs"
+    actions.valider(c, "DDDD-4444", actions.apercu(c, "DDDD-4444", f)["fiche"])
+    assert [t["type"] for t in c.fiche("DDDD-4444")["telephones"]] == ["mobile"]           # le choix tient
+    assert normalisation.regle_proches({"groupes": ["Collègues"], "telephones": [{"valeur": "+33612345678", "type": "mobile"}]})["telephones"][0]["type"] == "travail"

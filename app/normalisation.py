@@ -171,14 +171,15 @@ def regle_proches(fiche: dict) -> dict:
     pros = groupes & GROUPES_PROS
     if pros:
         for t in telephones:
-            if t["nature"]:
+            if t["nature"] and not t.get("type_choisi"):
                 t["type"] = "travail" if t["nature"] == "mobile" else "bureau"
     if pros and fiche.get("societe") and not fiche.get("prenom") and not fiche.get("nom"):
         for t in telephones:
-            t["type"] = "travail" if t["nature"] == "mobile" else "principal"
+            if not t.get("type_choisi"):
+                t["type"] = "travail" if t["nature"] == "mobile" else "principal"
     if GROUPES_PROCHES & groupes:
         portables = [t for t in telephones if t["nature"] == "mobile"]
-        if len(portables) == 1:
+        if len(portables) == 1 and not portables[0].get("type_choisi"):
             portables[0]["type"] = "mobile"
     return fiche
 
@@ -509,6 +510,8 @@ def normaliser_fiche(fiche: dict, region: str = "FR") -> dict:
         if n:
             if t.get("nature_choisie") in ("mobile", "fixe"):  # choix fait dans la Revue
                 n["nature_choisie"] = t["nature_choisie"]
+            if t.get("type_choisi"):                            # 2.17.5 : type changé à la main dans la fiche
+                n["type_choisi"] = True
             tels.append(n)
     f["telephones"] = tels
     f["courriels"] = [c for c in (courriel(x.get("valeur", ""), x.get("type") or "domicile")
