@@ -1,4 +1,10 @@
 @import "tailwindcss";
+/* Toujours sombre : « dark: » s'applique partout (comme l'Anneau) */
+@custom-variant dark {
+  @media all {
+    @slot;
+  }
+}
 
 /* Habillage du socle (2.7.0) : minimalisme chaleureux. Du texte, des filets fins, de l'espace,
    sur des neutres teintés vers l'ocre de carnet. L'ocre porte l'action attendue (bouton plein),
@@ -27,16 +33,7 @@
   html { color-scheme: dark; -webkit-text-size-adjust: 100%; }
   /* Clair : seulement quand l'appareil le demande. Mêmes rôles, valeurs inversées ; l'ocre est
      assombri pour rester lisible sur fond clair. */
-  @media (prefers-color-scheme: light) {
-    :root {
-      --color-cuir: #faf7f2; --color-reliure: #f1ece3; --color-couture: #e3dbcd; --color-tranche: #cabfad;
-      --color-champ: #8c8275; --color-papier: #1e1a16; --color-mine: #6f665b;
-      --color-onglet: #96690c; --color-sur-onglet: #ffffff;
-      --color-valide: #2f7d4a; --color-alerte: #c0392b; --color-ombre: rgb(30 30 40 / 0.16);
-    }
-    html { color-scheme: light; }
-  }
-  body {
+    body {
     background: var(--color-cuir); color: var(--color-papier);
     font-family: var(--font-sans); font-size: 15px; line-height: 1.5;
     -webkit-font-smoothing: antialiased; font-feature-settings: "cv11", "ss01";

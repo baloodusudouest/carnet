@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.16.1 — 13 novembre 2026
+- **Toujours sombre.** Le thème clair est retiré : l'appli est sombre partout, ouverte seule comme dans l'Anneau, quel que soit le réglage du téléphone.
+
 ## 2.16.0 — 13 novembre 2026
 - **Photos : les propositions qui ne s'affichent plus.** Quand l'image d'une proposition ne se charge pas (la photo n'est plus dans Immich : remplacée par une migration, ou supprimée), la personne est retirée de la liste de Portraits ou d'Affiches. Un message dit combien de personnes sont touchées et propose la solution : « Refaire la recherche pour ces N personnes », qui relit Immich pour elles seules. Rien n'est posé ; une photo déjà en place n'est pas touchée. « Les afficher quand même » les remet dans la liste ; une proposition cassée ne peut pas être posée tant qu'elle est cachée.
 - Tests : 114 du back, 35 d'interface.

@@ -4,6 +4,7 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
+- **2.16.1** (13/11/2026) : toujours sombre (blocs `prefers-color-scheme: light` retirés, variante `dark:` partout).
 - **2.16.0 sur `main`** (13/11/2026) : `Photos.svelte` repère les propositions dont l'image ne se charge plus (`casses`, `imageCassee`, `reparer`), retire la personne, propose de refaire sa recherche. Vu sur la vraie installation : des cases vides dans Portraits, sans doute les photos remplacées par la migration en cours. Le repérage se fait à l'affichage : une personne plus bas dans la liste n'est comptée que lorsqu'elle est affichée.
 - **2.15.0 sur `main`** (13/11/2026) : adresse `/sillage/personnes` (jeton `CARNET_JETON_SILLAGE`, `sorties.sillage_personnes`), lien « Ouvrir dans Sillage » de la fiche (`CARNET_SILLAGE_URL`). Jamais essayé sur la vraie installation.
 - **2.14.0** (13/11/2026) : connexion commune avec l'Anneau — cookie `maison_session` (accepté ; `Sessions.connecte`, `commun_valide` dans `app/auth.py`). Jamais essayée sur la vraie installation.
