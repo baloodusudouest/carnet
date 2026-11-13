@@ -477,6 +477,21 @@ def test_synology_miroir_et_coupe_circuit(c, services):
     assert sorties.copier_synology(c, forcer=True)["supprimes"] == 30
 
 
+def test_synology_apercu_sans_rien_ecrire(c, services):
+    """2.17 : « Vérifier » dit ce que la copie changerait, propriété par propriété, sans écrire."""
+    syno = services["synology"]
+    sorties.copier_synology(c)
+    uid = "AAAA-1111"
+    texte = syno.texte(uid)
+    syno.modifier_sur_iphone(uid, texte.replace("END:VCARD", "NOTE:changée sur le NAS\r\nEND:VCARD"))
+    avant = {u: syno.texte(u) for u in ("AAAA-1111", "DDDD-4444")}
+    r = sorties.apercu_synology(c)
+    assert r["ok"] and r["synology"]["modifier"] == 1 and r["synology"]["proprietes"] == {"NOTE": 1}
+    assert r["synology"]["seule"] == {"NOTE": 1} and not r["synology"]["bloquee"]
+    assert "NOTE sur 1 fiche(s)" in r["notes"][1]
+    assert {u: syno.texte(u) for u in avant} == avant                                       # rien n'est écrit
+
+
 def test_synology_ancienne_copie_remplacee(c, services):
     syno = services["synology"]
     for i in range(10):

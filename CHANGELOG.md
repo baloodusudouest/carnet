@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.17.0 — 13 novembre 2026
+- **Synology Contacts se vérifie** (Connexion › Synology › Vérifier) : carnet relit Synology et dit, sans rien écrire, combien de cartes la copie créerait, modifierait ou retirerait, et quelles propriétés diffèrent (PHOTO, NOTE, X-…), avec le nombre de fiches pour chacune. De quoi décider avant « Forcer la copie » quand elle est bloquée. Aucun nom ni valeur dans le rapport.
+- Vu le 13/11 : la copie de la nuit est bloquée (524 fiches sur 573 changeraient d'un coup).
+
 ## 2.16.1 — 13 novembre 2026
 - **Toujours sombre.** Le thème clair est retiré : l'appli est sombre partout, ouverte seule comme dans l'Anneau, quel que soit le réglage du téléphone.
 

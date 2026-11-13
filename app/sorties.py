@@ -119,6 +119,61 @@ def copier_synology(c: Carnet, forcer: bool = False, avancer=None) -> dict:
     return bilan
 
 
+def _proprietes(texte: str) -> set[str]:
+    """Les lignes d'une carte comme l'empreinte les voit (sans PRODID ni REV, sans groupe, en minuscules)."""
+    lignes = set()
+    for l in synchro.deplier(texte):
+        g, nom, _ = synchro._decouper(l)
+        if nom in ("PRODID", "REV"):
+            continue
+        lignes.add((l[len(g) + 1:] if g else l).lower())
+    return lignes
+
+
+def apercu_synology(c: Carnet) -> dict:
+    """2.17 : ce que la copie vers Synology changerait, sans rien écrire. Pour chaque fiche à modifier, les
+    propriétés de la carte qui diffèrent (PHOTO, NOTE, X-…) ; aucun nom ni valeur dans le rapport."""
+    if not c.cfg.synology_url:
+        raise ErreurCarnet("Synology Contacts n'est pas configuré.")
+    dav = c.synology()
+    try:
+        distantes = {x.uid: x for x in (synchro.analyser(b.href, b.etag, b.texte) for b in dav.lister())}
+    except ErreurICloud as exc:
+        return {"ok": False, "raison": str(exc)}
+    finally:
+        dav.fermer()
+    voulues = {l["uid"]: l["texte"] for l in c.base.tous("SELECT uid, texte FROM fiches")}
+    voulues.update({l["uid"]: l["texte"] for l in c.base.tous("SELECT uid, texte FROM groupes")})
+    creer = [u for u in voulues if u not in distantes]
+    retirer = [u for u in distantes if u not in voulues]
+    par_propriete: dict[str, int] = {}
+    seule: dict[str, int] = {}
+    modifier = 0
+    for uid, texte in voulues.items():
+        d = distantes.get(uid)
+        if d is None or synchro.empreinte(d.texte) == synchro.empreinte(texte):
+            continue
+        modifier += 1
+        ecart = _proprietes(texte) ^ _proprietes(d.texte)
+        noms = sorted({synchro._decouper(l)[1] or l.split(":", 1)[0].split(";", 1)[0].upper() for l in ecart})
+        for n in noms:
+            par_propriete[n] = par_propriete.get(n, 0) + 1
+        if len(noms) == 1:
+            seule[noms[0]] = seule.get(noms[0], 0) + 1
+    touches = modifier + len(retirer)
+    bloquee = bool(distantes) and touches > max(5, SEUIL_SYNOLOGY * len(distantes))
+    tri = sorted(par_propriete.items(), key=lambda x: -x[1])
+    notes = [f"Synology relu : {len(distantes)} carte(s). La copie créerait {len(creer)} carte(s), en modifierait {modifier}, "
+             f"en retirerait {len(retirer)}." + (" Elle est bloquée (plus de 5 % d'un coup)." if bloquee else "")]
+    if tri:
+        notes.append("Ce qui diffère, par propriété de la carte : "
+                     + ", ".join(f"{n} sur {k} fiche(s)" + (f" (seule différence pour {seule[n]})" if seule.get(n) else "")
+                                 for n, k in tri[:8]) + ".")
+    return {"ok": True, "le": iso(maintenant()), "lignes": [], "ecarts": [], "notes": notes,
+            "synology": {"creer": len(creer), "modifier": modifier, "retirer": len(retirer), "bloquee": bloquee,
+                         "proprietes": dict(tri), "seule": seule}}
+
+
 # ================================================================ Home Assistant
 
 def _noms_immich(c: Carnet) -> dict[str, str]:

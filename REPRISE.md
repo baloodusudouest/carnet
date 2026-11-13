@@ -2,6 +2,9 @@
 
 Fichier à lire en premier dans une nouvelle session, et à mettre à jour à chaque fin de session, dans le même commit que le code.
 
+
+- **2.17.0 (13/11/2026)** : `sorties.apercu_synology` (Vérifier de Synology, lecture seule : créer / modifier / retirer et propriétés qui diffèrent). Vu sur la vraie installation le 13/11 : copie Synology bloquée la nuit (524/573) ; cause encore inconnue — le rapport de Vérifier la dira (piste : DSM mis à jour qui réécrit les cartes, ou photos posées sur les fiches). Immich et Treemich « injoignables » à 17:25, revenus à 17:40 (Immich était tombé).
+
 ## État (11/11/2026)
 
 - **2.16.1** (13/11/2026) : toujours sombre (blocs `prefers-color-scheme: light` retirés, variante `dark:` partout).

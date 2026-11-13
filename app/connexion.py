@@ -85,7 +85,7 @@ def etat(c: Carnet, sante: dict, reseaux_: dict) -> list[dict]:
                     "resume": resume.get(cle) or (f"{r['liees']} fiche(s) liée(s)" if r else ""),
                     "le": le.get(cle) or (r or {}).get("importe_le"), "differences": diff.get(cle, 0),
                     "nuit": None if nuit_quoi is None else {"actif": nuit_active(c, cle), "quoi": nuit_quoi},
-                    "verifiable": cle in ("icloud", "immich", "treemich"),
+                    "verifiable": cle in ("icloud", "immich", "treemich", "synology"),
                     "synchronisable": cle in ("icloud", "immich", "treemich", "synology", "kit")})
     if nuit_.get("erreur") and res:
         res[0]["message"] = res[0]["message"] or nuit_["erreur"]
@@ -189,6 +189,8 @@ def verifier(c: Carnet, service: str) -> dict:
                           f"{len(points)} changement(s) fait(s) sur l'iPhone t'attendent dans « À traiter »." if points
                           else "Aucun changement fait sur l'iPhone n'attend ta réponse.",
                           f"{len(famille.fetes_a_ecrire(c))} fête(s) ne sont pas encore écrites sur les fiches."]}
+    if service == "synology":
+        return sorties.apercu_synology(c)
     if service not in ("immich", "treemich"):
         raise ErreurCarnet("Ce service ne se vérifie pas.")
     d = liaisons.donnees(c, rafraichir=True)
