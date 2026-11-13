@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.17.4 — 13 novembre 2026
+- **« Voir les changements » explique un « Aucun changement ».** Un courriel sans « @ » (ou un site non reconnu) était écarté sans un mot, et une saisie qui revient au même une fois mise en forme (le même numéro écrit autrement) ne disait rien : le bouton « Écrire dans iCloud » restait grisé sans raison visible. L'aperçu le dit maintenant, en orange sous les changements.
+
 ## 2.17.3 — 13 novembre 2026
 - **Les photos en lien vers iCloud ne bloquent plus la copie Synology.** Une photo de contact servie par iCloud est un lien signé qui change à chaque lecture de la carte : carnet croyait que 176 photos avaient changé (seule différence pour 172 fiches). Le lien ne compte plus ; une vraie nouvelle photo se voit toujours à ses autres champs (X-IMAGEHASH…).
 

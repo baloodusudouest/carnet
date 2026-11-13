@@ -2374,3 +2374,23 @@ def test_2111_treemich_reprend_le_visage_apres_immich(c, services, monkeypatch):
     monkeypatch.setattr(liens.Immich, "definir_couverture", refus)
     galerie.poser_choix(c, [{"uid": "DDDD-4444", "cle": "p1"}])
     assert tm.ecrits == []
+
+
+def test_apercu_voit_un_numero_et_un_courriel_changes(c, services):
+    import copy
+    for uid in ("AAAA-1111", "DDDD-4444"):
+        f = copy.deepcopy(c.fiche(uid))
+        if f["telephones"]:
+            f["telephones"][0] = {"valeur": "06 99 88 77 66", "type": "mobile"}
+            assert "telephones" in [d["champ"] for d in actions.apercu(c, uid, f)["champs"]], uid
+        f = copy.deepcopy(c.fiche(uid))
+        f["courriels"] = (f["courriels"] or []) + [{"valeur": "nouvelle@exemple.fr", "type": "travail"}]
+        assert "courriels" in [d["champ"] for d in actions.apercu(c, uid, f)["champs"]], uid
+
+
+def test_apercu_explique_un_courriel_ecarte(c, services):
+    import copy
+    f = copy.deepcopy(c.fiche("DDDD-4444"))
+    f["courriels"] = (f["courriels"] or []) + [{"valeur": "pas-une-adresse", "type": "travail"}]
+    ap = actions.apercu(c, "DDDD-4444", f)
+    assert ap["champs"] == [] and any("pas-une-adresse" in n for n in ap["notes"]) and any("revient au même" in n for n in ap["notes"])

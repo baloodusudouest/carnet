@@ -179,6 +179,7 @@
           <div class="apercu">
             <h2 class="titre">Ce qui part dans iCloud</h2>
             <Changements champs={apercu.champs} />
+            {#each apercu.notes || [] as n}<p class="note-saisie" role="note">{n}</p>{/each}
           </div>
           <div class="boutons">
             <button class="bouton" onclick={() => (apercu = null)}>Continuer à modifier</button>
@@ -425,4 +426,5 @@
   .apercu { max-height: 45dvh; overflow-y: auto; }
   .boutons { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; }
   @media (min-width: 900px) { .barre { bottom: 1rem; } }
+  .note-saisie { margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--avertissement, #e9b54a); }
 </style>

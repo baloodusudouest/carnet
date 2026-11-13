@@ -21,7 +21,28 @@ def apercu(c: Carnet, uid: str, fiche: dict) -> dict:
         propre = F.preparer(fiche, c.cfg.region)
     except ValeurInvalide as exc:
         raise ErreurCarnet(str(exc))
-    return {"fiche": propre, "champs": F.differences(c.fiche(uid), propre)}
+    champs = F.differences(c.fiche(uid), propre)
+    return {"fiche": propre, "champs": champs, "notes": _notes_de_saisie(fiche, propre, champs)}
+
+
+def _notes_de_saisie(saisie: dict, propre: dict, champs: list) -> list[str]:
+    """2.17.4 : ce que la mise en forme a écarté ou rendu identique, pour ne pas laisser « Aucun changement » sans
+    explication (un courriel sans « @ » disparaissait sans un mot)."""
+    notes = []
+    gardes = {(x.get("valeur") or "").strip().lower() for x in propre.get("courriels") or []}
+    for x in saisie.get("courriels") or []:
+        v = (x.get("valeur") or "").strip()
+        if v and v.lower().removeprefix("mailto:") not in gardes:
+            notes.append(f"Courriel « {v} » non reconnu (il faut une adresse du type nom@domaine.fr) : il ne sera pas écrit.")
+    gardes = {(x.get("valeur") or "").strip().lower() for x in propre.get("sites") or []}
+    for x in saisie.get("sites") or []:
+        v = (x.get("valeur") or "").strip()
+        if v and not any(v.lower().rstrip("/") in g or g in v.lower() for g in gardes):
+            notes.append(f"Site « {v} » non reconnu : il ne sera pas écrit.")
+    if not champs:
+        notes.append("Ta saisie revient au même que la fiche actuelle une fois mise en forme : numéros au format "
+                     "international (+33 6 …), courriels et sites tels quels. Rien à écrire.")
+    return notes
 
 
 REVUE = ("iphone_modifiee", "iphone_nouvelle", "conflit")
