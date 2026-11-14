@@ -222,7 +222,7 @@
           {#if decede}<dt>Décès</dt><dd>{donnees.deces.date ? dateLecture(donnees.deces.date) : 'date inconnue'}</dd>{/if}
           {#if f.surnom}<dt>Surnom</dt><dd>{f.surnom}</dd>{/if}
           {#each f.adresses as a}<dt>Adresse {a.type}</dt><dd>{[a.rue, `${a.cp} ${a.ville}`.trim(), a.pays].filter(Boolean).join(', ')}</dd>{/each}
-          {#each f.noms_associes as n}<dt>{n.type}</dt><dd>{n.valeur}</dd>{/each}
+          {#each f.noms_associes as n, i}<dt>{n.type}</dt><dd>{#if donnees.associes?.[i]}<a class="proche" href={'#/contacts/' + encodeURIComponent(donnees.associes[i])}>{n.valeur}</a>{:else}{n.valeur}{/if}</dd>{/each}
           {#each f.sites as s}<dt>{s.type}</dt><dd><a href={s.valeur} target="_blank" rel="noreferrer">{s.valeur}</a></dd>{/each}
           {#if f.notes}<dt>Notes</dt><dd class="notes">{f.notes}</dd>{/if}
         </dl>
@@ -391,6 +391,8 @@
   dl { display: grid; grid-template-columns: minmax(7rem, auto) 1fr; gap: 0.35rem 1rem; }
   dt { color: var(--color-mine); }
   dd { min-width: 0; overflow-wrap: anywhere; }
+  .proche { color: inherit; text-decoration: underline; text-decoration-color: var(--color-onglet); text-underline-offset: 3px; display: inline-block; min-height: 1.75rem; }
+  .proche:hover { color: var(--color-onglet); }
   .notes { white-space: pre-line; }
   .liaison { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; min-height: 2.75rem; }
   .ligne-titre { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }

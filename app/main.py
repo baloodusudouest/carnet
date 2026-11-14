@@ -22,6 +22,7 @@ from .carnet import Carnet, ErreurCarnet, Occupe
 from .config import charger
 from .liens import ErreurLien
 from .modele import groupes_tous, nom_affiche
+from .normalisation import cle_texte
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("carnet")
@@ -257,6 +258,20 @@ def groupes():
     return [{"nom": n, "nombre": compte[n]} for n in sorted(compte, key=str.casefold)]
 
 
+def _associes(c: Carnet, uid: str, f: dict) -> list[dict | None]:
+    """2.19 : pour chaque nom associé de la fiche (conjoint, parent, frère…), la fiche qui porte ce nom, si une seule
+    le porte (comparé sans accents ni casse, sur le nom affiché puis le surnom). Sinon None : le nom reste du texte."""
+    index: dict[str, set[str]] = {}
+    for u, x in c.fiches().items():
+        for t in {cle_texte(nom_affiche(x)), cle_texte(x.get("surnom") or "")} - {""}:
+            index.setdefault(t, set()).add(u)
+    res = []
+    for n in f.get("noms_associes") or []:
+        trouves = index.get(cle_texte(n.get("valeur", "")), set()) - {uid}
+        res.append(next(iter(trouves)) if len(trouves) == 1 else None)
+    return res
+
+
 @app.get("/api/contacts/{uid}")
 def contact(uid: str):
     c = carnet()
@@ -269,7 +284,7 @@ def contact(uid: str):
     lk = c.base.un("SELECT url, donnees FROM linkedin WHERE uid = ?", (uid,))
     points = [p for p in traiter.liste(c) if p.get("uid") == uid]
     etag = (c.base.un("SELECT etag FROM fiches WHERE uid = ?", (uid,)) or {"etag": ""})["etag"]
-    return {"uid": uid, "etag": etag, "fiche": f, "nom": nom_affiche(f),
+    return {"uid": uid, "etag": etag, "fiche": f, "nom": nom_affiche(f), "associes": _associes(c, uid, f),
             "liaisons": {s: {"id": lien[s], "nom": noms.get((s, lien[s])), "statut": lien.get(s + "_statut")}
                          for s in ("immich", "treemich") if lien.get(s)},
             "portraits": {"candidats": json.loads(portrait["candidats"]), "asset": portrait["asset"]} if portrait else None,

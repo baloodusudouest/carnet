@@ -1,2 +1,2 @@
 """carnet : gardien des contacts iCloud — relit, propose, relie (Immich, Treemich, LinkedIn) et écrit."""
-__version__ = "2.18.2"
+__version__ = "2.19.0"

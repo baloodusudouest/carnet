@@ -1,6 +1,9 @@
 # Journal des versions
 
 
+
+## 2.19.0 — 14 novembre 2026
+- **Les proches s'ouvrent d'un clic.** Sur une fiche, chaque nom associé (conjoint, mère, père, frère, sœur, enfant…) devient un lien vers la fiche de cette personne quand une seule fiche porte ce nom (comparé sans accents ni majuscules, sur le nom affiché puis le surnom). Deux fiches au même nom, ou aucune : le nom reste du texte, rien n'est deviné.
 ## 2.18.2 — 14 novembre 2026
 - **carnet passe en argent** (`#b7c0cc`, l'ocre avant). L'or est gardé pour l'Anneau, qui montre toutes les applis côte à côte : carnet, Sillage et l'Anneau avaient trois ors voisins qu'on ne distinguait plus. Boutons pleins, onglet actif, compteurs, anneau de progression et icône (onglet du navigateur, écran d'accueil) changent ; rien d'autre.
 

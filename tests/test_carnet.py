@@ -2436,3 +2436,18 @@ def test_plusieurs_portables_pro_ou_perso(c, services):
     assert types == {a: "mobile", b: "travail"}
     c.oublier()
     assert not any(x["motif"] == "portables" and x["uid"] == "DDDD-4444" for x in traiter.liste(c))
+
+
+def test_2_19_noms_associes_relies_a_leur_fiche(c):
+    """Un conjoint, un parent, un frère… porté par une seule fiche devient un lien vers elle ; sinon il reste du texte."""
+    from app import main
+    fiches = dict(c.fiches())
+    moi = dict(fiches["AAAA-1111"])
+    moi["noms_associes"] = [{"valeur": "paul martin", "type": "frère"},        # casse et accents ignorés
+                            {"valeur": "Quelqu'un d'inconnu", "type": "ami"},
+                            {"valeur": moi.get("prenom", "") + " " + moi.get("nom", ""), "type": "autre"}]   # soi-même : jamais
+    fiches["AAAA-1111"] = moi
+    c.fiches = lambda: fiches
+    assert main._associes(c, "AAAA-1111", moi) == ["DDDD-4444", None, None]
+    fiches["EEEE-5555"] = {**fiches["DDDD-4444"]}                             # deux Paul MARTIN : pas de lien deviné
+    assert main._associes(c, "AAAA-1111", moi)[0] is None
