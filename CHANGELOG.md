@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.20.0 — 14 novembre 2026
+- **Gazette lit les dates de naissance.** Nouvelle adresse `/gazette/personnes`, fermée tant que `CARNET_JETON_GAZETTE` est vide (dans la stack : `GAZETTE_CARNET_JETON`, la même valeur des deux côtés). Pour chaque fiche : le nom annoncé par Home Assistant (celui d'Immich si la fiche est liée), le nom de la fiche, le prénom, et la date de naissance complète seulement si jour, mois et année sont connus. Les personnes décédées ne sont pas données. Lecture seule : Gazette n'écrit rien dans carnet.
+
 
 
 ## 2.19.0 — 14 novembre 2026

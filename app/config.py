@@ -35,6 +35,7 @@ class Config:
     ha_token: str = ""            # jeton des appels de Home Assistant (/ha/…)
     sillage_jeton: str = ""       # 2.15 : jeton de Sillage pour lire /sillage/personnes ; vide : adresse fermée
     sillage_adresse: str = ""     # 2.15 : adresse de Sillage dans le navigateur (lien « Sillage » de la fiche)
+    gazette_jeton: str = ""       # 2.20 : jeton de Gazette pour lire /gazette/personnes ; vide : adresse fermée
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
     linkedin_redirect: str = "https://localhost/carnet-linkedin"
@@ -96,6 +97,7 @@ def charger() -> Config:
         ha_token=_env("CARNET_HA_TOKEN"),
         sillage_jeton=_env("CARNET_JETON_SILLAGE"),
         sillage_adresse=_env("CARNET_SILLAGE_URL").rstrip("/"),
+        gazette_jeton=_env("CARNET_JETON_GAZETTE"),
         linkedin_client_id=_env("CARNET_LINKEDIN_CLIENT_ID"),
         linkedin_client_secret=_env("CARNET_LINKEDIN_CLIENT_SECRET"),
         linkedin_redirect=_env("CARNET_LINKEDIN_REDIRECT", "https://localhost/carnet-linkedin"),

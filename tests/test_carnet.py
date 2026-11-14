@@ -559,6 +559,16 @@ def test_home_assistant_adresses(c):
         liste = client.get("/sillage/personnes", headers={"Authorization": "Bearer jeton-sillage"}).json()["personnes"]
         assert [(p["carnet_id"], p["immich_id"], p["decede"]) for p in liste] == [("DDDD-4444", "im-paul", False)]
         assert set(liste[0]) == {"carnet_id", "nom", "immich_id", "groupes", "proche", "decede"}
+        # 2.20 : la liste pour Gazette (noms et dates), fermée sans son jeton
+        assert client.get("/gazette/personnes").status_code == 401
+        assert client.get("/gazette/personnes", headers=h).status_code == 401
+        c.cfg = dataclasses.replace(c.cfg, gazette_jeton="jeton-gazette")
+        gz = client.get("/gazette/personnes", headers={"Authorization": "Bearer jeton-gazette"}).json()["personnes"]
+        assert {x["carnet_id"] for x in gz} == {"AAAA-1111", "BBBB-2222", "CCCC-3333", "DDDD-4444"}
+        paul = next(x for x in gz if x["carnet_id"] == "DDDD-4444")
+        assert paul["nom"] == "Paul MARTIN" and paul["naissance"] == "1983-01-09"
+        assert any(x["naissance"] is None and x["jour"] for x in gz)      # sans année : pas de date complète
+        assert set(paul) == {"carnet_id", "nom", "nom_carnet", "prenom", "naissance", "jour", "mois", "annee"}
         connecter = client.post("/api/connexion", json={"mot_de_passe": "secret"})
         assert connecter.status_code == 200
         if True:
