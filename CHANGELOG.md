@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.22.4 — 15 novembre 2026
+- **Sonde des champs de la fiche iPhone** (`python -m app.sonde_champs "Essai Champs"`), avant d'ajouter à carnet tous les champs de l'iPhone. Lecture seule, sur une copie de la base : iCloud n'est pas contacté. Elle liste les propriétés des cartes (noms, paramètres, nombre de cartes, sans aucune valeur ni nom) et montre en entier la seule fiche d'essai demandée, sans sa photo. Rapport dans le dossier de données (`rapport-sonde-champs.md`). Aucun changement dans l'appli elle-même.
+
 ## 2.22.3 — 15 novembre 2026
 - **Le genre pour tous les contacts.** Toute fiche qui a un prénom ou un nom et pas encore de genre a sa question « Femme ou homme ? » (une entreprise seule n'en a pas). Elles sont dans une tuile à part d'À traiter, « Genre à préciser », qui ne compte pas dans le chiffre de l'onglet ; la tuile des liens s'appelle « Liens à corriger ». La question n'est pas répétée en tête de fiche : le champ Genre y est déjà.
 - **Genre proposé d'après le prénom, validé par lot.** Chaque question dit le genre que le prénom laisse supposer, quand il est sans ambiguïté (Camille, Dominique, Claude, Stéphane… n'ont pas de proposition). « Enregistrer les genres proposés » les enregistre tous d'un coup, après annonce ; rien n'est enregistré sans cette validation. Le lot n'écrit ni dans iCloud ni dans Treemich : l'arbre reçoit les genres qui lui manquent à « Synchroniser » ou la nuit.

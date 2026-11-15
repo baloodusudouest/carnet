@@ -2720,3 +2720,33 @@ def test_2223_question_de_genre_pour_toute_personne_hors_compteur(c, services):
             actions.repondre(c, reste[0]["id"], "proposer")
         actions.repondre(c, reste[0]["id"], "ignorer")
         assert reste[0]["uid"] not in {p["uid"] for p in points(c, "genre")}
+
+
+# ================================================================ sonde des champs de la fiche iPhone
+
+def test_sonde_champs_sans_valeur_et_fiche_d_essai_seule(c, services, tmp_path, monkeypatch, capsys):
+    """La sonde ne montre aucune valeur ni aucun nom, sauf la carte d'essai demandée ; elle n'écrit que son rapport."""
+    from app import sonde_champs
+    essai = ("BEGIN:VCARD\r\nVERSION:3.0\r\nN:Champs;Essai;Second;Dr;Jr\r\nFN:Dr Essai Second Champs Jr\r\n"
+             "X-MAIDENNAME:Avant\r\nX-PHONETIC-MIDDLE-NAME:Segon\r\nX-ADDRESSING-GRAMMAR:abc\r\n"
+             "item1.IMPP;X-SERVICE-TYPE=Skype;X-USER=secret.pseudo:skype:essai\r\nitem1.X-ABLabel:Perso à moi\r\n"
+             "PHOTO;ENCODING=b;TYPE=JPEG:AAAA\r\n BBBB\r\nUID:ESSAI-1\r\nEND:VCARD\r\n")
+    services["icloud"].modifier_sur_iphone("ESSAI-1", essai)
+    with c.ecriture():
+        icloud.relire(c, "test")
+    monkeypatch.setattr(sonde_champs, "charger", lambda: c.cfg)
+    ecritures = len(services["icloud"].ecritures)
+    assert sonde_champs.main(["essai", "champs"]) == 0
+    md = capsys.readouterr().out
+    a, b = md.split("## B.")
+    assert "`X-MAIDENNAME` | 1 | **non**" in a and "`X-PHONETIC-MIDDLE-NAME`" in a and "`TEL`" in a
+    assert "second prénom 1" in a and "titre 1" in a and "suffixe 1" in a
+    assert "X-SERVICE-TYPE=Skype" in a and "secret.pseudo" not in a and "Perso à moi" not in a
+    for nom in ("Claire", "MARTIN", "Paul", "+33"):
+        assert nom not in a, nom                                         # aucune valeur dans l'inventaire
+    assert "X-MAIDENNAME:Avant" in b and "(photo retirée)" in b and "BBBB" not in b and "Claire" not in b
+    assert (c.cfg.data / "rapport-sonde-champs.md").is_file() and len(services["icloud"].ecritures) == ecritures
+    # Sans nom, nom inconnu ou nom porté par plusieurs cartes : aucune carte n'est montrée
+    for args in ([], ["Inconnu"], ["MARTIN"]):
+        sonde_champs.main(args)
+        assert "```" not in capsys.readouterr().out
