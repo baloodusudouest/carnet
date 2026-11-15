@@ -32,6 +32,8 @@ services:
       - CARNET_HA_TOKEN=${CARNET_HA_TOKEN:-}
       - CARNET_JETON_SILLAGE=${SILLAGE_CARNET_JETON:-}     # 2.15 : jeton de Sillage (/sillage/personnes) ; vide : adresse fermée
       - CARNET_JETON_GAZETTE=${GAZETTE_CARNET_JETON:-}     # 2.20 : jeton de Gazette (/gazette/personnes) ; vide : adresse fermée
+      - CARNET_MILLESIME_JETON=${MILLESIME_JETON_CARNET:-}   # 2.21 : lecture de /api/etat de Millésime ; vide : Millésime non lu
+      - CARNET_MILLESIME_URL=${CARNET_MILLESIME_URL:-http://millesime:8098}
       - CARNET_SILLAGE_URL=${CARNET_SILLAGE_URL:-}         # 2.15 : adresse de Sillage dans le navigateur (lien de la fiche)
       - CARNET_LINKEDIN_CLIENT_ID=${CARNET_LINKEDIN_CLIENT_ID:-}
       - CARNET_LINKEDIN_CLIENT_SECRET=${CARNET_LINKEDIN_CLIENT_SECRET:-}

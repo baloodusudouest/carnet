@@ -10,6 +10,8 @@
   // Manques (2.8) : des informations attendues et absentes. Ce ne sont pas des décisions : ils ne
   // comptent pas dans le compteur de l'onglet, et chaque ligne mène à la liste des fiches.
   let manques = $state(null)
+  // 2.21 : personnes des scans de Millésime sans date de naissance (hors compteur, comme « incomplet »)
+  let sansAnniversaire = $state(null)
   function ouvrirManque(cle) { etat.manque = cle; aller('contacts') }
 
   // 2.9 : une tuile par type de chose à traiter ; toucher une tuile ouvre sa liste
@@ -30,6 +32,7 @@
   function ouvrir(t) {
     if (t.cle === 'sans_groupe') { etat.manque = 'sans_groupe'; aller('contacts'); return }
     tuile = t.cle; aConfirmer = null; choisi = null
+    if (t.cle === 'sans_anniversaire') chargerSansAnniversaire()
   }
   const ouverte = $derived(tuiles.find((t) => t.cle === tuile))
   let lotEnCours = $state(false)
@@ -67,6 +70,10 @@
     try { points = await api.get('/api/a-traiter') } catch (e) { erreur(e) }
     try { manques = await api.get('/api/manques') } catch { manques = null }
     try { tuiles = await api.get('/api/a-traiter-tuiles') } catch { tuiles = [] }
+    if (tuile === 'sans_anniversaire') chargerSansAnniversaire()
+  }
+  async function chargerSansAnniversaire(forcer = false) {
+    try { sansAnniversaire = await api.get('/api/sans-anniversaire' + (forcer ? '?forcer=true' : '')) } catch (e) { erreur(e) }
   }
   const affiche = $derived(visibles.find((p) => p.id === choisi) || visibles[0])
   function traite(p) {
@@ -104,7 +111,7 @@
           </button>
         {/each}
       </nav>
-      <p class="discret">Le chiffre de l'onglet compte ce qui attend une décision. « Contact incomplet » n'en fait pas partie : ce sont des informations à compléter, à ton rythme.</p>
+      <p class="discret">Le chiffre de l'onglet compte ce qui attend une décision. « Contact incomplet » et « Sans anniversaire » n'en font pas partie : ce sont des informations à compléter, à ton rythme.</p>
     {/if}
   {:else}
     <div class="retour-tuiles">
@@ -123,6 +130,34 @@
             </li>
           {/each}
         </ul>
+      </div>
+    {:else if tuile === 'sans_anniversaire'}
+      <div class="manques feuille">
+        <p class="discret">Personnes nommées sur les scans que Millésime doit dater, sans date de naissance dans Immich : sans elle,
+          Millésime ne peut pas estimer l'âge de leur visage. Saisis la date sur la fiche ; carnet la reporte dans Immich
+          (Connexion › Immich › Synchroniser, ou la nuit).</p>
+        {#if sansAnniversaire === null}
+          <p class="discret">Lecture de Millésime…</p>
+        {:else if !sansAnniversaire.length}
+          <p class="discret">Plus personne : toutes les personnes des scans ont une date de naissance.</p>
+        {:else}
+          <ul aria-label="Personnes sans anniversaire">
+            {#each sansAnniversaire as p (p.person_id)}
+              <li>
+                {#if p.uid}
+                  <a class="ligne-manque" href={'#/contacts/' + encodeURIComponent(p.uid)}>
+                    <span>{p.fiche}{#if p.fiche !== p.nom} <span class="discret">({p.nom} dans Immich)</span>{/if}</span>
+                    <span class="nombre" title="scans où la personne apparaît">{p.scans}</span></a>
+                {:else}
+                  <span class="ligne-manque"><span>{p.nom} <span class="discret">— aucune fiche reliée dans carnet</span></span>
+                    <span class="nombre">{p.scans}</span></span>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+          <p class="discret">Le nombre est celui des scans où la personne apparaît. Une personne sans fiche reliée se relie dans Connexion › Immich.</p>
+        {/if}
+        <p><button class="bouton" onclick={() => chargerSansAnniversaire(true)}>Relire Millésime</button></p>
       </div>
     {:else if !visibles.length}
       <p class="discret">Plus rien dans cette tuile.</p>

@@ -2461,3 +2461,49 @@ def test_2_19_noms_associes_relies_a_leur_fiche(c):
     assert main._associes(c, "AAAA-1111", moi) == ["DDDD-4444", None, None]
     fiches["EEEE-5555"] = {**fiches["DDDD-4444"]}                             # deux Paul MARTIN : pas de lien deviné
     assert main._associes(c, "AAAA-1111", moi)[0] is None
+
+
+def test_221_millesime_sans_anniversaire(tmp_path, services):
+    """2.21 : carnet lit l'état de Millésime (jeton), montre le service dans Connexion et la tuile
+    « Sans anniversaire » (hors compteur), avec la fiche reliée par l'identifiant Immich."""
+    import httpx
+    from app import connexion, millesime
+    vus = []
+
+    def faux_millesime(req: httpx.Request):
+        vus.append(req.headers.get("authorization"))
+        if req.headers.get("authorization") != "Bearer jeton-mil":
+            return httpx.Response(401)
+        return httpx.Response(200, json={
+            "a_analyser": 30, "a_dater": 12, "a_trancher": 1, "a_nommer": 4, "validees": 50,
+            "pc_connecte": False, "message": "Millésime : 30 visage(s) à analyser — allume le PC et ouvre Docker Desktop",
+            "sans_naissance": [{"person_id": "p-relie", "nom": "Lucie Marchand", "scans": 9},
+                               {"person_id": "p-inconnu", "nom": "Inconnu Dupuis", "scans": 2}]})
+    transports = {k: v.transport() for k, v in services.items()}
+    transports["millesime"] = httpx.MockTransport(faux_millesime)
+    cn = Carnet(_config(tmp_path, millesime_url="http://millesime:8098", millesime_jeton="jeton-mil"), transports)
+    with cn.ecriture():
+        icloud.relire(cn, "test")
+    uid = next(iter(cn.fiches()))
+    cn.base.executer("INSERT INTO liaisons (uid, service, ext_id, statut, le) VALUES (?, 'immich', 'p-relie', 'confirmee', '2026-11-15')", (uid,))
+    cn.oublier("liaisons")
+
+    sa = millesime.sans_anniversaire(cn)
+    assert [p["person_id"] for p in sa] == ["p-relie", "p-inconnu"]
+    assert sa[0]["uid"] == uid and sa[0]["fiche"] and sa[1]["uid"] is None
+    t = {x["cle"]: x for x in traiter.tuiles(cn)}
+    assert t["sans_anniversaire"]["nombre"] == 2 and t["sans_anniversaire"]["compte"] is False
+    ligne = next(s for s in connexion.etat(cn, {}, {}) if s["cle"] == "millesime")
+    assert ligne["resume"] == "30 visage(s) à analyser sur le PC" and ligne["millesime"]["a_dater"] == 12
+    assert ligne["nuit"] is None and not ligne["synchronisable"]
+    millesime.sans_anniversaire(cn)
+    assert len(vus) == 1                      # gardé 10 minutes : une seule lecture
+
+    # mauvais jeton : rien dans la tuile, erreur claire
+    (tmp_path / "b").mkdir(); (tmp_path / "c").mkdir()
+    cn2 = Carnet(_config(tmp_path / "b", millesime_jeton="faux"), transports)
+    assert millesime.sans_anniversaire(cn2) == [] and "refuse le jeton" in millesime.lire(cn2)["erreur"]
+    # pas de jeton : rien n'est lu
+    cn3 = Carnet(_config(tmp_path / "c"), transports)
+    n = len(vus)
+    assert millesime.sans_anniversaire(cn3) == [] and len(vus) == n

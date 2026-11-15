@@ -28,6 +28,7 @@ export const ICONES_SERVICES = {
   ha: '<path d="M4 11.5 12 4l8 7.5"/><path d="M6.5 10v9h11v-9"/><path d="M12 19v-5"/><circle cx="12" cy="12.5" r="1.3"/>',
   kit: '<rect x="4" y="7.5" width="16" height="11.5" rx="2"/><path d="M9 7.5V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v1.5"/><path d="M12 10.5v5M9.5 13h5"/>',
   attentes: '<rect x="4" y="4.5" width="16" height="15" rx="2"/><path d="m7.5 10 1.6 1.6 2.9-3M7.5 15.5l1.6 1.6 2.9-3M14.5 10h2.5M14.5 15.5h2.5"/>',
+  millesime: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><path d="M4 15.5l4.5-4 3.5 3 2.5-2 5.5 4.5"/><circle cx="15.5" cy="9" r="1.5"/>',
   defaut: '<circle cx="12" cy="12" r="7.5"/>',
 }
 // Icônes des tuiles d'« À traiter »
@@ -42,4 +43,5 @@ export const ICONES_TUILES = {
   reseaux: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.9l7.6-3.8M8.2 13.1l7.6 3.8"/>',
   imports: '<path d="M12 4v10M7.5 10 12 14.5 16.5 10"/><path d="M5 18.5h14"/>',
   incomplet: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 8 8h-8z"/>',
+  sans_anniversaire: '<path d="M5 20v-7.5h14V20M3.5 20h17"/><path d="M5 15.5c1.2 1 2.3 1 3.5 0s2.3-1 3.5 0 2.3 1 3.5 0 2.3-1 3.5 0"/><path d="M12 12.5V9"/><path d="M12 6.5c-.8-.8-.8-1.7 0-2.5.8.8.8 1.7 0 2.5z"/>',
 }

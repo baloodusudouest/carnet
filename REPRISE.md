@@ -9,6 +9,7 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (11/11/2026)
 
+- **2.21.0** (15/11/2026) : `app/millesime.py` (lecture de `GET /api/etat` de Millésime, gardée 10 min, délai 5 s ; `sans_anniversaire`, `detail`, `resume`) ; service `millesime` dans `connexion.SERVICES` (sans nuit, ni vérifier ni synchroniser) ; tuile `sans_anniversaire` (hors compteur) dans `traiter.TUILES` ; route `GET /api/sans-anniversaire` ; variables `CARNET_MILLESIME_JETON` (= `MILLESIME_JETON_CARNET`) et `CARNET_MILLESIME_URL` (défaut `http://millesime:8098`). Millésime simulé dans le serveur de démonstration. Jamais essayé sur la vraie installation.
 - **2.20.0** (14/11/2026) : adresse `/gazette/personnes` (jeton `CARNET_JETON_GAZETTE`, `sorties.gazette_personnes`) : noms et dates de naissance complètes pour Gazette, sans les décédés. Jamais essayée sur la vraie installation.
 
 - **2.16.1** (13/11/2026) : toujours sombre (blocs `prefers-color-scheme: light` retirés, variante `dark:` partout).

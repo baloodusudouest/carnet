@@ -687,3 +687,17 @@ def test_2181_portables_travail_ou_mobile_par_icones(page):
     assert travail.bounding_box()["height"] >= 44
     point.get_by_role("button", name="Écrire dans iCloud").click()
     page.wait_for_selector(".message >> text=Types des portables")
+
+
+def test_221_sans_anniversaire_et_millesime(page):
+    """2.21 : tuile « Sans anniversaire » (hors compteur) lue dans Millésime ; une personne reliée ouvre sa fiche."""
+    assert ouvrir_tuile(page, "Sans anniversaire")
+    liste = page.locator("ul[aria-label='Personnes sans anniversaire'] li")
+    liste.first.wait_for()
+    assert liste.count() == 2
+    assert "aucune fiche reliée" in liste.nth(1).inner_text()
+    liste.nth(0).locator("a").click()
+    page.wait_for_url("**/#/contacts/F-10")
+    ouvrir_service(page, "Millésime")
+    page.get_by_text("24 visage(s) à analyser", exact=False).first.wait_for()
+    assert page.locator("table.verif").first.inner_text().count("Photos à dater") == 1

@@ -87,6 +87,7 @@
     synology: 'Copie à l\'identique d\'iCloud vers Synology Contacts.',
     kit: 'Les contacts du groupe Urgence sont envoyés au kit d\'urgence.',
     ha: 'Home Assistant vient lire carnet : contacts, anniversaires et mariages (/ha/anniversaires), fêtes (/ha/fetes), invités, portraits. carnet n\'écrit rien dans Home Assistant.',
+    millesime: 'Millésime date les scans de photos papier d\'Immich par l\'âge des visages. carnet vient lire son état toutes les 10 minutes au plus (jeton CARNET_MILLESIME_JETON) et n\'y écrit rien. Les personnes des scans sans date de naissance sont dans À traiter › Sans anniversaire.',
     import: 'Cartes de contacts, relations LinkedIn, exports Facebook et Instagram : carnet reconnaît le fichier et annonce ce qu\'il en fera.',
   }
   onMount(charger)
@@ -148,6 +149,25 @@
             {/if}
             {#if service.differences}<a class="bouton" href="#/a-traiter">{service.differences} différence(s) dans À traiter</a>{/if}
           </div>
+        {/if}
+
+        {#if choisi === 'millesime' && service.millesime}
+          {@const m = service.millesime}
+          {#if !m.configure}
+            <p class="discret">Non configuré : pose <code>CARNET_MILLESIME_JETON</code> (la valeur de <code>MILLESIME_JETON_CARNET</code>) dans la stack.</p>
+          {:else if m.ok}
+            {#if m.message}<p class="alerte" role="status">{m.message}</p>{/if}
+            <table class="verif">
+              <tbody>
+                <tr><th scope="row">Photos à dater</th><td>{m.a_dater}</td></tr>
+                <tr><th scope="row">À trancher</th><td>{m.a_trancher}</td></tr>
+                <tr><th scope="row">Groupes de visages à nommer</th><td>{m.a_nommer}</td></tr>
+                <tr><th scope="row">Visages à analyser sur le PC</th><td>{m.a_analyser}</td></tr>
+                <tr><th scope="row">Photos datées</th><td>{m.validees}</td></tr>
+              </tbody>
+            </table>
+            {#if m.sans_anniversaire}<p><a class="bouton" href="#/a-traiter">{m.sans_anniversaire} personne(s) sans anniversaire dans À traiter</a></p>{/if}
+          {/if}
         {/if}
 
         {#if service.nuit}

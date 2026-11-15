@@ -37,8 +37,9 @@ def preparer(dossier: Path) -> tuple[Carnet, FauxICloud]:
     ic = FauxICloud(vcf)
     services = {"icloud": ic, "immich": FauxImmich(), "treemich": FauxTreemich(),
                 "synology": FauxICloud("", utilisateur="carnet", mot_de_passe="syno")}
-    cfg = _config(dossier, password="essai", static=Path(__file__).resolve().parents[2] / "app" / "static")
-    c = Carnet(cfg, {k: v.transport() for k, v in services.items()})
+    cfg = _config(dossier, password="essai", static=Path(__file__).resolve().parents[2] / "app" / "static",
+                  millesime_jeton="demo")
+    c = Carnet(cfg, {k: v.transport() for k, v in services.items()} | {"millesime": faux_millesime()})
     c.treemich().facteur_attente = 0
     with c.ecriture():
         icloud.relire(c, "démo")
@@ -60,6 +61,21 @@ def preparer(dossier: Path) -> tuple[Carnet, FauxICloud]:
     reseaux.proposer(c)
     c.transports["logos"] = faux_logos()
     return c, ic
+
+
+def faux_millesime():
+    """2.21 : Millésime simulé (GET /api/etat) : une personne des scans reliée (im-demo), une sans fiche."""
+    import httpx
+
+    def repondre(requete):
+        if requete.url.path != "/api/etat":
+            return httpx.Response(404)
+        return httpx.Response(200, json={
+            "a_analyser": 24, "a_dater": 12, "a_trancher": 2, "a_nommer": 5, "validees": 80, "pc_connecte": False,
+            "message": "Millésime : 24 visage(s) à analyser — allume le PC et ouvre Docker Desktop",
+            "sans_naissance": [{"person_id": "im-demo", "nom": "Personne de démo", "scans": 7},
+                               {"person_id": "im-seul", "nom": "Gaston Lemaire", "scans": 3}]})
+    return httpx.MockTransport(repondre)
 
 
 def faux_logos():

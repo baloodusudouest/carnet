@@ -44,6 +44,7 @@ TUILES = [
     ("reseaux", "Réseaux", {"reseau"}),
     ("imports", "Imports", {"import", "linkedin"}),
     ("incomplet", "Contact incomplet", set()),
+    ("sans_anniversaire", "Sans anniversaire", set()),   # 2.21 : personnes des scans de Millésime sans date de naissance
 ]
 
 
@@ -67,7 +68,10 @@ def tuiles(c) -> list[dict]:
         par[p["tuile"]] = par.get(p["tuile"], 0) + 1
     par["sans_groupe"] = next((l["nombre"] for l in attentes.lignes(c) if l["cle"] == attentes.SANS_GROUPE), 0)
     par["incomplet"] = attentes.total(c)["incompletes"]
-    return [{"cle": cle, "nom": nom, "nombre": par.get(cle, 0), "compte": cle != "incomplet"} for cle, nom, _ in TUILES]
+    from . import millesime
+    par["sans_anniversaire"] = len(millesime.sans_anniversaire(c))
+    return [{"cle": cle, "nom": nom, "nombre": par.get(cle, 0), "compte": cle not in ("incomplet", "sans_anniversaire")}
+            for cle, nom, _ in TUILES]
 
 
 def empreinte(objet) -> str:

@@ -44,6 +44,8 @@ class Config:
     kit_config: Path | None = None   # dossier config/ du kit d'urgence (volume)
     kit_url: str = "http://kit-urgence:8095"
     kit_token: str = ""
+    millesime_url: str = "http://millesime:8098"   # 2.21 : Millésime (datation des scans)
+    millesime_jeton: str = ""                      # = MILLESIME_JETON_CARNET ; vide : Millésime non lu
     lecture_seule: bool = False      # CARNET_LECTURE_SEULE : aucune écriture hors de carnet
 
     @property
@@ -106,5 +108,7 @@ def charger() -> Config:
         kit_config=Path(kit) if kit else None,
         kit_url=_env("KIT_URL", "http://kit-urgence:8095").rstrip("/"),
         kit_token=_env("KIT_API_TOKEN"),
+        millesime_url=_env("CARNET_MILLESIME_URL", "http://millesime:8098").rstrip("/"),
+        millesime_jeton=_env("CARNET_MILLESIME_JETON"),
         lecture_seule=_env("CARNET_LECTURE_SEULE").lower() in ("oui", "1", "true", "yes"),
     )

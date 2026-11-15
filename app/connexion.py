@@ -7,7 +7,7 @@ carnet ne remplace aucun de ces outils : il vérifie qu'ils disent la même chos
 """
 from __future__ import annotations
 
-from . import attentes, famille, liaisons, sorties, traiter
+from . import attentes, famille, liaisons, millesime, sorties, traiter
 from .carnet import Carnet, ErreurCarnet
 from .fiches import date_lisible
 from .modele import nom_affiche
@@ -26,6 +26,7 @@ SERVICES = {
     "instagram": ("Instagram", None),
     "ha": ("Home Assistant", None),
     "kit": ("Kit d'urgence", "Envoyer les contacts d'urgence"),
+    "millesime": ("Millésime", None),
 }
 _ANCIENS = {"icloud": "fetes", "treemich": "famille"}       # interrupteurs de la 2.8, gardés tels quels
 
@@ -74,9 +75,11 @@ def etat(c: Carnet, sante: dict, reseaux_: dict) -> list[dict]:
         "synology": "jamais copié" if not syno else f"{sum(syno.get(k, 0) for k in ('crees', 'modifies', 'supprimes'))} changement(s) à la dernière copie",
         "sauvegardes": f"{len(sauvegardes)} copie(s) d'iCloud", "import": "Cartes, LinkedIn, Facebook, Instagram",
         "ha": "Contacts, anniversaires, mariages, fêtes", "kit": "Groupe Urgence",
+        "millesime": millesime.resume(c),
     }
     le = {"icloud": lecture.get("le"), "immich": d.get("le"), "treemich": d.get("le"), "synology": syno.get("le"),
-          "sauvegardes": sauvegardes[0].get("le") if sauvegardes else None, "kit": c.base.lire("dernier_envoi_kit")}
+          "sauvegardes": sauvegardes[0].get("le") if sauvegardes else None, "kit": c.base.lire("dernier_envoi_kit"),
+          "millesime": millesime.lire(c)["le"]}
     res = []
     for cle, (nom, nuit_quoi) in SERVICES.items():
         s = sante.get(cle) or {"etat": "ok", "message": ""}
@@ -87,6 +90,8 @@ def etat(c: Carnet, sante: dict, reseaux_: dict) -> list[dict]:
                     "nuit": None if nuit_quoi is None else {"actif": nuit_active(c, cle), "quoi": nuit_quoi},
                     "verifiable": cle in ("icloud", "immich", "treemich", "synology"),
                     "synchronisable": cle in ("icloud", "immich", "treemich", "synology", "kit")})
+        if cle == "millesime":
+            res[-1]["millesime"] = millesime.detail(c)
     if nuit_.get("erreur") and res:
         res[0]["message"] = res[0]["message"] or nuit_["erreur"]
     return res

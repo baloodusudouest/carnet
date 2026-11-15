@@ -20,6 +20,7 @@ from .auth import COMMUN, COOKIE, DUREE, Sessions
 from .carddav import ErreurICloud
 from .carnet import Carnet, ErreurCarnet, Occupe
 from .config import charger
+from . import millesime as millesime_
 from .liens import ErreurLien
 from .modele import groupes_tous, nom_affiche
 from .normalisation import cle_texte
@@ -650,6 +651,16 @@ def a_traiter_tuiles():
     return traiter.tuiles(carnet())
 
 
+@app.get("/api/sans-anniversaire")
+def sans_anniversaire(forcer: bool = False):
+    """2.21 : personnes des scans de Millésime sans date de naissance (tuile d'À traiter)."""
+    from . import millesime as mil
+    c = carnet()
+    if forcer:
+        mil.lire(c, forcer=True)
+    return mil.sans_anniversaire(c)
+
+
 @app.get("/api/groupes-detail")
 def groupes_detail():
     return groupes_.liste(carnet())
@@ -797,6 +808,7 @@ def sante(c) -> dict:
         "kit": un(c.cfg.kit_config and c.cfg.kit_config.is_dir()),
         "ha": un(c.cfg.ha_token),
         "telegram": un(c.cfg.telegram_api_id and c.cfg.telegram_api_hash),
+        "millesime": un(c.cfg.millesime_jeton, millesime_.lire(c)["erreur"] if c.cfg.millesime_jeton else ""),
         "linkedin": un(c.cfg.linkedin_client_id),
     }
 

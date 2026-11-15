@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.21.0 — 15 novembre 2026
+- **Millésime dans carnet.** Connexion a une icône Millésime : photos à dater, à trancher, groupes à nommer, visages à analyser sur le PC, et le message « allume le PC » quand des visages attendent. carnet lit `GET /api/etat` de Millésime toutes les 10 minutes au plus, avec le jeton `CARNET_MILLESIME_JETON` (dans la stack : `MILLESIME_JETON_CARNET`, la même valeur des deux côtés) ; vide : Millésime n'est pas lu. carnet n'écrit rien dans Millésime.
+- **Tuile « Sans anniversaire » dans À traiter** : les personnes nommées sur les scans à dater qui n'ont pas de date de naissance dans Immich, avec le nombre de scans où elles apparaissent. Une personne reliée ouvre sa fiche (la date saisie part dans Immich par Connexion › Immich ou la nuit) ; une personne sans fiche est signalée. Comme « Contact incomplet », la tuile ne compte pas dans le chiffre de l'onglet.
+- Tests : 187 réussis (serveur et écrans PC et iPhone).
+
 ## 2.20.0 — 14 novembre 2026
 - **Gazette lit les dates de naissance.** Nouvelle adresse `/gazette/personnes`, fermée tant que `CARNET_JETON_GAZETTE` est vide (dans la stack : `GAZETTE_CARNET_JETON`, la même valeur des deux côtés). Pour chaque fiche : le nom annoncé par Home Assistant (celui d'Immich si la fiche est liée), le nom de la fiche, le prénom, et la date de naissance complète seulement si jour, mois et année sont connus. Les personnes décédées ne sont pas données. Lecture seule : Gazette n'écrit rien dans carnet.
 
