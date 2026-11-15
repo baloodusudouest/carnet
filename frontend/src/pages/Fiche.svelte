@@ -35,13 +35,20 @@
     if (v.startsWith('--')) return `${Number(v.slice(5, 7))} ${MOIS[Number(v.slice(2, 4)) - 1]}`
     return dateSaisie(v)
   }
+  // 2.24 : champs de la fiche de l'iPhone, montrés en lecture quand ils sont remplis
+  const CHAMPS_224 = [['titre', 'Titre'], ['second_prenom', 'Second prénom'], ['suffixe', 'Suffixe'], ['nom_naissance', 'Nom de naissance'],
+                      ['phonetique_second_prenom', 'Second prénom phonétique'], ['dire_prenom', 'Prononciation du prénom'],
+                      ['dire_nom', 'Prononciation du nom'], ['phonetique_societe', 'Nom de société phonétique']]
   function modifier() {
     brouillon = JSON.parse(JSON.stringify(donnees.fiche))
     brouillon.anniversaire = dateSaisie(brouillon.anniversaire)
     aSupprimer = false
     for (const k of ['mariage', 'deces']) brouillon[k] = dateSaisie(brouillon[k] || '')
     brouillon.fete = (brouillon.fete || '').startsWith('--') ? `${brouillon.fete.slice(5, 7)}/${brouillon.fete.slice(2, 4)}` : ''
-    for (const k of ['service', 'prononciation_prenom', 'prononciation_nom']) brouillon[k] = brouillon[k] || ''
+    for (const k of ['service', 'prononciation_prenom', 'prononciation_nom', ...CHAMPS_224.map(([k]) => k)]) brouillon[k] = brouillon[k] || ''
+    // 2.24 : dates libres saisies comme les autres (JJ/MM/AAAA, ou JJ/MM sans année)
+    brouillon.dates_autres = (brouillon.dates_autres || []).map((d) => ({ ...d, valeur: d.valeur.startsWith('--') ? `${d.valeur.slice(5, 7)}/${d.valeur.slice(2, 4)}` : dateSaisie(d.valeur) }))
+    brouillon.messageries = brouillon.messageries || []
     apercu = null
   }
   async function verifier() {
@@ -232,10 +239,15 @@
           {#if donnees.fete?.date && !decede && (donnees.fete.attendue || donnees.fete.origine !== 'calendrier')}<dt>Fête</dt><dd>{dateLecture(donnees.fete.date)}{#if ORIGINE_FETE[donnees.fete.origine]}{' '}<span class="discret">({ORIGINE_FETE[donnees.fete.origine]})</span>{/if}</dd>{/if}
           {#if f.mariage}<dt>Mariage</dt><dd>{dateLecture(f.mariage)}</dd>{/if}
           {#if decede}<dt>Décès</dt><dd>{donnees.deces.date ? dateLecture(donnees.deces.date) : 'date inconnue'}</dd>{/if}
+          {#each f.dates_autres || [] as d}<dt>{d.type}</dt><dd>{dateLecture(d.valeur)}</dd>{/each}
           {#if f.surnom}<dt>Surnom</dt><dd>{f.surnom}</dd>{/if}
+          {#each CHAMPS_224 as [cle, nom]}{#if f[cle]}<dt>{nom}</dt><dd>{f[cle]}</dd>{/if}{/each}
           {#each f.adresses as a}<dt>Adresse {a.type}</dt><dd>{[a.rue, `${a.cp} ${a.ville}`.trim(), a.pays].filter(Boolean).join(', ')}</dd>{/each}
           {#each f.noms_associes as n, i}<dt>{n.type}</dt><dd>{#if donnees.associes?.[i]}<a class="proche" href={'#/contacts/' + encodeURIComponent(donnees.associes[i])}>{n.valeur}</a>{:else}{n.valeur}{/if}</dd>{/each}
           {#each f.sites as s}<dt>{s.type}</dt><dd><a href={s.valeur} target="_blank" rel="noreferrer">{s.valeur}</a></dd>{/each}
+          {#each f.messageries || [] as m}<dt>{m.type}</dt><dd>{m.valeur}</dd>{/each}
+          {#if f.sonnerie}<dt>Sonnerie</dt><dd>{f.sonnerie} <span class="discret">(réglée sur l'iPhone)</span></dd>{/if}
+          {#if f.son_sms}<dt>Son SMS</dt><dd>{f.son_sms} <span class="discret">(réglé sur l'iPhone)</span></dd>{/if}
           {#if f.notes}<dt>Notes</dt><dd class="notes">{f.notes}</dd>{/if}
         </dl>
         {#if f.prenom || f.nom}

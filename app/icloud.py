@@ -166,7 +166,8 @@ def reanalyser(c: Carnet) -> int:
     les champs nouveaux (service, prononciation, fête, mariage, décès) déjà présents dans iCloud
     soient connus sans attendre que la carte change. Rien n'est signalé, rien n'est écrit dans
     iCloud. Fait une seule fois."""
-    if c.base.lire("analyse_28"):
+    # 2.24 : refaite une fois pour les champs de la fiche de l'iPhone (titre, second prénom, dates libres…)
+    if c.base.lire("analyse_224"):
         return 0
     changees = 0
     with c.base.transaction() as cx:
@@ -179,7 +180,7 @@ def reanalyser(c: Carnet) -> int:
             if apres != avant:
                 cx.execute("UPDATE fiches SET fiche = ? WHERE uid = ?", (json.dumps(apres, ensure_ascii=False), l["uid"]))
                 changees += 1
-    c.base.ecrire("analyse_28", True)
+    c.base.ecrire("analyse_224", True)
     c.oublier()
     return changees
 

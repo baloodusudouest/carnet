@@ -16,8 +16,12 @@ from dataclasses import dataclass, field
 from .export import echapper, plier
 
 # Propriétés écrites par carnet : remplacées à chaque écriture
+ANCIENNES_MESSAGERIES = {"X-MSN", "X-AIM", "X-YAHOO", "X-ICQ", "X-JABBER"}
 GEREES = {"N", "FN", "NICKNAME", "ORG", "TITLE", "BDAY", "TEL", "EMAIL", "ADR", "URL", "X-SOCIALPROFILE",
-          "X-ABRELATEDNAMES", "NOTE", "CATEGORIES", "PHOTO", "IMPP", "X-ABSHOWAS"}
+          "X-ABRELATEDNAMES", "NOTE", "CATEGORIES", "PHOTO", "IMPP", "X-ABSHOWAS",
+          # 2.24 : champs de la fiche de l'iPhone
+          "X-PHONETIC-MIDDLE-NAME", "X-PHONETIC-ORG", "X-PRONUNCIATION-FIRST-NAME", "X-PRONUNCIATION-LAST-NAME",
+          "X-MAIDENNAME"} | ANCIENNES_MESSAGERIES
 # Repères qu'iCloud ajoute à côté de la photo (elle n'est alors pas incluse dans la carte)
 PHOTO_ANNEXES = {"X-IMAGETYPE", "X-IMAGEHASH"}
 # Propriétés d'enveloppe : réécrites
@@ -178,6 +182,11 @@ PROPRIETES = {
     "notes": {"NOTE"}, "photo": {"PHOTO"} | PHOTO_ANNEXES,
     "service": {"ORG"}, "prononciation_prenom": {"X-PHONETIC-FIRST-NAME"},
     "prononciation_nom": {"X-PHONETIC-LAST-NAME"},
+    # 2.24
+    "titre": {"N"}, "second_prenom": {"N"}, "suffixe": {"N"}, "nom_naissance": {"X-MAIDENNAME"},
+    "phonetique_second_prenom": {"X-PHONETIC-MIDDLE-NAME"}, "phonetique_societe": {"X-PHONETIC-ORG"},
+    "dire_prenom": {"X-PRONUNCIATION-FIRST-NAME"}, "dire_nom": {"X-PRONUNCIATION-LAST-NAME"},
+    "messageries": {"IMPP"} | ANCIENNES_MESSAGERIES,
 }
 # Fête, mariage, décès : des X-ABDATE repérés par leur libellé (voir remplacer_dates)
 CHAMPS_DATES = ("fete", "mariage", "deces")
@@ -260,19 +269,22 @@ def assembler_partiel(nouvelle: str, distante: str, champs: set[str], retypes: s
 def remplacer_dates(texte: str, fiche: dict, champs: set[str]) -> str:
     """Réécrit dans la carte les seules dates supplémentaires des champs donnés (fete, mariage,
     deces). Les autres dates de la carte — autre libellé, libellé natif d'Apple — ne bougent pas."""
-    from .export import lignes_dates
+    from .export import lignes_dates, lignes_dates_autres
     from .vcard import champ_date
+    # 2.24 : « dates_autres » réécrit toutes les autres dates libellées (libellé d'Apple ou écrit à la main)
+    autres = "dates_autres" in champs
     champs = {c for c in champs if c in CHAMPS_DATES}
-    if not champs:
+    if not champs and not autres:
         return texte
     lignes = deplier(texte)
     libelles = {g: _devaleur(v).strip() for g, nom, v in map(_decouper, lignes) if g and nom == "X-ABLABEL"}
     a_retirer = {g for g, nom, _ in map(_decouper, lignes)
-                 if g and nom == "X-ABDATE" and champ_date(libelles.get(g, "")) in champs}
+                 if g and nom == "X-ABDATE" and (champ_date(libelles.get(g, "")) in champs
+                                                 or (autres and champ_date(libelles.get(g, "")) is None))}
     gardees = [l for l in lignes if _decouper(l)[0] not in a_retirer and _decouper(l)[1] != "END"]
     items = [int(m.group(1)) for l in gardees if (m := re.match(r"item(\d+)\.", l))]
     suivant = max(items, default=0) + 1
-    for (propriete, valeur), libelle in lignes_dates(fiche, champs):
+    for (propriete, valeur), libelle in lignes_dates(fiche, champs) + (lignes_dates_autres(fiche) if autres else []):
         gardees += [f"item{suivant}.{propriete}:{valeur}", f"item{suivant}.X-ABLabel:{libelle}"]
         suivant += 1
     return "\r\n".join(plier(l) for l in gardees + ["END:VCARD"]) + "\r\n"

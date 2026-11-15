@@ -9,14 +9,22 @@ from pathlib import Path
 from . import images
 from .modele import DATES_LIBELLEES, GROUPE_VERIFIES
 
+TEL_224 = {"fax domicile": "type=HOME;type=FAX", "fax travail": "type=WORK;type=FAX", "pager": "type=PAGER",
+           "apple watch": "type=APPLEWATCH;type=CELL;type=VOICE"}     # 2.24, comme l'iPhone les écrit
+# Libellés d'Apple pour les types que carnet connaît ; tout autre type est écrit comme libellé personnalisé
+LIBELLES_LIEU = {"école": "_$!<School>!$_", "autre": "_$!<Other>!$_"}
+DATES_APPLE = {"anniversaire (Apple)": "_$!<Anniversary>!$_", "autre": "_$!<Other>!$_"}
 TEL = {"mobile": "type=CELL;type=VOICE", "domicile": "type=HOME;type=VOICE",
        "travail": "type=WORK;type=VOICE", "principal": "type=MAIN", "autre": "type=OTHER;type=VOICE"}
 LIEU = {"domicile": "type=HOME", "travail": "type=WORK"}
 RELATIONS = {"conjoint": "Spouse", "partenaire": "Partner", "mère": "Mother", "père": "Father",
              "parent": "Parent", "enfant": "Child", "frère": "Brother", "sœur": "Sister",
+             "fils": "Son", "fille": "Daughter", "mari": "Husband", "épouse": "Wife",
              "ami": "Friend", "assistant": "Assistant", "responsable": "Manager", "autre": "Other"}
 LIBELLES_LIBRES = {"frère ou sœur": "frère ou sœur"}
-RESEAUX = {"linkedin", "facebook", "instagram", "tiktok", "x", "telegram", "whatsapp", "signal"}
+RESEAUX = {"linkedin", "facebook", "instagram", "tiktok", "x", "telegram", "whatsapp", "signal",
+           "flickr", "myspace", "sina weibo"}
+RESEAUX_ECRITS = {"x": "twitter", "sina weibo": "sinaweibo"}
 
 
 def echapper(texte: str) -> str:
@@ -51,7 +59,9 @@ def vcard(fiche: dict, uid: str, photo: tuple[bytes, str] | None = None,
         l.append(f"item{item}.X-ABLabel:{libelle}")
 
     prenom, nom, societe = fiche.get("prenom", ""), fiche.get("nom", ""), fiche.get("societe", "")
-    l.append(f"N:{echapper(nom)};{echapper(prenom)};;;")
+    # 2.24 : nom ; prénom ; second prénom ; titre ; suffixe, comme l'iPhone
+    l.append("N:" + ";".join(echapper(x) for x in (nom, prenom, fiche.get("second_prenom") or "",
+                                                  fiche.get("titre") or "", fiche.get("suffixe") or "")))
     complet = " ".join(p for p in (prenom, nom) if p) or societe or fiche.get("surnom", "") or "(sans nom)"
     l.append(f"FN:{echapper(complet)}")
     if not (prenom or nom) and societe:
@@ -64,6 +74,11 @@ def vcard(fiche: dict, uid: str, photo: tuple[bytes, str] | None = None,
         l.append(f"X-PHONETIC-FIRST-NAME:{echapper(fiche['prononciation_prenom'])}")
     if fiche.get("prononciation_nom"):
         l.append(f"X-PHONETIC-LAST-NAME:{echapper(fiche['prononciation_nom'])}")
+    for champ, propriete in (("phonetique_second_prenom", "X-PHONETIC-MIDDLE-NAME"), ("phonetique_societe", "X-PHONETIC-ORG"),
+                             ("dire_prenom", "X-PRONUNCIATION-FIRST-NAME"), ("dire_nom", "X-PRONUNCIATION-LAST-NAME"),
+                             ("nom_naissance", "X-MAIDENNAME")):
+        if fiche.get(champ):
+            l.append(f"{propriete}:{echapper(fiche[champ])}")
     if fiche.get("fonction"):
         l.append(f"TITLE:{echapper(fiche['fonction'])}")
     annif = fiche.get("anniversaire", "")
@@ -78,6 +93,10 @@ def vcard(fiche: dict, uid: str, photo: tuple[bytes, str] | None = None,
         pref = ";type=pref" if i == 0 else ""
         if t.get("type") in TEL:
             l.append(f"TEL;{TEL[t['type']]}{pref}:{valeur}")
+        elif t.get("type") in TEL_224:
+            l.append(f"TEL;{TEL_224[t['type']]}{pref}:{valeur}")
+        elif t.get("type") == "école":
+            etiquette(f"TEL{pref}", valeur, LIBELLES_LIEU["école"])
         else:
             etiquette(f"TEL;type=VOICE{pref}", valeur, echapper(t.get("type") or "autre"))
     for i, c in enumerate(fiche.get("courriels", [])):
@@ -85,26 +104,31 @@ def vcard(fiche: dict, uid: str, photo: tuple[bytes, str] | None = None,
         if c.get("type") in LIEU:
             l.append(f"EMAIL;type=INTERNET;{LIEU[c['type']]}{pref}:{echapper(c['valeur'])}")
         else:
-            etiquette(f"EMAIL;type=INTERNET{pref}", echapper(c["valeur"]), "_$!<Other>!$_")
+            etiquette(f"EMAIL;type=INTERNET{pref}", echapper(c["valeur"]),
+                      LIBELLES_LIEU.get(c.get("type") or "autre") or echapper(c["type"]))
     for a in fiche.get("adresses", []):
         champs = ";".join(echapper(a.get(k, "")) for k in ("rue", "ville", "region", "cp", "pays"))
         if a.get("type") in LIEU:
             l.append(f"ADR;{LIEU[a['type']]}:;;{champs}")
         else:
-            etiquette("ADR", f";;{champs}", "_$!<Other>!$_")
+            etiquette("ADR", f";;{champs}", LIBELLES_LIEU.get(a.get("type") or "autre") or echapper(a["type"]))
     for s in fiche.get("sites", []):
         if s.get("type") in RESEAUX:
-            reseau = "twitter" if s["type"] == "x" else s["type"]
+            reseau = RESEAUX_ECRITS.get(s["type"], s["type"])
             l.append(f"X-SOCIALPROFILE;type={reseau}:{echapper(s['valeur'])}")
+        elif s.get("type") in LIEU:                 # 2.24 : URL « domicile » ou « travail »
+            l.append(f"URL;{LIEU[s['type']]}:{echapper(s['valeur'])}")
         else:
-            etiquette("URL", echapper(s["valeur"]), "_$!<HomePage>!$_" if s.get("type") == "site"
-                      else "_$!<Other>!$_")
+            etiquette("URL", echapper(s["valeur"]), "_$!<HomePage>!$_" if s.get("type") in ("site", None, "")
+                      else LIBELLES_LIEU.get(s["type"]) or echapper(s["type"]))
     for r in fiche.get("noms_associes", []):
         # 2.22 : Apple n'a pas de libellé neutre pour la fratrie : « frère ou sœur » est un libellé personnalisé
         etiquette("X-ABRELATEDNAMES", echapper(r["valeur"]), LIBELLES_LIBRES.get(r.get("type"))
                   or f"_$!<{RELATIONS.get(r.get('type', 'autre'), 'Other')}>!$_")
-    for ligne_date, libelle in lignes_dates(fiche):
+    for ligne_date, libelle in lignes_dates(fiche) + lignes_dates_autres(fiche):
         etiquette(*ligne_date, libelle)
+    for propriete, valeur, libelle in lignes_messageries(fiche):
+        etiquette(propriete, valeur, libelle)
     if fiche.get("notes"):
         l.append(f"NOTE:{echapper(fiche['notes'])}")
     groupes = list(fiche.get("groupes", [])) + ([GROUPE_VERIFIES] if verifie else [])
@@ -131,6 +155,38 @@ def lignes_dates(fiche: dict, champs=None) -> list[tuple[tuple[str, str], str]]:
             res.append((("X-ABDATE", d), libelle))
         elif d.startswith("--") and len(d) == 7:
             res.append((("X-ABDATE;X-APPLE-OMIT-YEAR=1604", f"1604-{d[2:]}"), libelle))
+    return res
+
+
+def lignes_dates_autres(fiche: dict) -> list[tuple[tuple[str, str], str]]:
+    """2.24 : dates libres de la fiche (libellé d'Apple ou écrit à la main), dans la forme de lignes_dates."""
+    res = []
+    for d in fiche.get("dates_autres") or []:
+        v, libelle = d.get("valeur") or "", DATES_APPLE.get(d.get("type") or "autre") or echapper(d["type"])
+        if len(v) == 10:
+            res.append((("X-ABDATE", v), libelle))
+        elif v.startswith("--") and len(v) == 7:
+            res.append((("X-ABDATE;X-APPLE-OMIT-YEAR=1604", f"1604-{v[2:]}"), libelle))
+    return res
+
+
+ANCIENNES_MESSAGERIES = {"MSN": "X-MSN", "AIM": "X-AIM", "Yahoo": "X-YAHOO", "ICQ": "X-ICQ", "Jabber": "X-JABBER"}
+
+
+def lignes_messageries(fiche: dict) -> list[tuple[str, str, str]]:
+    """2.24 : [(propriété, valeur, libellé)] des messageries instantanées, comme l'iPhone les écrit : la ligne
+    IMPP, précédée pour cinq services de leur ancienne propriété (X-MSN, X-AIM…) que l'iPhone tient encore."""
+    from urllib.parse import quote
+    from .vcard import PREFIXES_MESSAGERIE
+    res = []
+    for m in fiche.get("messageries") or []:
+        service, pseudo = m.get("type") or "Skype", (m.get("valeur") or "").strip()
+        if not pseudo:
+            continue
+        if service in ANCIENNES_MESSAGERIES:
+            res.append((ANCIENNES_MESSAGERIES[service], echapper(pseudo), echapper(service)))
+        prefixe = PREFIXES_MESSAGERIE.get(service, "im")
+        res.append((f"IMPP;X-SERVICE-TYPE={service}", f"{prefixe}:{quote(pseudo, safe='@._-+')}", echapper(service)))
     return res
 
 

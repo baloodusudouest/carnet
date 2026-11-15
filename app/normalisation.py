@@ -154,6 +154,9 @@ def configurer_groupes(perso: list[dict]) -> None:
     GROUPES_PROS.update(_BASE_PROS | {g["nom"] for g in perso if g.get("regle") == "travail"})
 
 
+TYPES_TEL_A_PART = ("apple watch", "pager", "fax domicile", "fax travail", "école")
+
+
 def regle_proches(fiche: dict) -> dict:
     """Règles de type par groupe (tous pays, d'après la nature mobile / fixe du numéro) :
     - Artisans et services, Collègues, Clients : portable → « travail », fixe → « bureau » ;
@@ -161,9 +164,11 @@ def regle_proches(fiche: dict) -> dict:
     - Famille, Amis, Jardin secret (prioritaires) : un seul portable → « mobile » ; avec deux
       portables ou plus, rien n'est forcé : la Revue demande lequel est celui du travail.
     Ajoute aussi « nature » à chaque téléphone, pour l'interface."""
-    telephones = fiche.get("telephones", [])
-    for t in telephones:
+    tous = fiche.get("telephones", [])
+    for t in tous:
         t["nature"] = t.get("nature_choisie") or nature(t.get("valeur", ""))
+    # 2.24 : fax, pager, Apple Watch et « école » sont des choix de l'iPhone : aucune règle de groupe n'y touche
+    telephones = [t for t in tous if t.get("type") not in TYPES_TEL_A_PART]
     groupes = set(fiche.get("groupes", []))
     if "Clients" in groupes:  # l'adresse d'un client (personne ou société) est celle de son travail
         for a in fiche.get("adresses", []):
@@ -332,6 +337,8 @@ CLES = {
     "adresses": cle_adresse,
     "sites": cle_site,
     "noms_associes": cle_nom_associe,
+    "dates_autres": lambda d: f"{d.get('valeur', '')}|{cle_texte(d.get('type') or 'autre')}",
+    "messageries": lambda m: f"{cle_texte(m.get('type') or '')}|{(m.get('valeur') or '').strip().lower()}",
 }
 
 
@@ -488,8 +495,23 @@ def normaliser_fiche(fiche: dict, region: str = "FR") -> dict:
     f = completer(fiche)
     f["prenom"] = formater_prenom(f["prenom"])
     f["nom"] = formater_nom(f["nom"])
-    for cle in ("surnom", "societe", "fonction", "service", "prononciation_prenom", "prononciation_nom"):
+    from .modele import CHAMPS_224
+    for cle in ("surnom", "societe", "fonction", "service", "prononciation_prenom", "prononciation_nom", *CHAMPS_224):
         f[cle] = " ".join(str(f[cle] or "").split())
+    f["second_prenom"] = formater_prenom(f["second_prenom"])
+    # 2.24 : dates libres (libellé d'Apple ou écrit à la main) et messageries instantanées
+    dates = []
+    for d in f["dates_autres"]:
+        saisi = str(d.get("valeur") or "").strip()
+        if not saisi:
+            continue
+        valeur = anniversaire(saisi)
+        if not valeur:
+            raise ValeurInvalide(f"Date « {saisi} » non reconnue : écris par exemple 15/03/1985 ou 15 mars.")
+        dates.append({"valeur": valeur, "type": " ".join(str(d.get("type") or "autre").split()) or "autre"})
+    f["dates_autres"] = dates
+    f["messageries"] = [{"valeur": str(m.get("valeur") or "").strip(), "type": str(m.get("type") or "Skype").strip() or "Skype"}
+                        for m in f["messageries"] if str(m.get("valeur") or "").strip()]
     for cle, nom_champ in (("fete", "Fête"), ("mariage", "Mariage"), ("deces", "Décès")):
         saisi = str(f[cle] or "").strip()
         f[cle] = anniversaire(saisi) if saisi else ""

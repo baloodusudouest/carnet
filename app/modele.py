@@ -52,16 +52,28 @@ CHAMPS_SIMPLES = ["prenom", "nom", "surnom", "societe", "fonction", "anniversair
 # et n'est jamais utilisé.
 CHAMPS_28 = ["service", "prononciation_prenom", "prononciation_nom", "fete", "mariage", "deces"]
 DATES_LIBELLEES = {"fete": "Fête", "mariage": "Mariage", "deces": "Décès"}
-CHAMPS_MULTIPLES = ["telephones", "courriels", "adresses", "sites", "noms_associes"]
+# 2.24 : les champs de la fiche de l'iPhone que carnet n'avait pas. « prononciation_prenom » et
+# « prononciation_nom » (2.8) portent en réalité le prénom et le nom PHONÉTIQUES de l'iPhone
+# (X-PHONETIC-…) : leur nom interne est gardé, leur libellé corrigé. La « prononciation » de
+# l'iPhone (X-PRONUNCIATION-…) arrive dans « dire_prenom » et « dire_nom ».
+CHAMPS_224 = ["titre", "second_prenom", "suffixe", "nom_naissance", "phonetique_second_prenom",
+              "phonetique_societe", "dire_prenom", "dire_nom"]
+# Lus dans la carte, montrés, jamais écrits par carnet (réglés sur l'iPhone)
+CHAMPS_LECTURE_SEULE = ["sonnerie", "son_sms"]
+CHAMPS_MULTIPLES = ["telephones", "courriels", "adresses", "sites", "noms_associes", "dates_autres", "messageries"]
+MESSAGERIES = ["Skype", "MSN", "GoogleTalk", "Facebook", "AIM", "Yahoo", "ICQ", "Jabber"]
 
 TYPES = {
-    "telephones": ["mobile", "domicile", "travail", "bureau", "principal", "autre"],
-    "courriels": ["domicile", "travail", "autre"],
-    "adresses": ["domicile", "travail", "autre"],
-    "sites": ["site", "linkedin", "facebook", "instagram", "x", "tiktok", "telegram", "whatsapp",
-              "signal", "autre"],
-    "noms_associes": ["conjoint", "partenaire", "mère", "père", "parent", "enfant",
+    "telephones": ["mobile", "domicile", "travail", "bureau", "principal", "école", "apple watch",
+                   "fax domicile", "fax travail", "pager", "autre"],
+    "courriels": ["domicile", "travail", "école", "autre"],
+    "adresses": ["domicile", "travail", "école", "autre"],
+    "sites": ["site", "domicile", "travail", "école", "linkedin", "facebook", "instagram", "x", "tiktok",
+              "telegram", "whatsapp", "signal", "flickr", "myspace", "sina weibo", "autre"],
+    "noms_associes": ["conjoint", "partenaire", "mari", "épouse", "mère", "père", "parent", "enfant", "fils", "fille",
                       "frère", "sœur", "frère ou sœur", "ami", "assistant", "responsable", "autre"],
+    "dates_autres": ["anniversaire (Apple)", "autre"],
+    "messageries": MESSAGERIES,
 }
 
 # Ordre de préférence pour proposer une valeur unique (prénom, société…)
@@ -76,7 +88,10 @@ def fiche_vide() -> dict:
         "anniversaire": "", "notes": "", "photo": None,
         "service": "", "prononciation_prenom": "", "prononciation_nom": "",
         "fete": "", "mariage": "", "deces": "",
+        "titre": "", "second_prenom": "", "suffixe": "", "nom_naissance": "", "phonetique_second_prenom": "",
+        "phonetique_societe": "", "dire_prenom": "", "dire_nom": "", "sonnerie": "", "son_sms": "",
         "telephones": [], "courriels": [], "adresses": [], "sites": [], "noms_associes": [],
+        "dates_autres": [], "messageries": [],
         "groupes": [],
     }
 

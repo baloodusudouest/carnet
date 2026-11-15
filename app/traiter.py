@@ -120,7 +120,9 @@ def calcules(c) -> list[dict]:
         for m in normalisation.emojis_sans_groupe(f):
             point("emoji", uid, f"{uid}|{m['groupe']}", m)
         # 2.18 : plusieurs portables sans « travail » ET « mobile » parmi eux : lequel est le pro, lequel le perso ?
+        # 2.24 : une Apple Watch, un fax ou un pager ne sont pas « l'autre portable » de la personne
         portables = [t for t in f.get("telephones") or [] if t.get("valide") and
+                     t.get("type") not in ("apple watch", "pager", "fax domicile", "fax travail") and
                      (t.get("nature_choisie") or normalisation.nature(t.get("valeur", ""))) == "mobile"]
         if len(portables) >= 2 and not {"travail", "mobile"} <= {t.get("type") for t in portables}:
             point("portables", uid, f"{uid}|{empreinte(sorted(t['valeur'] for t in portables))}",

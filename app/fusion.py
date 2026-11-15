@@ -57,7 +57,8 @@ def reunir(base: dict, ajout: dict) -> dict:
     vides avec `ajout`, ajoute ses valeurs multiples absentes, réunit groupes et notes."""
     f = completer(base)
     a = completer(ajout)
-    for champ in ("prenom", "nom", "surnom", "societe", "fonction", "anniversaire"):
+    from .modele import CHAMPS_28, CHAMPS_224
+    for champ in ("prenom", "nom", "surnom", "societe", "fonction", "anniversaire", *CHAMPS_28, *CHAMPS_224):
         if not f[champ] and a[champ]:
             f[champ] = a[champ]
     if f["photo"] is None:

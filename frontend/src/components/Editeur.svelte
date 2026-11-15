@@ -13,25 +13,46 @@
   const soi = $derived([fiche.prenom, fiche.nom].filter(Boolean).join(' ').toLocaleLowerCase('fr'))
   const proposes = $derived(connus.filter((n) => n.toLocaleLowerCase('fr') !== soi))
 
+  // 2.24 : les types sont ceux de la fiche de l'iPhone ; un libellé écrit à la main sur l'iPhone reste proposé
   const TYPES = {
-    telephones: ['mobile', 'domicile', 'travail', 'bureau', 'principal', 'autre'],
-    courriels: ['domicile', 'travail', 'autre'],
-    adresses: ['domicile', 'travail', 'autre'],
-    sites: ['site', 'linkedin', 'facebook', 'instagram', 'x', 'tiktok', 'telegram', 'whatsapp', 'signal', 'autre'],
-    noms_associes: ['conjoint', 'partenaire', 'mère', 'père', 'parent', 'enfant', 'frère', 'sœur', 'frère ou sœur', 'ami', 'assistant', 'responsable', 'autre'],
+    telephones: ['mobile', 'domicile', 'travail', 'bureau', 'principal', 'école', 'apple watch', 'fax domicile', 'fax travail', 'pager', 'autre'],
+    courriels: ['domicile', 'travail', 'école', 'autre'],
+    adresses: ['domicile', 'travail', 'école', 'autre'],
+    sites: ['site', 'domicile', 'travail', 'école', 'linkedin', 'facebook', 'instagram', 'x', 'tiktok', 'telegram', 'whatsapp', 'signal', 'flickr', 'myspace', 'sina weibo', 'autre'],
+    noms_associes: ['conjoint', 'partenaire', 'mari', 'épouse', 'mère', 'père', 'parent', 'enfant', 'fils', 'fille', 'frère', 'sœur', 'frère ou sœur', 'ami', 'assistant', 'responsable', 'autre'],
+    messageries: ['Skype', 'MSN', 'GoogleTalk', 'Facebook', 'AIM', 'Yahoo', 'ICQ', 'Jabber'],
+    dates_autres: ['anniversaire (Apple)', 'autre'],
   }
+  const typesDe = (cle, actuel) => TYPES[cle].includes(actuel) || !actuel ? TYPES[cle] : [...TYPES[cle], actuel]
   const MULTIPLES = [
     { cle: 'telephones', nom: 'Téléphones', vide: { valeur: '', type: 'mobile' }, saisie: 'tel' },
     { cle: 'courriels', nom: 'Courriels', vide: { valeur: '', type: 'domicile' }, saisie: 'email' },
     { cle: 'sites', nom: 'Sites et réseaux', vide: { valeur: '', type: 'site' }, saisie: 'url' },
+    { cle: 'dates_autres', nom: 'Dates', vide: { valeur: '', type: 'autre' }, saisie: 'text' },
     { cle: 'noms_associes', nom: 'Noms associés', vide: { valeur: '', type: 'conjoint' }, saisie: 'text' },
+    { cle: 'messageries', nom: 'Messageries instantanées', vide: { valeur: '', type: 'Skype' }, saisie: 'text' },
   ]
-  const simples = [['prenom', 'Prénom'], ['nom', 'Nom'], ['prononciation_prenom', 'Prononciation du prénom'],
-                   ['prononciation_nom', 'Prononciation du nom'], ['surnom', 'Surnom'], ['societe', 'Société'],
-                   ['service', 'Service'], ['fonction', 'Fonction'], ['anniversaire', 'Anniversaire'], ['fete', 'Fête'],
-                   ['mariage', 'Mariage ou PACS'], ['deces', 'Décès']]
+  // Comme sur l'iPhone : les champs courants sont toujours là, les autres s'ajoutent par « Ajouter un champ »
+  // et restent visibles dès qu'ils sont remplis. Même ordre que sur l'iPhone.
+  const CHAMPS = [['titre', 'Titre', 0], ['prenom', 'Prénom', 1], ['prononciation_prenom', 'Prénom phonétique', 0],
+                  ['dire_prenom', 'Prononciation du prénom', 0], ['second_prenom', 'Second prénom', 0],
+                  ['phonetique_second_prenom', 'Second prénom phonétique', 0], ['nom', 'Nom', 1],
+                  ['prononciation_nom', 'Nom de famille phonétique', 0], ['dire_nom', 'Prononciation du nom', 0],
+                  ['nom_naissance', 'Nom de naissance', 0], ['suffixe', 'Suffixe', 0], ['surnom', 'Surnom', 0],
+                  ['societe', 'Société', 1], ['phonetique_societe', 'Nom de société phonétique', 0],
+                  ['service', 'Service', 0], ['fonction', 'Fonction', 1], ['anniversaire', 'Anniversaire', 1], ['fete', 'Fête', 1],
+                  ['mariage', 'Mariage ou PACS', 1], ['deces', 'Décès', 1]]
+  let ajoutes = $state([])           // champs sortis du menu pendant cette modification
+  const simples = $derived(CHAMPS.filter(([cle, , toujours]) => toujours || fiche[cle] || ajoutes.includes(cle)))
+  const aAjouter = $derived(CHAMPS.filter(([cle, , toujours]) => !toujours && !fiche[cle] && !ajoutes.includes(cle)))
+  function ajouterChamp(ev) {
+    const cle = ev.currentTarget.value
+    ev.currentTarget.value = ''
+    if (cle) { fiche[cle] = fiche[cle] || ''; ajoutes = [...ajoutes, cle] }
+  }
   const AIDES = { anniversaire: '15/03/1985, ou 15/03/1900 sans année', fete: '15/08 — vide : celle du calendrier',
-                  mariage: '12/06/2010', deces: '02/01/2020', prononciation_prenom: 'Comme on le dit', service: 'Au sein de la société' }
+                  mariage: '12/06/2010', deces: '02/01/2020', dire_prenom: 'Comme on le dit', service: 'Au sein de la société',
+                  titre: 'Dr, Me, Pr…', suffixe: 'Jr, fils…', nom_naissance: 'Avant le mariage' }
 
   function ajouter(cle, vide) { fiche[cle] = [...(fiche[cle] || []), { ...vide }] }
   function retirer(cle, i) { fiche[cle] = fiche[cle].filter((_, j) => j !== i) }
@@ -44,13 +65,22 @@
 
 <div class="editeur">
   <div class="simples">
-    {#each simples as [cle, nom]}
+    {#each simples as [cle, nom] (cle)}
       <label class:large={cle === 'societe' || cle === 'fonction'}>
         <span class="discret">{nom}</span>
         <input bind:value={fiche[cle]} placeholder={AIDES[cle] || ''}
-               autocomplete="off" autocapitalize={cle === 'prenom' || cle === 'nom' ? 'words' : 'sentences'} />
+               autocomplete="off" autocapitalize={['prenom', 'nom', 'second_prenom', 'nom_naissance'].includes(cle) ? 'words' : 'sentences'} />
       </label>
     {/each}
+    {#if aAjouter.length}
+      <label class="ajout-champ">
+        <span class="discret">Ajouter un champ</span>
+        <select onchange={ajouterChamp} aria-label="Ajouter un champ">
+          <option value="">Choisir…</option>
+          {#each aAjouter as [cle, nom]}<option value={cle}>{nom}</option>{/each}
+        </select>
+      </label>
+    {/if}
   </div>
 
   {#each MULTIPLES as m}
@@ -58,10 +88,17 @@
       <legend class="discret">{m.nom}</legend>
       {#each fiche[m.cle] || [] as item, i}
         <div class="rangee">
-          <select bind:value={item.type} aria-label="Type">
-            {#each TYPES[m.cle] as t}<option value={t}>{t}</option>{/each}
-          </select>
-          {#if m.cle === 'noms_associes'}
+          {#if m.cle === 'dates_autres'}
+            <input type="text" bind:value={item.type} aria-label="Libellé de la date" list="libelles-de-date"
+                   placeholder="Libellé" autocomplete="off" />
+          {:else}
+            <select bind:value={item.type} aria-label="Type">
+              {#each typesDe(m.cle, item.type) as t}<option value={t}>{t}</option>{/each}
+            </select>
+          {/if}
+          {#if m.cle === 'dates_autres'}
+            <input type="text" bind:value={item.valeur} aria-label="Date" placeholder="15/03/1985, ou 15/03 sans année" autocomplete="off" />
+          {:else if m.cle === 'noms_associes'}
             <input type="text" bind:value={item.valeur} aria-label={m.nom} list="noms-du-carnet"
                    placeholder="Choisir dans le carnet, ou écrire" autocomplete="off" autocapitalize="words" />
           {:else}
@@ -74,13 +111,14 @@
     </fieldset>
   {/each}
 
+  <datalist id="libelles-de-date">{#each TYPES.dates_autres as t}<option value={t}></option>{/each}</datalist>
   <datalist id="noms-du-carnet">{#each proposes as n}<option value={n}></option>{/each}</datalist>
 
   <fieldset>
     <legend class="discret">Adresses</legend>
     {#each fiche.adresses || [] as a, i}
       <div class="adresse">
-        <select bind:value={a.type} aria-label="Type">{#each TYPES.adresses as t}<option value={t}>{t}</option>{/each}</select>
+        <select bind:value={a.type} aria-label="Type">{#each typesDe('adresses', a.type) as t}<option value={t}>{t}</option>{/each}</select>
         <input bind:value={a.rue} placeholder="Rue" aria-label="Rue" />
         <div class="ville">
           <input bind:value={a.cp} placeholder="Code postal" aria-label="Code postal" inputmode="numeric" />

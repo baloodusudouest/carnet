@@ -10,11 +10,18 @@ from .normalisation import CLES, cle_texte
 LIBELLES = {"prenom": "Prénom", "nom": "Nom", "surnom": "Surnom", "societe": "Société", "fonction": "Fonction",
             "anniversaire": "Anniversaire", "notes": "Notes", "telephones": "Téléphones", "courriels": "Courriels",
             "adresses": "Adresses", "sites": "Sites", "noms_associes": "Noms associés", "groupes": "Groupes",
-            "photo": "Photo", "service": "Service", "prononciation_prenom": "Prononciation du prénom",
-            "prononciation_nom": "Prononciation du nom", "fete": "Fête", "mariage": "Mariage", "deces": "Décès"}
-CHAMPS = ["prenom", "nom", "prononciation_prenom", "prononciation_nom", "surnom", "societe", "service", "fonction",
-          "anniversaire", "fete", "mariage", "deces", "telephones", "courriels",
-          "adresses", "sites", "noms_associes", "notes", "groupes"]
+            "photo": "Photo", "service": "Service", "prononciation_prenom": "Prénom phonétique",
+            "prononciation_nom": "Nom de famille phonétique", "fete": "Fête", "mariage": "Mariage", "deces": "Décès",
+            # 2.24 : les libellés sont ceux de la fiche de l'iPhone
+            "titre": "Titre", "second_prenom": "Second prénom", "suffixe": "Suffixe", "nom_naissance": "Nom de naissance",
+            "phonetique_second_prenom": "Second prénom phonétique", "phonetique_societe": "Nom de société phonétique",
+            "dire_prenom": "Prononciation du prénom", "dire_nom": "Prononciation du nom",
+            "dates_autres": "Dates", "messageries": "Messageries instantanées"}
+CHAMPS = ["titre", "prenom", "second_prenom", "nom", "suffixe", "nom_naissance", "prononciation_prenom",
+          "phonetique_second_prenom", "prononciation_nom", "dire_prenom", "dire_nom", "surnom", "societe",
+          "phonetique_societe", "service", "fonction",
+          "anniversaire", "fete", "mariage", "deces", "dates_autres", "telephones", "courriels",
+          "adresses", "sites", "messageries", "noms_associes", "notes", "groupes"]
 
 
 def lire(texte: str, groupes: list[str], region: str = "FR") -> tuple[dict, bool]:
@@ -29,6 +36,8 @@ def lire(texte: str, groupes: list[str], region: str = "FR") -> tuple[dict, bool
 def _texte_item(champ: str, x: dict) -> str:
     if champ == "telephones":
         return f"{x.get('affichage') or x.get('valeur')} ({x.get('type') or 'autre'})"
+    if champ == "dates_autres":
+        return f"{date_lisible(x.get('valeur') or '')} ({x.get('type') or 'autre'})"
     if champ == "adresses":
         return ", ".join(v for v in (x.get("rue"), " ".join(p for p in (x.get("cp"), x.get("ville")) if p),
                                      x.get("pays")) if v) + f" ({x.get('type') or 'autre'})"

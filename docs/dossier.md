@@ -21,7 +21,7 @@ Ce dossier décrit ce qui existe. Le détail de conception de la 2.8 est dans `d
 | Modification | Édition d'une fiche avec aperçu de « ce qui part dans iCloud » avant écriture ; annulation possible pendant 10 secondes |
 | Fusion | Réunir deux fiches en une ; liaisons, photo, affiche et relation LinkedIn suivent |
 | Attentes et manques | Un tableau dit quelles informations chaque groupe doit avoir ; les manques s'affichent par ligne dans À traiter ; exception possible par fiche ; validation d'une fiche entière |
-| Champs de la carte | En plus des champs courants : service, prononciation, fête, mariage, décès (dates aux libellés « Fête », « Mariage », « Décès ») |
+| Champs de la carte | Tous ceux de la fiche de l'iPhone (2.24) : titre, prénom, second prénom, nom, suffixe, nom de naissance, surnom, phonétiques et prononciations, société, service, fonction, numéros, courriels, URL, adresses, anniversaire, fête, mariage, décès, dates libres à libellé, noms associés, profils sociaux, messageries instantanées, notes, listes ; sonnerie et son SMS en lecture seule. Pas les pronoms (chiffrés par Apple) |
 | Genre (2.22) | Femme, homme ou autre, gardé dans carnet ; accordé avec Treemich (remplir, jamais écraser) ; décide de frère / sœur / « frère ou sœur » et de père / mère / parent |
 | Fête et dates de famille | Fête d'après un calendrier embarqué ; mariage et décès accordés avec Treemich (remplir, jamais écraser) ; deux interrupteurs, journal et « Défaire » |
 | Sociétés | Logo choisi une fois par société ; noms de société écrits de plusieurs façons proposés à l'harmonisation |
@@ -165,6 +165,7 @@ Six blocs empilés : points à traiter de cette fiche, informations, complétude
 |---|---|---|
 | « Contacts » (iPhone) | Retour à la liste | Contacts |
 | Stylo | Passe en modification | Fiche (édition) |
+| En modification : « Ajouter un champ » (2.24) | Fait apparaître un champ rare (titre, second prénom, suffixe, nom de naissance, phonétiques…), comme sur l'iPhone | Fiche (édition) |
 | Voir les changements | Affiche « Ce qui part dans iCloud » | Fiche (aperçu) |
 | Écrire dans iCloud | Écrit, message avec Annuler | Fiche |
 | Continuer à modifier / Abandonner | Retour à l'édition / à la lecture | Fiche |

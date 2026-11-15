@@ -31,7 +31,10 @@ ETIQUETTES_APPLE = {
     "domicile": "domicile", "travail": "travail", "portable": "mobile",
     # noms associés
     "spouse": "conjoint", "partner": "partenaire", "mother": "mère", "father": "père",
-    "parent": "parent", "child": "enfant", "son": "enfant", "daughter": "enfant",
+    "parent": "parent", "child": "enfant", "son": "fils", "daughter": "fille", "husband": "mari", "wife": "épouse",
+    "fils": "fils", "fille": "fille", "mari": "mari", "epouse": "épouse",
+    # 2.24 : libellé « école » de l'iPhone (numéros, courriels, adresses, URL)
+    "school": "école", "ecole": "école", "autre": "autre",
     "brother": "frère", "sister": "sœur", "friend": "ami", "assistant": "assistant",
     "manager": "responsable", "conjoint": "conjoint", "mere": "mère", "pere": "père",
     "enfant": "enfant", "frere": "frère", "soeur": "sœur", "ami": "ami",
@@ -41,8 +44,15 @@ ETIQUETTES_APPLE = {
 }
 
 TYPES_TEL = {"CELL": "mobile", "IPHONE": "mobile", "HOME": "domicile", "WORK": "travail",
-             "MAIN": "principal", "OTHER": "autre", "FAX": "autre", "PAGER": "autre"}
+             "MAIN": "principal", "OTHER": "autre", "FAX": "fax travail", "PAGER": "pager"}
 TYPES_LIEU = {"HOME": "domicile", "WORK": "travail", "OTHER": "autre"}
+# 2.24 : messageries instantanées (IMPP). Le préfixe est celui que l'iPhone écrit pour chaque service.
+PREFIXES_MESSAGERIE = {"Skype": "skype", "MSN": "msnim", "GoogleTalk": "xmpp", "Facebook": "xmpp", "AIM": "aim",
+                       "Yahoo": "ymsgr", "ICQ": "aim", "Jabber": "xmpp"}
+RESEAUX_LUS = {"linkedin": "linkedin", "facebook": "facebook", "instagram": "instagram", "tiktok": "tiktok",
+               "telegram": "telegram", "whatsapp": "whatsapp", "signal": "signal", "twitter": "x",
+               "flickr": "flickr", "myspace": "myspace", "sinaweibo": "sina weibo"}
+DATES_APPLE = {"anniversary": "anniversaire (Apple)", "other": "autre"}
 
 
 def _groupe_connu(nom: str) -> str | None:
@@ -75,6 +85,25 @@ def _etiquette(libelle: str) -> str | None:
     return ETIQUETTES_APPLE.get(cle)
 
 
+def _libelle_libre(libelle: str) -> str:
+    """Libellé que carnet ne connaît pas : gardé tel quel (« iCloud »), ou le mot d'Apple en minuscules."""
+    m = re.fullmatch(r"_\$!<(.+?)>!\$_", libelle.strip())
+    return (m.group(1).lower() if m else " ".join(libelle.split()))
+
+
+def _type_tel(ligne, libelles: dict) -> str | None:
+    """2.24 : fax (domicile, travail), pager et Apple Watch sont gardés au lieu de devenir « autre »."""
+    types = set(_types(ligne))
+    if not (ligne.group and ligne.group.lower() in libelles):
+        if "FAX" in types:
+            return "fax domicile" if "HOME" in types else "fax travail"
+        if "APPLEWATCH" in types:
+            return "apple watch"
+        if "PAGER" in types:
+            return "pager"
+    return _type_depuis(ligne, libelles, TYPES_TEL, None)
+
+
 def _types(ligne) -> list[str]:
     types = []
     for valeur in ligne.params.get("TYPE", []):
@@ -82,11 +111,14 @@ def _types(ligne) -> list[str]:
     return types
 
 
-def _type_depuis(ligne, libelles: dict, table: dict, defaut: str | None) -> str | None:
+def _type_depuis(ligne, libelles: dict, table: dict, defaut: str | None, libre: bool = False) -> str | None:
+    """libre (2.24, courriels et adresses) : un libellé écrit à la main sur l'iPhone est gardé tel quel."""
     if ligne.group and ligne.group.lower() in libelles:
         trouve = _etiquette(libelles[ligne.group.lower()])
         if trouve:
             return trouve
+        if libre and _libelle_libre(libelles[ligne.group.lower()]):
+            return _libelle_libre(libelles[ligne.group.lower()])
     for t in _types(ligne):
         if t in table:
             return table[t]
@@ -140,8 +172,10 @@ def lire_carte(brut: str, region: str = "FR") -> tuple[FicheLue | None, dict | N
 
     if "N" in noms:
         nn = carte.n.value
-        prenom = " ".join(p for p in (_texte(nn.given), _texte(nn.additional)) if p)
-        f["prenom"], f["nom"] = prenom, _texte(nn.family)
+        # 2.24 : second prénom, titre et suffixe ont leur champ (avant : le second prénom était collé au prénom)
+        f["prenom"], f["nom"] = _texte(nn.given), _texte(nn.family)
+        f["second_prenom"] = n.formater_prenom(_texte(nn.additional))
+        f["titre"], f["suffixe"] = _texte(nn.prefix), _texte(nn.suffix)
     if not (f["prenom"] or f["nom"]) and "FN" in noms:
         # Une fiche d'entreprise (FN = société, ou X-ABShowAs:COMPANY) n'a pas de prénom ni de nom
         org = carte.org.value if "ORG" in noms else []
@@ -166,12 +200,37 @@ def lire_carte(brut: str, region: str = "FR") -> tuple[FicheLue | None, dict | N
                 f["prononciation_prenom"] = _texte(ligne.value)
             elif nom == "X-PHONETIC-LAST-NAME":
                 f["prononciation_nom"] = _texte(ligne.value)
+            elif nom == "X-PHONETIC-MIDDLE-NAME":
+                f["phonetique_second_prenom"] = _texte(ligne.value)
+            elif nom == "X-PHONETIC-ORG":
+                f["phonetique_societe"] = _texte(ligne.value)
+            elif nom == "X-PRONUNCIATION-FIRST-NAME":
+                f["dire_prenom"] = _texte(ligne.value)
+            elif nom == "X-PRONUNCIATION-LAST-NAME":
+                f["dire_nom"] = _texte(ligne.value)
+            elif nom == "X-MAIDENNAME":
+                f["nom_naissance"] = _texte(ligne.value)
+            elif nom == "X-ACTIVITY-ALERT":
+                # Sonnerie et son SMS réglés sur l'iPhone (« type=call,snd=system:Shelter ») : lus, jamais écrits
+                v = _texte(ligne.value).replace("\\,", ",")
+                son = v.rsplit(":", 1)[-1].strip() if ":" in v else ""
+                if "type=call" in v and son:
+                    f["sonnerie"] = son
+                elif "type=text" in v and son:
+                    f["son_sms"] = son
             elif nom == "X-ABDATE":
-                # Date supplémentaire : seuls les libellés Fête, Mariage et Décès sont lus ; les
-                # autres restent dans la carte sans que carnet y touche
-                champ = champ_date(libelles.get((ligne.group or "").lower(), ""))
+                # Date supplémentaire : Fête, Mariage et Décès ont leur champ ; les autres (libellé
+                # d'Apple ou écrit à la main) vont dans « dates_autres » (2.24)
+                lib = libelles.get((ligne.group or "").lower(), "")
+                champ = champ_date(lib)
                 if champ and not f[champ]:
                     f[champ] = date_supplementaire(_texte(ligne.value), champ)
+                elif not champ and ligne.group:
+                    d = date_supplementaire(_texte(ligne.value), "")
+                    if d:
+                        m = re.fullmatch(r"_\$!<(.+?)>!\$_", lib.strip())
+                        type_ = DATES_APPLE.get(m.group(1).lower(), m.group(1).lower()) if m else (" ".join(lib.split()) or "autre")
+                        f["dates_autres"].append({"valeur": d, "type": type_})
             elif nom == "TITLE":
                 f["fonction"] = _texte(ligne.value)
             elif nom == "NOTE":
@@ -183,40 +242,50 @@ def lire_carte(brut: str, region: str = "FR") -> tuple[FicheLue | None, dict | N
                 lue.uid = _texte(ligne.value).replace("urn:uuid:", "") or None
             elif nom == "TEL":
                 # Sans type : mobile ou « autre » selon le numéro lui-même
-                t = n.telephone(_texte(ligne.value),
-                                _type_depuis(ligne, libelles, TYPES_TEL, None), region)
+                t = n.telephone(_texte(ligne.value), _type_tel(ligne, libelles), region)
                 if t:
                     f["telephones"].append(t)
             elif nom == "EMAIL":
                 c = n.courriel(_texte(ligne.value),
-                               _type_depuis(ligne, libelles, TYPES_LIEU, "domicile"))
+                               _type_depuis(ligne, libelles, TYPES_LIEU, "domicile", libre=True))
                 if c:
                     f["courriels"].append(c)
                 elif (s := n.site(_texte(ligne.value))):  # un lien saisi comme courriel
                     f["sites"].append(s)
-            elif nom == "IMPP":  # messageries instantanées : seuls les liens web sont gardés
-                s = n.site(_texte(ligne.value))
-                if s:
+            elif nom == "IMPP":
+                # 2.24 : messagerie instantanée (service dans X-SERVICE-TYPE). Les profils iMessage / FaceTime
+                # et les services écrits en « x-apple: » (QQ, Gadu-Gadu) restent dans la carte sans être lus.
+                brut_v = _texte(ligne.value)
+                service = _texte((ligne.params.get("X-SERVICE-TYPE") or [""])[0])
+                if service and not brut_v.lower().startswith("x-apple:"):
+                    from urllib.parse import unquote
+                    pseudo = unquote(brut_v.split(":", 1)[1] if ":" in brut_v else brut_v).strip()
+                    if pseudo:
+                        f["messageries"].append({"valeur": pseudo, "type": service})
+                elif (s := n.site(brut_v)):       # un lien web saisi comme messagerie
                     f["sites"].append(s)
             elif nom == "ADR":
                 a = ligne.value
                 ad = n.adresse(_texte(a.street), _texte(a.code), _texte(a.city), _texte(a.region),
-                               _texte(a.country), _type_depuis(ligne, libelles, TYPES_LIEU, "domicile"))
+                               _texte(a.country), _type_depuis(ligne, libelles, TYPES_LIEU, "domicile", libre=True))
                 if ad:
                     f["adresses"].append(ad)
             elif nom == "URL":
                 lib = libelles.get((ligne.group or "").lower(), "")
-                s = n.site(_texte(ligne.value), _etiquette(lib) if lib else None)
+                connu = _etiquette(lib) if lib else None
+                # 2.24 : URL « domicile » ou « travail » (TYPE=HOME / WORK), « école », ou libellé écrit à la main
+                lieu = next((TYPES_LIEU[t] for t in _types(ligne) if t in ("HOME", "WORK")), None)
+                s = n.site(_texte(ligne.value), connu or lieu)
                 if s:
+                    if s["type"] == "site" and lib and not connu and _libelle_libre(lib):
+                        s["type"] = _libelle_libre(lib)       # aucun réseau reconnu : le libellé de l'iPhone est gardé
                     f["sites"].append(s)
             elif nom == "X-SOCIALPROFILE":
                 reseau = (_types(ligne) or [""])[0].lower()
                 valeur = _texte(ligne.value)
                 if not valeur.startswith("http") and "X-USER" in {k.upper() for k in ligne.params}:
                     valeur = valeur or _texte(ligne.params.get("X-USER", [""])[0])
-                s = n.site(valeur, reseau if reseau in ("linkedin", "facebook", "instagram", "tiktok", "telegram",
-                                                     "whatsapp", "signal")
-                           else ("x" if reseau == "twitter" else None))
+                s = n.site(valeur, RESEAUX_LUS.get(reseau))
                 if s:
                     f["sites"].append(s)
             elif nom == "X-ABRELATEDNAMES":

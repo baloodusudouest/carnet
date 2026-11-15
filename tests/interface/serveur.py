@@ -12,7 +12,7 @@ from app import icloud, liaisons, main, reseaux
 from app.carnet import Carnet
 from tests.faux_icloud import FauxICloud
 from tests.faux_services import FauxImmich, FauxTreemich
-from tests.test_carnet import DONNEES, PAUL, _config, carte_simple
+from tests.test_carnet import CARTE_IPHONE, DONNEES, PAUL, _config, carte_simple
 
 PRENOMS = ["Agnès Roux", "Bruno Lefèvre", "Camille Garnier", "Denis Fabre", "Élodie Chevalier", "François Muller",
            "Gaëlle Perrin", "Hugo Bonnet", "Inès Lambert", "Julien Moreau", "Karine Faure", "Louis Girard",
@@ -35,6 +35,7 @@ def preparer(dossier: Path) -> tuple[Carnet, FauxICloud]:
     def groupe(uid, nom, membres):
         return ("BEGIN:VCARD\r\nVERSION:3.0\r\nN:" + nom + "\r\nFN:" + nom + "\r\nX-ADDRESSBOOKSERVER-KIND:group\r\n"
                 + "".join(f"X-ADDRESSBOOKSERVER-MEMBER:urn:uuid:{m}\r\n" for m in membres) + f"UID:{uid}\r\nEND:VCARD\r\n")
+    vcf += CARTE_IPHONE          # 2.24 : une fiche qui porte tous les champs de l'iPhone
     vcf += groupe("GGGG-AMIS", "Amis", [f"F-{i:02d}" for i in range(0, 12)])
     vcf += groupe("GGGG-CLIENTS", "Clients", ["CCCC-3333", "F-20", "F-21"])
     ic = FauxICloud(vcf)

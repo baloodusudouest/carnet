@@ -2750,3 +2750,185 @@ def test_sonde_champs_sans_valeur_et_fiche_d_essai_seule(c, services, tmp_path, 
     for args in ([], ["Inconnu"], ["MARTIN"]):
         sonde_champs.main(args)
         assert "```" not in capsys.readouterr().out
+
+
+# ================================================================ 2.24 : tous les champs de la fiche de l'iPhone
+
+# Carte bâtie comme celle que la sonde 2.22.4 a montrée (iOS 27), avec des valeurs inventées
+CARTE_IPHONE = "\r\n".join([
+    "BEGIN:VCARD", "VERSION:3.0", "PRODID:-//Apple Inc.//iOS 27.2.1//EN",
+    "N:Lemoine;Anne;Louise;Dr;Jr", "FN:Dr Anne Louise Lemoine Jr", "NICKNAME:Nanou", "X-MAIDENNAME:Vasseur",
+    "X-PHONETIC-FIRST-NAME:ane", "X-PRONUNCIATION-FIRST-NAME:ann", "X-PHONETIC-MIDDLE-NAME:louiz",
+    "X-PHONETIC-LAST-NAME:lemoane", "X-PRONUNCIATION-LAST-NAME:leu-moine",
+    "item1.X-ADDRESSING-GRAMMAR:jOTSMqd2U6eRJZSpuymmVH7v1B7hCj9W", "ORG:Atelier Vert;Dessin", "X-PHONETIC-ORG:atelié vèr",
+    "TITLE:Architecte",
+    "EMAIL;type=INTERNET;type=HOME;type=pref:anne@exemple.fr", "item2.EMAIL;type=INTERNET:anne@ecole.exemple",
+    "item2.X-ABLabel:_$!<School>!$_", "item3.EMAIL;type=INTERNET:anne@nuage.exemple", "item3.X-ABLabel:iCloud",
+    "TEL;type=CELL;type=VOICE;type=pref:+33 6 12 00 00 01", "item5.TEL:+33 5 53 00 00 02", "item5.X-ABLabel:_$!<School>!$_",
+    "TEL;type=APPLEWATCH;type=CELL;type=VOICE:+33 6 12 00 00 03", "TEL;type=HOME;type=FAX:+33 5 53 00 00 04",
+    "TEL;type=WORK;type=FAX:+33 5 53 00 00 05", "TEL;type=PAGER:+33 5 53 00 00 06",
+    "item6.ADR;type=HOME;type=pref:;;1 rue des Essais;Agen;;47000;France", "item6.X-ABADR:fr",
+    "item8.ADR;type=HOME:;;2 rue de l'École;Agen;;47000;France", "item8.X-ABLabel:_$!<School>!$_", "item8.X-ABADR:fr",
+    "item10.URL;type=pref:https://anne.exemple", "item10.X-ABLabel:_$!<HomePage>!$_", "URL;type=WORK:https://atelier.exemple",
+    "item11.URL:https://ecole.exemple", "item11.X-ABLabel:_$!<School>!$_",
+    "BDAY;value=date:1980-04-02",
+    "item13.X-MSN:anne.msn", "item13.X-ABLabel:MSN",
+    "item18.IMPP;X-SERVICE-TYPE=Skype;type=pref:skype:anne.sky", "item18.X-ABLabel:Skype",
+    "item19.IMPP;X-SERVICE-TYPE=MSN:msnim:anne.msn", "item19.X-ABLabel:MSN",
+    "item20.IMPP;X-SERVICE-TYPE=GoogleTalk:xmpp:anne%E2%80%99g", "item20.X-ABLabel:GoogleTalk",
+    "item26.IMPP;X-SERVICE-TYPE=QQ:x-apple:anneqq", "item26.X-ABLabel:QQ",
+    "X-SOCIALPROFILE;type=flickr;x-user=annef:http://www.flickr.com/photos/annef",
+    "X-SOCIALPROFILE;type=sinaweibo;x-user=annew:http://weibo.com/n/annew",
+    "item29.X-ABDATE;type=pref:1604-11-15", "item29.X-ABLabel:_$!<Anniversary>!$_",
+    "item30.X-ABDATE:2001-09-01", "item30.X-ABLabel:_$!<Other>!$_",
+    "item31.X-ABDATE:2010-06-12", "item31.X-ABLabel:Mariage",
+    "item34.X-ABDATE:2015-05-20", "item34.X-ABLabel:Diplôme",
+    "item40.X-ABRELATEDNAMES:Luc Lemoine", "item40.X-ABLabel:_$!<Son>!$_",
+    "item48.X-ABRELATEDNAMES:Marc Lemoine", "item48.X-ABLabel:_$!<Husband>!$_",
+    "REV:2026-11-15T15:24:48Z", "UID:IPHONE-224",
+    "X-ACTIVITY-ALERT:type=text\\,snd=texttone:Cheers", "X-ACTIVITY-ALERT:type=call\\,snd=system:Shelter",
+    "END:VCARD", ""])
+
+
+@pytest.fixture
+def anne(c, services):
+    services["icloud"].modifier_sur_iphone("IPHONE-224", CARTE_IPHONE)
+    with c.ecriture():
+        icloud.relire(c, "test")
+    for p in points(c, "iphone_nouvelle"):
+        actions.repondre(c, p["id"], "garder")
+    return c
+
+
+def _lignes(texte):
+    from app import synchro
+    return set(l.split(".", 1)[1] if re.match(r"item\d+\.", l) else l for l in synchro.deplier(texte))
+
+
+def test_224_tous_les_champs_de_l_iphone_sont_lus(anne):
+    f = anne.fiche("IPHONE-224")
+    assert (f["titre"], f["prenom"], f["second_prenom"], f["nom"], f["suffixe"]) == ("Dr", "Anne", "Louise", "LEMOINE", "Jr")
+    assert f["nom_naissance"] == "Vasseur" and f["surnom"] == "Nanou"
+    assert (f["prononciation_prenom"], f["phonetique_second_prenom"], f["prononciation_nom"]) == ("ane", "louiz", "lemoane")
+    assert (f["dire_prenom"], f["dire_nom"], f["phonetique_societe"]) == ("ann", "leu-moine", "atelié vèr")
+    assert (f["societe"], f["service"], f["fonction"]) == ("Atelier Vert", "Dessin", "Architecte")
+    assert [c_["type"] for c_ in f["courriels"]] == ["domicile", "école", "iCloud"]
+    assert [t["type"] for t in f["telephones"]] == ["mobile", "école", "apple watch", "fax domicile", "fax travail", "pager"]
+    assert [a["type"] for a in f["adresses"]] == ["domicile", "école"]
+    assert {s["type"] for s in f["sites"]} == {"site", "travail", "école", "flickr", "sina weibo"}
+    assert f["dates_autres"] == [{"valeur": "--11-15", "type": "anniversaire (Apple)"}, {"valeur": "2001-09-01", "type": "autre"},
+                                 {"valeur": "2015-05-20", "type": "Diplôme"}]
+    assert f["mariage"] == "2010-06-12"
+    assert f["messageries"] == [{"valeur": "anne.sky", "type": "Skype"}, {"valeur": "anne.msn", "type": "MSN"},
+                                {"valeur": "anne’g", "type": "GoogleTalk"}]                    # QQ (x-apple:) reste dans la carte
+    assert [(n["valeur"], n["type"]) for n in f["noms_associes"]] == [("Luc Lemoine", "fils"), ("Marc Lemoine", "mari")]
+    assert (f["sonnerie"], f["son_sms"]) == ("Shelter", "Cheers")
+    from app.modele import nom_affiche
+    assert nom_affiche(f) == "Anne LEMOINE"                                                    # le nom affiché ne change pas
+
+
+def test_224_un_champ_modifie_laisse_le_reste_de_la_carte_tel_quel(anne, services):
+    """Seules les lignes du champ modifié changent : rien de ce que l'iPhone a écrit n'est perdu."""
+    avant = _lignes(services["icloud"].texte("IPHONE-224"))
+    f = anne.fiche("IPHONE-224")
+    f["fonction"] = "Urbaniste"
+    actions.valider(anne, "IPHONE-224", f)
+    apres = _lignes(services["icloud"].texte("IPHONE-224"))
+    ignore = lambda s: {l for l in s if not l.startswith(("REV", "PRODID"))}
+    assert ignore(avant) - ignore(apres) == {"TITLE:Architecte"} and ignore(apres) - ignore(avant) == {"TITLE:Urbaniste"}
+    # Le titre : seule la ligne N change, avec ses cinq cases
+    f = anne.fiche("IPHONE-224")
+    f["titre"], f["nom_naissance"], f["dire_prenom"] = "Pr", "Vasseur-Roy", ""
+    actions.valider(anne, "IPHONE-224", f)
+    fin = _lignes(services["icloud"].texte("IPHONE-224"))
+    assert "N:LEMOINE;Anne;Louise;Pr;Jr" in fin and "X-MAIDENNAME:Vasseur-Roy" in fin
+    assert not any(l.startswith("X-PRONUNCIATION-FIRST-NAME") for l in fin)
+    for gardee in ("X-PRONUNCIATION-LAST-NAME:leu-moine", "X-PHONETIC-MIDDLE-NAME:louiz", "X-PHONETIC-ORG:atelié vèr",
+                   "X-ADDRESSING-GRAMMAR:jOTSMqd2U6eRJZSpuymmVH7v1B7hCj9W", "X-ACTIVITY-ALERT:type=call\\,snd=system:Shelter",
+                   "IMPP;X-SERVICE-TYPE=QQ:x-apple:anneqq", "X-MSN:anne.msn", "TEL;type=HOME;type=FAX:+33 5 53 00 00 04"):
+        assert gardee in fin, gardee
+    with anne.ecriture():
+        icloud.relire(anne, "test")
+    relue = anne.fiche("IPHONE-224")
+    assert (relue["titre"], relue["nom_naissance"], relue["dire_prenom"], relue["second_prenom"]) == ("Pr", "Vasseur-Roy", "", "Louise")
+
+
+def test_224_dates_libres_et_messageries_reecrites_sans_toucher_au_reste(anne, services):
+    f = anne.fiche("IPHONE-224")
+    f["dates_autres"] = [{"valeur": "15/11", "type": "anniversaire (Apple)"}, {"valeur": "03/02/2020", "type": "Emménagement"}]
+    f["messageries"] = [{"valeur": "anne.sky", "type": "Skype"}, {"valeur": "anne@jab.exemple", "type": "Jabber"}]
+    actions.valider(anne, "IPHONE-224", f)
+    carte = services["icloud"].texte("IPHONE-224")
+    lignes = _lignes(carte)
+    # Dates : Mariage n'a pas bougé ; « autre » et « Diplôme » sont partis ; la nouvelle porte son libellé
+    assert "X-ABDATE:2010-06-12" in lignes and "X-ABLabel:Mariage" in lignes
+    assert "X-ABDATE:2001-09-01" not in lignes and "X-ABLabel:Diplôme" not in lignes
+    assert "X-ABDATE;X-APPLE-OMIT-YEAR=1604:1604-11-15" in lignes and "X-ABDATE:2020-02-03" in lignes and "X-ABLabel:Emménagement" in lignes
+    # Messageries : MSN et GoogleTalk retirés (avec l'ancienne ligne X-MSN), Jabber écrit comme l'iPhone, QQ intact
+    assert not any("MSN" in l or "GoogleTalk" in l for l in lignes)
+    assert "IMPP;X-SERVICE-TYPE=Jabber:xmpp:anne@jab.exemple" in lignes and "X-JABBER:anne@jab.exemple" in lignes
+    assert "IMPP;X-SERVICE-TYPE=Skype:skype:anne.sky" in lignes and "IMPP;X-SERVICE-TYPE=QQ:x-apple:anneqq" in lignes
+    with anne.ecriture():
+        icloud.relire(anne, "test")
+    relue = anne.fiche("IPHONE-224")
+    assert relue["dates_autres"] == [{"valeur": "--11-15", "type": "anniversaire (Apple)"}, {"valeur": "2020-02-03", "type": "Emménagement"}]
+    assert relue["messageries"] == f["messageries"] and relue["mariage"] == "2010-06-12"
+    assert not points(anne, "iphone_modifiee")                         # carnet relit ce qu'il a écrit sans s'étonner
+    with pytest.raises(ErreurCarnet):
+        g = anne.fiche("IPHONE-224")
+        g["dates_autres"] = [{"valeur": "bientôt", "type": "autre"}]
+        actions.valider(anne, "IPHONE-224", g)
+
+
+def test_224_types_et_libelles_gardes_a_la_reecriture(anne, services):
+    """Changer un numéro, un courriel, une adresse, une URL ou un nom associé réécrit ces lignes : fax, pager,
+    Apple Watch, école, libellé écrit à la main, fils et mari restent ce qu'ils étaient."""
+    f = anne.fiche("IPHONE-224")
+    f["telephones"] = f["telephones"] + [{"valeur": "+33 6 12 00 00 09", "type": "travail"}]
+    f["courriels"] = f["courriels"] + [{"valeur": "pro@atelier.exemple", "type": "travail"}]
+    f["adresses"] = f["adresses"] + [{"rue": "3 quai Neuf", "cp": "47000", "ville": "Agen", "pays": "France", "type": "autre"}]
+    f["sites"] = [dict(s, type="domicile") if s["type"] == "travail" else s for s in f["sites"]]
+    f["noms_associes"] = f["noms_associes"] + [{"valeur": "Rose Lemoine", "type": "fille"}, {"valeur": "Eve Roy", "type": "épouse"}]
+    actions.valider(anne, "IPHONE-224", f)
+    lignes = _lignes(services["icloud"].texte("IPHONE-224"))
+    for attendue in ("TEL;type=HOME;type=FAX:+33 5 53 00 00 04", "TEL;type=WORK;type=FAX:+33 5 53 00 00 05",
+                     "TEL;type=PAGER:+33 5 53 00 00 06", "TEL;type=APPLEWATCH;type=CELL;type=VOICE:+33 6 12 00 00 03",
+                     "TEL:+33 5 53 00 00 02", "EMAIL;type=INTERNET:anne@nuage.exemple", "X-ABLabel:iCloud",
+                     "URL;type=HOME:https://atelier.exemple", "X-ABRELATEDNAMES:Rose Lemoine",
+                     "X-ABLabel:_$!<Daughter>!$_", "X-ABLabel:_$!<Wife>!$_", "X-ABLabel:_$!<Son>!$_", "X-ABLabel:_$!<Husband>!$_"):
+        assert attendue in lignes, attendue
+    with anne.ecriture():
+        icloud.relire(anne, "test")
+    relue = anne.fiche("IPHONE-224")
+    assert [t["type"] for t in relue["telephones"]] == ["mobile", "école", "apple watch", "fax domicile", "fax travail", "pager", "travail"]
+    assert [x["type"] for x in relue["courriels"]] == ["domicile", "école", "iCloud", "travail"]
+    assert [a["type"] for a in relue["adresses"]] == ["domicile", "école", "autre"]
+    assert {s["type"] for s in relue["sites"]} == {"site", "domicile", "école", "flickr", "sina weibo"}
+    assert [n["type"] for n in relue["noms_associes"]] == ["fils", "mari", "fille", "épouse"]
+
+
+def test_224_reanalyse_une_fois_et_creation_d_une_fiche_complete(c, services):
+    """Les cartes déjà en base sont relues une fois avec la lecture d'aujourd'hui, sans rien signaler ni écrire ;
+    une fiche créée dans carnet porte tous les champs dans iCloud."""
+    services["icloud"].modifier_sur_iphone("IPHONE-224", CARTE_IPHONE)
+    with c.ecriture():
+        icloud.relire(c, "test")
+    ancienne = dict(c.fiche("IPHONE-224"), titre="", second_prenom="", dates_autres=[], messageries=[])
+    c.base.executer("UPDATE fiches SET fiche = ? WHERE uid = ?", (json.dumps(ancienne, ensure_ascii=False), "IPHONE-224"))
+    c.base.executer("DELETE FROM kv WHERE cle = 'analyse_224'")
+    c.oublier()
+    ecrits, avant = len(services["icloud"].ecritures), len(points(c))
+    assert icloud.reanalyser(c) >= 1 and icloud.reanalyser(c) == 0
+    assert c.fiche("IPHONE-224")["titre"] == "Dr" and len(c.fiche("IPHONE-224")["messageries"]) == 3
+    assert len(services["icloud"].ecritures) == ecrits and len(points(c)) == avant
+    from app import fiches as F
+    neuve = F.preparer({"prenom": "léa", "nom": "roy", "titre": "Me", "second_prenom": "marie", "suffixe": "fils",
+                        "nom_naissance": "Blanc", "dire_prenom": "lé-a", "phonetique_societe": "roa",
+                        "dates_autres": [{"valeur": "01/09/2001", "type": "autre"}],
+                        "messageries": [{"valeur": "lea.icq", "type": "ICQ"}]})
+    with c.ecriture():
+        uid = icloud.creer(c, neuve)["uid"]
+    carte = services["icloud"].texte(uid)
+    for attendue in ("N:ROY;Léa;Marie;Me;fils", "X-MAIDENNAME:Blanc", "X-PRONUNCIATION-FIRST-NAME:lé-a", "X-PHONETIC-ORG:roa",
+                     "X-ABDATE:2001-09-01", "X-ICQ:lea.icq", "IMPP;X-SERVICE-TYPE=ICQ:aim:lea.icq"):
+        assert attendue in carte, attendue

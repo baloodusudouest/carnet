@@ -1,5 +1,20 @@
 # Journal des versions
 
+## 2.24.0 — 15 novembre 2026
+Tous les champs de la fiche de contact de l'iPhone, d'après la sonde 2.22.4 passée sur une vraie carte (iOS 27). Le numéro 2.23 reste réservé au dossier Paperless.
+- **Champs de nom** : titre, second prénom, suffixe, nom de naissance, prénom / second prénom / nom de famille / société phonétiques, prononciation du prénom et du nom. Le nom affiché reste « Prénom NOM » partout (carnet, Immich, Treemich, Home Assistant). Le second prénom a maintenant son champ : il n'est plus collé au prénom.
+- **Libellés corrigés** : ce que carnet appelait « Prononciation du prénom / du nom » depuis la 2.8 est en réalité le prénom et le nom *phonétiques* de l'iPhone ; ils portent maintenant ce nom, et la vraie « prononciation » de l'iPhone a ses deux champs.
+- **Dates libres** : toute date de la fiche avec son libellé (celui d'Apple ou un libellé écrit à la main, « Diplôme »), en plus de Fête, Mariage et Décès.
+- **Messageries instantanées** : Skype, MSN, GoogleTalk, Facebook, AIM, Yahoo, ICQ, Jabber, écrites comme le fait l'iPhone.
+- **Types gardés** : numéros « école », Apple Watch, fax domicile, fax travail, pager (ils devenaient « autre ») ; courriels et adresses « école », « autre » ou à libellé écrit à la main ; URL domicile, travail, école ; profils Flickr, Myspace, Sina Weibo ; noms associés fils, fille, mari, épouse (ils devenaient « enfant » et « autre »). Ces numéros particuliers ne sont touchés par aucune règle de groupe et ne comptent pas comme « second portable ».
+- **Sonnerie et son SMS** : montrés sur la fiche, en lecture seule (ils se règlent sur l'iPhone).
+- **Éditeur comme l'iPhone** : les champs courants sont toujours là ; les autres s'ajoutent par « Ajouter un champ » et restent visibles dès qu'ils sont remplis, dans l'ordre de l'iPhone.
+- **Rien n'est perdu à l'écriture** : comme avant, seules les lignes du champ modifié sont réécrites ; le reste de la carte iCloud reste tel que l'iPhone l'a écrit.
+- Au premier démarrage, les cartes déjà lues sont relues une fois avec la nouvelle lecture, sans rien signaler ni écrire dans iCloud.
+- **Ce que carnet ne fait pas** : les pronoms (iCloud les donne chiffrés par Apple : ni lus ni écrits, gardés tels quels) ; le code de validation (absent de la carte) ; QQ et Gadu-Gadu (gardés dans la carte, pas montrés) ; le libellé « iPhone » d'un numéro (reste « mobile ») ; un libellé écrit à la main sur un numéro (comme avant) ; créer dans carnet un nouveau libellé libre pour un courriel ou une adresse (ceux de l'iPhone sont gardés).
+- Jamais essayé sur la vraie installation. À regarder au premier essai : la copie vers Synology Contacts avec les nouveaux champs.
+- Tests : 209 réussis (serveur et écrans PC et iPhone).
+
 ## 2.22.4 — 15 novembre 2026
 - **Sonde des champs de la fiche iPhone** (`python -m app.sonde_champs "Essai Champs"`), avant d'ajouter à carnet tous les champs de l'iPhone. Lecture seule, sur une copie de la base : iCloud n'est pas contacté. Elle liste les propriétés des cartes (noms, paramètres, nombre de cartes, sans aucune valeur ni nom) et montre en entier la seule fiche d'essai demandée, sans sa photo. Rapport dans le dossier de données (`rapport-sonde-champs.md`). Aucun changement dans l'appli elle-même.
 

@@ -765,4 +765,31 @@ def test_2223_genre_pour_tous_propositions_par_lot(page):
     assert "Rien n'est écrit dans iCloud" in annonce.inner_text()
     page.get_by_role("button", name="Confirmer", exact=True).click()
     page.wait_for_selector(".message >> text=traité")
-    assert not page.get_by_role("button", name=re.compile(r"^Enregistrer les genres proposés")).count()
+    page.get_by_role("button", name=re.compile(r"^Enregistrer les genres proposés")).wait_for(state="detached")
+
+
+def test_224_champs_de_l_iphone_lecture_et_ajouter_un_champ(page):
+    """2.24 : la fiche montre les champs de l'iPhone ; en modification, les champs rares s'ajoutent par « Ajouter un champ »."""
+    racine = page.url.split("#")[0]
+    page.goto(racine + "#/contacts/IPHONE-224")
+    page.wait_for_selector("dt:has-text('Nom de naissance')")
+    lecture = page.locator(".lecture dl").inner_text()
+    for attendu in ("Titre", "Second prénom", "Suffixe", "Skype", "Diplôme", "Sonnerie", "Shelter", "Son SMS"):
+        assert attendu in lecture, attendu
+    page.get_by_role("button", name="Modifier les informations").click()
+    for visible in ("Titre", "Nom de naissance", "Prononciation du nom"):          # déjà remplis : visibles d'office
+        assert page.locator(f"label:has-text('{visible}') input").count() == 1, visible
+    assert page.get_by_role("group", name="Messageries instantanées").locator("select").count() == 3
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+    # Une fiche simple : le titre n'est pas affiché tant qu'on ne l'ajoute pas
+    page.goto(racine + "#/contacts/F-06")
+    page.get_by_role("button", name="Modifier les informations").click()
+    assert not page.locator("label:has-text('Titre') input").count()
+    page.get_by_label("Ajouter un champ").select_option(label="Titre")
+    page.locator("label:has-text('Titre') input").fill("Dr")
+    page.click("text=Voir les changements")
+    assert "Titre" in page.locator(".apercu").inner_text() and "Dr" in page.locator(".apercu").inner_text()
+    page.click("text=Écrire dans iCloud")
+    page.wait_for_selector(".message >> text=Annuler")
+    page.click(".message >> text=Annuler")
+    page.wait_for_selector(".message >> text=revenue")
