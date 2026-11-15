@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.24.1 — 15 novembre 2026
+- **Sillage reçoit la date de décès.** L'adresse `/sillage/personnes` donne maintenant, pour chaque fiche liée à Immich, la date de décès que carnet connaît (`deces` : carte iCloud, Treemich ou saisie dans carnet ; vide sinon). Sillage 0.14 y arrête le chemin de la personne. Rien d'autre ne change ; lecture seule, comme avant.
+- Tests : 137 du serveur.
+
 ## 2.24.0 — 15 novembre 2026
 Tous les champs de la fiche de contact de l'iPhone, d'après la sonde 2.22.4 passée sur une vraie carte (iOS 27). Le numéro 2.23 reste réservé au dossier Paperless.
 - **Champs de nom** : titre, second prénom, suffixe, nom de naissance, prénom / second prénom / nom de famille / société phonétiques, prononciation du prénom et du nom. Le nom affiché reste « Prénom NOM » partout (carnet, Immich, Treemich, Home Assistant). Le second prénom a maintenant son champ : il n'est plus collé au prénom.

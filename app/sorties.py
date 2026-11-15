@@ -228,11 +228,13 @@ def ha_personnes(c: Carnet) -> dict:
 
 def sillage_personnes(c: Carnet) -> dict:
     """2.15 : les fiches liées à une personne d'Immich, pour la liste d'ouverture de Sillage.
-    Le nom est celui de la fiche ; la date de naissance n'est pas donnée (celle d'Immich fait foi dans Sillage)."""
+    Le nom est celui de la fiche ; la date de naissance n'est pas donnée (celle d'Immich fait foi dans Sillage).
+    2.24.1 : `deces`, la date de décès connue de carnet (« AAAA-MM-JJ », partielle ou vide) : Sillage y arrête le chemin."""
     from . import attentes
     morts = attentes.decedes(c)
     return {"personnes": [{"carnet_id": p["carnet_id"], "nom": p["nom_carnet"], "immich_id": p["immich_id"],
-                           "groupes": p["groupes"], "proche": p["proche"], "decede": p["carnet_id"] in morts}
+                           "groupes": p["groupes"], "proche": p["proche"], "decede": p["carnet_id"] in morts,
+                           "deces": morts.get(p["carnet_id"], "")}
                           for p in contacts_ha(c) if p["immich_id"]]}
 
 

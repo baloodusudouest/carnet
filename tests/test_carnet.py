@@ -558,7 +558,14 @@ def test_home_assistant_adresses(c):
         c.cfg = dataclasses.replace(c.cfg, sillage_jeton="jeton-sillage", sillage_adresse="http://sillage.exemple")
         liste = client.get("/sillage/personnes", headers={"Authorization": "Bearer jeton-sillage"}).json()["personnes"]
         assert [(p["carnet_id"], p["immich_id"], p["decede"]) for p in liste] == [("DDDD-4444", "im-paul", False)]
-        assert set(liste[0]) == {"carnet_id", "nom", "immich_id", "groupes", "proche", "decede"}
+        assert set(liste[0]) == {"carnet_id", "nom", "immich_id", "groupes", "proche", "decede", "deces"}
+        assert liste[0]["deces"] == ""                                       # 2.24.1 : vivant, pas de date
+        c.base.executer("INSERT INTO deces (uid, date, origine, le) VALUES (?, ?, 'main', '2026-11-15')", ("DDDD-4444", "2020-02-29"))
+        c.oublier()
+        mort = client.get("/sillage/personnes", headers={"Authorization": "Bearer jeton-sillage"}).json()["personnes"][0]
+        assert (mort["decede"], mort["deces"]) == (True, "2020-02-29")
+        c.base.executer("DELETE FROM deces WHERE uid = ?", ("DDDD-4444",))
+        c.oublier()
         # 2.20 : la liste pour Gazette (noms et dates), fermée sans son jeton
         assert client.get("/gazette/personnes").status_code == 401
         assert client.get("/gazette/personnes", headers=h).status_code == 401
