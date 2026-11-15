@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-VERSION = 3   # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8)
+VERSION = 4   # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22)
 
 SCHEMA = """
 -- Cartes contact lues dans iCloud : la source maître. `fiche` est la forme lisible (JSON),
@@ -193,6 +193,14 @@ CREATE TABLE IF NOT EXISTS automatiques (
     defaite  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_automatiques_le ON automatiques(le);
+-- ---- 2.22 (schéma 4) : un ajout, la 2.21 rouvre la base sans rien perdre ----
+-- Genre d'une personne : choisi dans carnet (origine « main ») ou lu dans Treemich
+CREATE TABLE IF NOT EXISTS genres (
+    uid     TEXT PRIMARY KEY,
+    genre   TEXT NOT NULL,       -- femme / homme / autre
+    origine TEXT NOT NULL,       -- main / treemich
+    le      TEXT NOT NULL
+);
 """
 
 

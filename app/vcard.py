@@ -35,6 +35,7 @@ ETIQUETTES_APPLE = {
     "brother": "frère", "sister": "sœur", "friend": "ami", "assistant": "assistant",
     "manager": "responsable", "conjoint": "conjoint", "mere": "mère", "pere": "père",
     "enfant": "enfant", "frere": "frère", "soeur": "sœur", "ami": "ami",
+    "frere ou sœur": "frère ou sœur", "frere ou soeur": "frère ou sœur", "sibling": "frère ou sœur",
     # sites
     "homepage": "site", "home page": "site",
 }

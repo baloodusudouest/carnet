@@ -354,6 +354,14 @@ class Treemich:
         if r.status_code >= 400:
             raise ErreurLien(f"Treemich a refusé de reprendre le visage ({r.status_code}).")
 
+    def maj_genre(self, pid: str, genre: str) -> None:
+        """2.22 : genre de la personne (FEMALE ou MALE). Forme supposée d'après les autres écritures
+        (champ à plat, comme givenName et deathDate) : jamais vue sur la vraie installation, et
+        relue par l'appelant juste après."""
+        r = self._appel("PATCH", f"/people/{pid}", json={"gender": genre})
+        if r.status_code >= 400:
+            raise ErreurLien(f"Treemich a refusé le genre ({r.status_code}).")
+
     def maj_deces(self, pid: str, date: str | None) -> None:
         r = self._appel("PATCH", f"/people/{pid}", json={"deathDate": date})
         if r.status_code >= 400:
@@ -372,16 +380,22 @@ class Treemich:
 
 
 # Relations de l'arbre → « noms associés » du contact (types de carnet)
-TYPES_FAMILLE = {"conjoint", "partenaire", "mère", "père", "parent", "enfant", "frère", "sœur"}
+TYPES_FAMILLE = {"conjoint", "partenaire", "mère", "père", "parent", "enfant", "frère", "sœur", "frère ou sœur"}
 
 
 def relations_de(tid: str, relations: list[dict], genres: dict[str, str]) -> list[tuple[str, str]]:
-    """[(id Treemich de l'autre personne, type carnet)] pour la personne `tid`."""
+    """[(id Treemich de l'autre personne, type carnet)] pour la personne `tid`. `genres` : id → genre,
+    dans les mots de Treemich (FEMALE, MALE) ou de carnet (femme, homme, autre). 2.22 : sans genre
+    connu, la fratrie donne « frère ou sœur » (avant : « frère »), comme un parent donne « parent »."""
+    def genre(autre: str) -> str:
+        g = genres.get(autre, "")
+        return {"FEMALE": "femme", "MALE": "homme"}.get(g, g)
+
     def parent(autre: str) -> str:
-        return {"FEMALE": "mère", "MALE": "père"}.get(genres.get(autre, ""), "parent")
+        return {"femme": "mère", "homme": "père"}.get(genre(autre), "parent")
 
     def fratrie(autre: str) -> str:
-        return {"FEMALE": "sœur", "MALE": "frère"}.get(genres.get(autre, ""), "frère")
+        return {"femme": "sœur", "homme": "frère"}.get(genre(autre), "frère ou sœur")
     res: dict[str, str] = {}
     for r in relations:
         if tid not in (r["de"], r["vers"]) or r["de"] == r["vers"]:

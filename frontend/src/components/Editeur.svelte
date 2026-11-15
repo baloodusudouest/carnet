@@ -18,7 +18,7 @@
     courriels: ['domicile', 'travail', 'autre'],
     adresses: ['domicile', 'travail', 'autre'],
     sites: ['site', 'linkedin', 'facebook', 'instagram', 'x', 'tiktok', 'telegram', 'whatsapp', 'signal', 'autre'],
-    noms_associes: ['conjoint', 'partenaire', 'mère', 'père', 'parent', 'enfant', 'frère', 'sœur', 'ami', 'assistant', 'responsable', 'autre'],
+    noms_associes: ['conjoint', 'partenaire', 'mère', 'père', 'parent', 'enfant', 'frère', 'sœur', 'frère ou sœur', 'ami', 'assistant', 'responsable', 'autre'],
   }
   const MULTIPLES = [
     { cle: 'telephones', nom: 'Téléphones', vide: { valeur: '', type: 'mobile' }, saisie: 'tel' },
@@ -111,7 +111,7 @@
   label { display: grid; gap: 0.2rem; }
   fieldset { display: grid; gap: 0.45rem; }
   legend { margin-bottom: 0.3rem; }
-  .rangee { display: grid; grid-template-columns: 7.5rem 1fr auto; gap: 0.4rem; }
+  .rangee { display: grid; grid-template-columns: 8.5rem 1fr auto; gap: 0.4rem; }
   .retirer { padding: 0 0.7rem; color: var(--color-mine); }
   .ajouter { justify-self: start; }
   .adresse { display: grid; gap: 0.4rem; padding: 0.6rem; border: 1px solid var(--color-couture); border-radius: 8px; }
@@ -119,6 +119,6 @@
   .groupes { display: flex; flex-wrap: wrap; gap: 0.4rem; }
   @media (max-width: 30rem) {
     .simples { grid-template-columns: 1fr; }
-    .rangee { grid-template-columns: 6.5rem 1fr auto; }
+    .rangee { grid-template-columns: 7.5rem 1fr auto; }
   }
 </style>

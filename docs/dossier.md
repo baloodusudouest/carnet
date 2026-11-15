@@ -17,11 +17,12 @@ Ce dossier décrit ce qui existe. Le détail de conception de la 2.8 est dans `d
 | Fonction | Ce qu'elle fait |
 |---|---|
 | Lecture d'iCloud | Lit toutes les cartes et les groupes par CardDAV ; garde la carte d'origine pour réécrire sans rien perdre |
-| À traiter | Boîte unique des points à trancher : fiche modifiée, créée ou supprimée sur l'iPhone, conflit, doublon, forme à uniformiser, émoji sans groupe, liaison Immich proposée, date différente selon les services, nom différent, rapprochement réseau, liens familiaux, import |
+| À traiter | Boîte unique des points à trancher : fiche modifiée, créée ou supprimée sur l'iPhone, conflit, doublon, forme à uniformiser, émoji sans groupe, liaison Immich proposée, date différente selon les services, nom différent, rapprochement réseau, liens familiaux, genre à préciser et lien à accorder au genre (2.22), import |
 | Modification | Édition d'une fiche avec aperçu de « ce qui part dans iCloud » avant écriture ; annulation possible pendant 10 secondes |
 | Fusion | Réunir deux fiches en une ; liaisons, photo, affiche et relation LinkedIn suivent |
 | Attentes et manques | Un tableau dit quelles informations chaque groupe doit avoir ; les manques s'affichent par ligne dans À traiter ; exception possible par fiche ; validation d'une fiche entière |
 | Champs de la carte | En plus des champs courants : service, prononciation, fête, mariage, décès (dates aux libellés « Fête », « Mariage », « Décès ») |
+| Genre (2.22) | Femme, homme ou autre, gardé dans carnet ; accordé avec Treemich (remplir, jamais écraser) ; décide de frère / sœur / « frère ou sœur » et de père / mère / parent |
 | Fête et dates de famille | Fête d'après un calendrier embarqué ; mariage et décès accordés avec Treemich (remplir, jamais écraser) ; deux interrupteurs, journal et « Défaire » |
 | Sociétés | Logo choisi une fois par société ; noms de société écrits de plusieurs façons proposés à l'harmonisation |
 | Suppression | Une fiche se supprime depuis sa modification, toujours après confirmation, annulable 10 secondes |
@@ -133,12 +134,14 @@ flowchart TD
 | Nom différent | Renommer dans le service ; Ignorer |
 | Rapprochement réseau | Lier ; Lier et ajouter le numéro ; Pas lui |
 | Liens familiaux | Ajouter à la fiche ; Ignorer |
+| Femme ou homme ? (2.22) | Femme ; Homme ; Autre ; Ignorer |
+| Lien à accorder au genre (2.22) | Corriger ; Laisser comme ça |
 | Forme, émoji, LinkedIn | Appliquer ; Ignorer |
 | Date de mariage manquante | Écrire la date (des deux côtés) ; Pas de mariage ni PACS |
 | Dates de mariage ou de décès différentes | Écrire partout (après choix) ; Ignorer |
 | Société écrite de plusieurs façons | Écrire sur N fiches (après choix de l'écriture) ; Pas la même société |
 
-**Tuiles (2.9.0).** Changé sur l'iPhone (modifiée, nouvelle, supprimée, conflit) ; Pas de groupe ; Immich non synchronisé (liaison à confirmer, nom ou naissance qui diffère d'Immich) ; Treemich non synchronisé (liens familiaux, mariage, décès, nom ou naissance qui diffère de l'arbre) ; Doublons ; Sociétés ; Mise en forme ; Réseaux ; Imports ; Contact incomplet.
+**Tuiles (2.9.0).** Changé sur l'iPhone (modifiée, nouvelle, supprimée, conflit) ; Pas de groupe ; Immich non synchronisé (liaison à confirmer, nom ou naissance qui diffère d'Immich) ; Treemich non synchronisé (liens familiaux, mariage, décès, nom ou naissance qui diffère de l'arbre) ; Doublons ; Sociétés ; Mise en forme ; Liens et genre (2.22 : genre à préciser, lien à accorder) ; Réseaux ; Imports ; Contact incomplet.
 
 **Contact incomplet.** La tuile montre une ligne par information manquante avec son nombre de fiches ; une ligne ouvre Contacts filtré. Elle ne compte pas dans le compteur de l'onglet ; « Pas de groupe » y compte.
 
@@ -224,7 +227,7 @@ Une tuile par service, avec son voyant, un résumé et le nombre de différences
 |---|---|---|---|
 | iCloud | Relit iCloud, dit ce qui a changé | Relecture, puis fêtes des fiches dont le groupe l'attend | Fêtes (interrupteur) |
 | Immich | Nom, naissance, photo de la fiche, personnes nommées sans fiche | Liaisons sûres, naissances d'un côté vers l'autre, portraits manquants | Interrupteur |
-| Treemich | Nom, naissance, mariage, décès, liens familiaux | Dates de famille : remplir le côté vide, jamais écraser | Interrupteur (éteint à la livraison) |
+| Treemich | Nom, naissance, mariage, décès, liens familiaux | Dates de famille et genre (2.22) : remplir le côté vide, jamais écraser | Interrupteur (éteint à la livraison) |
 | Copies | — | Copier vers Synology (et Forcer la copie) | Interrupteur |
 | Kit d'urgence | — | Envoyer le groupe Urgence au kit | Interrupteur |
 | Sauvegardes | Choisir une sauvegarde, la télécharger, remettre des fiches ; Exporter tout le carnet | | |
@@ -272,7 +275,7 @@ Reste : **la fiche empile toujours six blocs** ; sur iPhone, les liaisons et la 
 
 ## 5. Schéma de données
 
-Base SQLite `carnet2.db`, version de schéma 3 (ajouts seulement depuis la 2 : une 2.7 rouvre la base), une seule connexion sous verrou.
+Base SQLite `carnet2.db`, version de schéma 4 (ajouts seulement depuis la 2 : une 2.7 rouvre la base), une seule connexion sous verrou.
 
 | Table | Clé | Contenu |
 |---|---|---|
@@ -297,6 +300,7 @@ Base SQLite `carnet2.db`, version de schéma 3 (ajouts seulement depuis la 2 : u
 | `automatiques` | `id` | Écritures faites par carnet tout seul, avec la valeur d'avant |
 | `logos_cherches` | `uid` | Dernière recherche de logo par fiche |
 | `logos_societes` | nom de société | Logo retenu pour une société |
+| `genres` | `uid` | Genre de la personne (femme, homme, autre), choisi dans carnet ou lu dans Treemich (2.22) |
 
 **Relations.** Tout se rattache à `fiches.uid`. Aucune clé étrangère déclarée : la cohérence est tenue par le code (fusion, suppression).
 

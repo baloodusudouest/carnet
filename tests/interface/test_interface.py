@@ -701,3 +701,42 @@ def test_221_sans_anniversaire_et_millesime(page):
     ouvrir_service(page, "Millésime")
     page.get_by_text("24 visage(s) à analyser", exact=False).first.wait_for()
     assert page.locator("table.verif").first.inner_text().count("Photos à dater") == 1
+
+
+def test_222_genre_sur_la_fiche(page):
+    """2.22 : la fiche porte un champ genre (femme, homme, autre) ; toucher le genre choisi le retire."""
+    page.goto(page.url.split("#")[0] + "#/contacts/F-05")
+    groupe = page.get_by_role("group", name="Genre")
+    groupe.wait_for()
+    homme = groupe.get_by_role("button", name="Homme", exact=True)
+    assert [b.inner_text() for b in groupe.get_by_role("button").all()] == ["Femme", "Homme", "Autre"]
+    if homme.get_attribute("aria-pressed") == "true":           # laissé par l'autre format d'écran
+        homme.click()
+        page.wait_for_selector(".message >> text=Genre retiré")
+    homme.click()
+    page.wait_for_selector(".message >> text=Genre enregistré")
+    page.wait_for_function("document.querySelector('[aria-label=Genre] button:nth-of-type(2)').getAttribute('aria-pressed') === 'true'")
+    homme.click()
+    page.wait_for_selector(".message >> text=Genre retiré")
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+
+
+def test_222_frere_sans_genre_question_puis_lien_a_corriger(page):
+    """2.22 : une personne notée « frère » sans genre connu : la question d'abord, puis le lien frère → sœur à corriger."""
+    if not ouvrir_tuile(page, "Liens et genre"):
+        pytest.skip("déjà traité par l'autre format")
+    question = page.locator("article", has_text="Femme ou homme ?").first
+    if not question.count():
+        pytest.skip("questions déjà traitées par l'autre format")
+    assert "carnet ne connaît pas son genre" in question.inner_text()
+    question.get_by_role("button", name="Femme", exact=True).click()
+    page.wait_for_selector(".message >> text=Genre enregistré")
+    assert ouvrir_tuile(page, "Liens et genre")
+    if page.viewport_size["width"] >= 900:                       # PC : le point se choisit dans la liste de gauche
+        page.locator(".sommaire button", has_text="Lien à accorder au genre").first.click()
+    lien = page.locator("article", has_text="Lien à accorder au genre").first
+    lien.wait_for()
+    assert "frère" in lien.locator(".avant").inner_text() and "sœur" in lien.locator(".apres").inner_text()
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+    lien.get_by_role("button", name="Corriger", exact=True).click()
+    page.wait_for_selector(".message >> text=Annuler")

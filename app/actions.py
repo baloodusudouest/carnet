@@ -86,7 +86,7 @@ def annuler(c: Carnet, jeton: str) -> dict:
 
 
 # Ce que carnet sait d'une fiche en dehors de sa carte iCloud : retiré avec elle, remis si on annule
-TABLES_D_UNE_FICHE = ("liaisons", "portraits", "affiches", "en_attente", "validations", "exceptions", "deces", "logos_cherches")
+TABLES_D_UNE_FICHE = ("liaisons", "portraits", "affiches", "en_attente", "validations", "exceptions", "deces", "logos_cherches", "genres")
 
 
 def supprimer(c: Carnet, uid: str, etag_vu: str | None, confirmation: bool) -> dict:
@@ -263,6 +263,13 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
     if motif == "societe" and action == "choisir":
         from . import societes
         return societes.harmoniser(c, d["cle"], str(valeur or ""))
+    if motif == "lien_genre" and action == "appliquer":
+        from . import genres
+        return valider(c, uid, genres.corriger_lien(c, uid, d), origine="À traiter", motif="lien accordé au genre",
+                       etag_vu=_etag(c, uid))
+    if motif == "genre" and action == "choisir":
+        from . import genres
+        return genres.definir(c, uid, str(valeur or ""))
     if motif == "doublon" and action == "distincts":
         traiter.ignorer(c, motif, cle)
         return {"ok": True}
@@ -337,6 +344,9 @@ def fusionner(c: Carnet, garder: str, absorber: str, fiche: dict) -> dict:
         cx.execute("DELETE FROM liaisons WHERE uid = ?", (absorber,))
         cx.execute("UPDATE OR IGNORE refus SET uid = ? WHERE uid = ?", (garder, absorber))
         cx.execute("DELETE FROM validations WHERE uid = ?", (absorber,))
+        if not cx.execute("SELECT 1 FROM genres WHERE uid = ?", (garder,)).fetchone():      # 2.22 : le genre suit
+            cx.execute("UPDATE genres SET uid = ? WHERE uid = ?", (garder, absorber))
+        cx.execute("DELETE FROM genres WHERE uid = ?", (absorber,))
         for table in ("portraits", "affiches"):
             if not cx.execute(f"SELECT 1 FROM {table} WHERE uid = ?", (garder,)).fetchone():
                 cx.execute(f"UPDATE {table} SET uid = ? WHERE uid = ?", (garder, absorber))

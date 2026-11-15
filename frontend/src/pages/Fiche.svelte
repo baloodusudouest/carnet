@@ -129,6 +129,18 @@
       await Promise.all([charger(), rafraichirContacts()])
     } catch (err) { erreur(err) }
   }
+  // 2.22 : genre (femme, homme, autre). Reste dans carnet ; écrit dans Treemich s'il y est inconnu.
+  // Toucher le genre déjà choisi le retire.
+  const genre = $derived(donnees?.genre || { valeur: '', origine: '', treemich: '', choix: {} })
+  let genreEnCours = $state(false)
+  async function choisirGenre(g) {
+    genreEnCours = true
+    try {
+      const r = await api.post(`/api/contacts/${e}/genre`, { genre: genre.valeur === g && genre.origine === 'main' ? '' : g })
+      dire(r.message)
+      await charger()
+    } catch (err) { erreur(err) } finally { genreEnCours = false }
+  }
   onMount(charger)
 </script>
 
@@ -226,6 +238,16 @@
           {#each f.sites as s}<dt>{s.type}</dt><dd><a href={s.valeur} target="_blank" rel="noreferrer">{s.valeur}</a></dd>{/each}
           {#if f.notes}<dt>Notes</dt><dd class="notes">{f.notes}</dd>{/if}
         </dl>
+        {#if f.prenom || f.nom}
+          <div class="genre" role="group" aria-label="Genre">
+            <span class="discret">Genre</span>
+            {#each Object.entries(genre.choix) as [cle, nom]}
+              <button class="pastille" aria-pressed={genre.valeur === cle} disabled={genreEnCours} onclick={() => choisirGenre(cle)}>{nom}</button>
+            {/each}
+            {#if genre.valeur && genre.origine === 'treemich'}<span class="discret petit">d'après Treemich</span>{/if}
+            {#if genre.treemich}<span class="discret petit">Treemich dit « {genre.treemich} » : rien n'y est écrasé</span>{/if}
+          </div>
+        {/if}
       </div>
 
       <div class="feuille bloc completude">
@@ -409,6 +431,7 @@
   .suppression { border-style: dashed; }
   .confirmer-suppression { display: grid; gap: 0.6rem; }
   .prononciation { font-style: italic; }
+  .genre { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.5rem; margin-top: 0.8rem; }
   .case-deces { display: flex; align-items: flex-start; gap: 0.5rem; font-size: 0.9rem; }
   .manques .pastille { min-height: 1.8rem; font-size: 0.82rem; }
   .boutons-gauche { display: flex; flex-wrap: wrap; gap: 0.5rem; }

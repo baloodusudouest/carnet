@@ -15,6 +15,7 @@ LIEU = {"domicile": "type=HOME", "travail": "type=WORK"}
 RELATIONS = {"conjoint": "Spouse", "partenaire": "Partner", "mère": "Mother", "père": "Father",
              "parent": "Parent", "enfant": "Child", "frère": "Brother", "sœur": "Sister",
              "ami": "Friend", "assistant": "Assistant", "responsable": "Manager", "autre": "Other"}
+LIBELLES_LIBRES = {"frère ou sœur": "frère ou sœur"}
 RESEAUX = {"linkedin", "facebook", "instagram", "tiktok", "x", "telegram", "whatsapp", "signal"}
 
 
@@ -99,8 +100,9 @@ def vcard(fiche: dict, uid: str, photo: tuple[bytes, str] | None = None,
             etiquette("URL", echapper(s["valeur"]), "_$!<HomePage>!$_" if s.get("type") == "site"
                       else "_$!<Other>!$_")
     for r in fiche.get("noms_associes", []):
-        etiquette("X-ABRELATEDNAMES", echapper(r["valeur"]),
-                  f"_$!<{RELATIONS.get(r.get('type', 'autre'), 'Other')}>!$_")
+        # 2.22 : Apple n'a pas de libellé neutre pour la fratrie : « frère ou sœur » est un libellé personnalisé
+        etiquette("X-ABRELATEDNAMES", echapper(r["valeur"]), LIBELLES_LIBRES.get(r.get("type"))
+                  or f"_$!<{RELATIONS.get(r.get('type', 'autre'), 'Other')}>!$_")
     for ligne_date, libelle in lignes_dates(fiche):
         etiquette(*ligne_date, libelle)
     if fiche.get("notes"):

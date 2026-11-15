@@ -227,6 +227,9 @@ def synchroniser(c: Carnet, service: str) -> dict:
         d = liaisons.donnees(c)
         b["immich"] = 0
         _naissances_vers(c, d, "treemich", b)
+        from . import genres
+        with c.ecriture(attendre=30):
+            genres.synchroniser(c, d, b)   # 2.22 : genres choisis dans carnet, inconnus de l'arbre
         points = sum(1 for p in traiter.liste(c) if p["tuile"] == "treemich")
         return {**b, "message": f"Treemich : {b['ecrites']} fiche(s) écrite(s) dans iCloud, {b['treemich']} écriture(s) dans Treemich"
                                 + (f" ; {points} différence(s) dans « À traiter »" if points else "")

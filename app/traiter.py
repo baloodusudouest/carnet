@@ -26,6 +26,7 @@ TITRES = {
     "mariage": "Date de mariage manquante", "mariage_different": "Dates de mariage différentes",
     "deces_different": "Dates de décès différentes", "societe": "Société écrite de plusieurs façons",
     "portables": "Plusieurs portables : lequel est travail, lequel mobile ?",
+    "genre": "Femme ou homme ?", "lien_genre": "Lien à accorder au genre",
 }
 ORDRE = list(TITRES)
 ENREGISTRES = {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit", "import", "linkedin", "reseau"}
@@ -41,6 +42,7 @@ TUILES = [
     ("doublons", "Doublons", {"doublon"}),
     ("societes", "Sociétés", {"societe"}),
     ("forme", "Mise en forme", {"forme", "emoji", "portables"}),
+    ("liens", "Liens et genre", {"genre", "lien_genre"}),      # 2.22
     ("reseaux", "Réseaux", {"reseau"}),
     ("imports", "Imports", {"import", "linkedin"}),
     ("incomplet", "Contact incomplet", set()),
@@ -120,6 +122,9 @@ def calcules(c) -> list[dict]:
             point("portables", uid, f"{uid}|{empreinte(sorted(t['valeur'] for t in portables))}",
                   {"numeros": [{"valeur": t["valeur"], "affichage": t.get("affichage") or t["valeur"],
                                 "type": t.get("type") or "autre"} for t in portables]})
+    from . import genres
+    for p in genres.points(c):
+        point(p["motif"], p["uid"], p["cle"], p["donnees"])
     from . import societes
     for p in societes.points(c):
         point(p["motif"], p["uid"], p["cle"], p["donnees"])

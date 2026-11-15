@@ -81,6 +81,8 @@ class FauxTreemich:
         self.mariages: dict[tuple[str, str], str] = {}     # (a, b) triés → date ; rangé sur le couple
         self.divorces: dict[tuple[str, str], str] = {}
         self.deces: dict[str, str] = {}
+        self.genres: dict[str, str] = {"t-claire": "FEMALE", "t-paul": "MALE"}     # 2.22
+        self.type_lien = "SPOUSE_OF"                       # 2.22 : SIBLING_OF pour des essais de fratrie
         self.oublie = False                                # vrai : accepte l'écriture mais ne la garde pas
         self.muet = False                                  # vrai : ne répond plus (503)
 
@@ -106,6 +108,8 @@ class FauxTreemich:
                         self.mariages[cle] = corps["marriageAnniversaryDate"]
                     else:
                         self.mariages.pop(cle, None)
+                elif "gender" in corps:
+                    self.genres[chemin.split("/")[2]] = corps["gender"]
                 elif "deathDate" in corps:
                     pid = chemin.split("/")[2]
                     if corps["deathDate"]:
@@ -115,14 +119,14 @@ class FauxTreemich:
             return httpx.Response(200, json={})
         if chemin == "/people":
             return httpx.Response(200, json={"people": [
-                {"id": "t-claire", "name": "Claire MARTIN", "profile": {"gender": "FEMALE"},
+                {"id": "t-claire", "name": "Claire MARTIN", "profile": {"gender": self.genres["t-claire"]},
                  "externalIdentities": [{"provider": "IMMICH", "providerPersonId": "im-claire"}]},
-                {"id": "t-paul", "name": "Paul MARTIN", "profile": {"gender": "MALE"},
+                {"id": "t-paul", "name": "Paul MARTIN", "profile": {"gender": self.genres["t-paul"]},
                  "externalIdentities": [{"provider": "IMMICH", "providerPersonId": "im-paul"}]}]})
         if chemin == "/relationships":
             cle = ("t-claire", "t-paul")
             return httpx.Response(200, json={"relationships": [
-                {"fromPersonId": "t-claire", "toPersonId": "t-paul", "type": "SPOUSE_OF",
+                {"fromPersonId": "t-claire", "toPersonId": "t-paul", "type": self.type_lien,
                  "marriageAnniversaryDate": self.mariages.get(cle), "divorceDate": self.divorces.get(cle)}],
                 "nextCursor": None})
         if chemin.endswith("/life-events"):

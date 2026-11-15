@@ -23,11 +23,13 @@
     forme: [{ action: 'appliquer', libelle: 'Tout appliquer' }, { action: 'ignorer', libelle: 'Tout ignorer' }],
     immich: [{ action: 'ignorer', libelle: 'Tout ignorer' }],
     imports: [{ action: 'ignorer', libelle: 'Tout ignorer' }],
+    liens: [{ action: 'appliquer', libelle: 'Corriger tous les liens' }],   // 2.22
   }
   const AIDES = {
     icloud: 'Fiches modifiées, créées ou supprimées sur l\'iPhone, et conflits d\'écriture.',
     immich: 'Liaisons proposées, noms et dates de naissance qui diffèrent d\'Immich.',
     treemich: 'Mariages, décès, noms, naissances et liens familiaux qui diffèrent de l\'arbre.',
+    liens: 'Personnes dont carnet ne connaît pas le genre, et liens à accorder (frère, sœur, père, mère).',
   }
   function ouvrir(t) {
     if (t.cle === 'sans_groupe') { etat.manque = 'sans_groupe'; aller('contacts'); return }
@@ -35,12 +37,14 @@
     if (t.cle === 'sans_anniversaire') chargerSansAnniversaire()
   }
   const ouverte = $derived(tuiles.find((t) => t.cle === tuile))
+  // 2.22 : une question « femme ou homme ? » demande une réponse, elle ne part jamais dans un lot « appliquer »
+  const pourLot = (action) => visibles.filter((p) => !(action === 'appliquer' && p.motif === 'genre'))
   let lotEnCours = $state(false)
   let aConfirmer = $state(null)   // action groupée en attente de confirmation, avec son aperçu
   // Avant « Confirmer » : carnet dit ce que le lot fera (écritures dans iCloud, plafond, lecture seule)
   async function annoncer(l) {
     try {
-      const apercu = await api.post('/api/a-traiter-lot/apercu', { ids: visibles.map((p) => p.id), action: l.action })
+      const apercu = await api.post('/api/a-traiter-lot/apercu', { ids: pourLot(l.action).map((p) => p.id), action: l.action })
       aConfirmer = { ...l, apercu }
     } catch (e) { erreur(e) }
   }
@@ -53,7 +57,7 @@
       + `. Une copie d'iCloud est faite avant la première écriture du jour.`
   }
   async function lot(action) {
-    const ids = visibles.map((p) => p.id)
+    const ids = pourLot(action).map((p) => p.id)
     aConfirmer = null
     if (!ids.length) return
     lotEnCours = true
@@ -162,7 +166,7 @@
     {:else if !visibles.length}
       <p class="discret">Plus rien dans cette tuile.</p>
     {:else}
-    {#if LOTS[tuile] && visibles.length > 1}
+    {#if LOTS[tuile] && pourLot(LOTS[tuile][0].action).length > 1}
       <div class="lot">
         {#if aConfirmer}
           <span class="discret annonce" role="status">{aConfirmer.libelle} : {annonce(aConfirmer.apercu)}</span>
@@ -171,7 +175,7 @@
           <button class="bouton" onclick={() => (aConfirmer = null)}>Annuler</button>
         {:else}
           {#each LOTS[tuile] as l}
-            <button class="bouton" disabled={lotEnCours} onclick={() => annoncer(l)}>{l.libelle} ({visibles.length})</button>
+            <button class="bouton" disabled={lotEnCours} onclick={() => annoncer(l)}>{l.libelle} ({pourLot(l.action).length})</button>
           {/each}
         {/if}
       </div>

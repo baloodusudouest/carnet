@@ -27,7 +27,10 @@ def preparer(dossier: Path) -> tuple[Carnet, FauxICloud]:
         societe = {20: "ORG:Atelier Dupont;\r\n", 21: "ORG:ATELIER DUPONT;\r\n"}.get(i, "")
         # 2.18.1 : deux portables sur une fiche (Mise en forme : lequel est travail, lequel mobile)
         second = "TEL;type=CELL:+33 7 81 20 30 40\r\n" if i == 15 else ""
-        vcf += carte_simple(f"F-{i:02d}", nom, f"TEL;type=CELL:+33 6 {10 + i} 20 30 40\r\n" + second + societe)
+        # 2.22 : deux personnes notées « frère » sans genre connu (À traiter › Liens et genre)
+        proche = {1: "Camille Garnier", 4: "Gaëlle Perrin"}.get(i)
+        frere = f"item9.X-ABRELATEDNAMES:{proche}\r\nitem9.X-ABLabel:_$!<Brother>!$_\r\n" if proche else ""
+        vcf += carte_simple(f"F-{i:02d}", nom, f"TEL;type=CELL:+33 6 {10 + i} 20 30 40\r\n" + second + societe + frere)
     # 2.8 : des groupes, pour que les attentes produisent des manques (photo, naissance, Immich…)
     def groupe(uid, nom, membres):
         return ("BEGIN:VCARD\r\nVERSION:3.0\r\nN:" + nom + "\r\nFN:" + nom + "\r\nX-ADDRESSBOOKSERVER-KIND:group\r\n"

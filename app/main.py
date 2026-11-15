@@ -21,6 +21,7 @@ from .carddav import ErreurICloud
 from .carnet import Carnet, ErreurCarnet, Occupe
 from .config import charger
 from . import millesime as millesime_
+from . import genres
 from .liens import ErreurLien
 from .modele import groupes_tous, nom_affiche
 from .normalisation import cle_texte
@@ -266,16 +267,8 @@ def groupes():
 
 def _associes(c: Carnet, uid: str, f: dict) -> list[dict | None]:
     """2.19 : pour chaque nom associé de la fiche (conjoint, parent, frère…), la fiche qui porte ce nom, si une seule
-    le porte (comparé sans accents ni casse, sur le nom affiché puis le surnom). Sinon None : le nom reste du texte."""
-    index: dict[str, set[str]] = {}
-    for u, x in c.fiches().items():
-        for t in {cle_texte(nom_affiche(x)), cle_texte(x.get("surnom") or "")} - {""}:
-            index.setdefault(t, set()).add(u)
-    res = []
-    for n in f.get("noms_associes") or []:
-        trouves = index.get(cle_texte(n.get("valeur", "")), set()) - {uid}
-        res.append(next(iter(trouves)) if len(trouves) == 1 else None)
-    return res
+    le porte. Sinon None : le nom reste du texte."""
+    return genres.cibles(c, uid, f)
 
 
 @app.get("/api/contacts/{uid}")
@@ -302,6 +295,7 @@ def contact(uid: str):
                      "attendue": "fete" in attentes.attendues(f, attentes.par_groupe(c))},
             "deces": {"date": attentes.decedes(c).get(uid), "decede": uid in attentes.decedes(c),
                       "coche": bool(c.base.un("SELECT 1 FROM deces WHERE uid = ? AND origine = 'main'", (uid,)))},
+            "genre": genres.fiche(c, uid),     # 2.22
             "google_logo": galerie.recherche_google(f),
             # 2.15 : le chemin de vie de la personne, si la fiche est liée à Immich et que Sillage a une adresse
             "sillage": (f"{c.cfg.sillage_adresse}/#/chemin/{c.liaisons().get(uid, {}).get('immich')}"
@@ -724,6 +718,12 @@ def exceptions():
 @app.post("/api/contacts/{uid}/exception")
 def excepter(uid: str, corps: dict = Body(...)):
     return attentes.excepter(carnet(), uid, str(corps.get("info", "")), bool(corps.get("oui", True)))
+
+
+@app.post("/api/contacts/{uid}/genre")
+def genre(uid: str, corps: dict = Body(...)):
+    """2.22 : femme, homme, autre, ou vide pour retirer le choix. Reste dans carnet ; écrit dans Treemich s'il y est inconnu."""
+    return genres.definir(carnet(), uid, str(corps.get("genre") or ""))
 
 
 @app.post("/api/contacts/{uid}/decede")

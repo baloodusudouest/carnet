@@ -46,7 +46,7 @@ ATTENTES = {
 LIBELLES = {"telephone": "Sans téléphone", "jour": "Sans jour de naissance", "annee": "Sans année de naissance",
             "photo": "Sans photo ni logo", "immich": "Sans Immich", "treemich": "Sans Treemich",
             "liens": "Sans liens familiaux", "societe": "Sans société ni fonction"}
-FAMILIAUX = {"conjoint", "partenaire", "mère", "père", "parent", "enfant", "frère", "sœur"}
+FAMILIAUX = {"conjoint", "partenaire", "mère", "père", "parent", "enfant", "frère", "sœur", "frère ou sœur"}
 LIBELLES_APPLE = re.compile(r"^_\$!<(.+)>!\$_$")
 
 

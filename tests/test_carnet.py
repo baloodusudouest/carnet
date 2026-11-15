@@ -2507,3 +2507,153 @@ def test_221_millesime_sans_anniversaire(tmp_path, services):
     cn3 = Carnet(_config(tmp_path / "c"), transports)
     n = len(vus)
     assert millesime.sans_anniversaire(cn3) == [] and len(vus) == n
+
+
+# ================================================================ 2.22 : genre, « frère ou sœur »
+
+def test_222_fratrie_sans_genre_connu_donne_frere_ou_soeur():
+    """Avant la 2.22, une sœur dont l'arbre ne connaît pas le genre était notée « frère »."""
+    from app.liens import relations_de
+    rel = [{"de": "a", "vers": "b", "type": "SIBLING_OF"}, {"de": "c", "vers": "a", "type": "PARENT_OF"}]
+    assert relations_de("a", rel, {}) == [("b", "frère ou sœur"), ("c", "parent")]
+    assert relations_de("a", rel, {"b": "UNKNOWN", "c": "UNKNOWN"}) == [("b", "frère ou sœur"), ("c", "parent")]
+    assert relations_de("a", rel, {"b": "FEMALE", "c": "MALE"}) == [("b", "sœur"), ("c", "père")]
+    assert relations_de("a", rel, {"b": "homme", "c": "femme"}) == [("b", "frère"), ("c", "mère")]     # mots de carnet
+    assert relations_de("a", rel, {"b": "autre", "c": "autre"}) == [("b", "frère ou sœur"), ("c", "parent")]
+
+
+def test_222_genre_lu_dans_treemich_et_lien_propose(c, services):
+    """Le genre des personnes reliées vient de l'arbre ; une fratrie y devient sœur, frère, ou « frère ou sœur »."""
+    from app import genres
+    services["treemich"].type_lien = "SIBLING_OF"
+    services["treemich"].genres["t-claire"] = "UNKNOWN"
+    liaisons.lier(c, "DDDD-4444", "treemich", "t-paul")
+    liaisons.lier(c, "AAAA-1111", "treemich", "t-claire")
+    liaisons.donnees(c, rafraichir=True)
+    assert genres.tous(c) == {"DDDD-4444": {"genre": "homme", "origine": "treemich"}}
+    rel = {p["uid"]: p["donnees"]["ajouts"] for p in points(c, "relations")}
+    assert rel["DDDD-4444"] == [{"valeur": "Claire MARTIN", "type": "frère ou sœur"}]      # genre inconnu : neutre
+    assert "AAAA-1111" not in rel                       # la carte de Claire porte déjà « Paul MARTIN »
+    # Le genre choisi dans carnet passe avant : la proposition devient « sœur »
+    genres.definir(c, "AAAA-1111", "femme")
+    rel = {p["uid"]: p["donnees"]["ajouts"] for p in points(c, "relations")}
+    assert rel["DDDD-4444"] == [{"valeur": "Claire MARTIN", "type": "sœur"}]
+
+
+def test_222_genre_choisi_dans_carnet_ecrit_dans_treemich_seulement_s_il_y_manque(c, services):
+    from app import genres
+    tm = services["treemich"]
+    tm.genres["t-paul"] = "UNKNOWN"
+    liaisons.lier(c, "DDDD-4444", "treemich", "t-paul")
+    liaisons.lier(c, "AAAA-1111", "treemich", "t-claire")
+    liaisons.donnees(c, rafraichir=True)
+    assert genres.de(c, "DDDD-4444") == "" and genres.de(c, "AAAA-1111") == "femme"
+    # Inconnu dans l'arbre : écrit, puis relu
+    r = genres.definir(c, "DDDD-4444", "homme")
+    assert ("/people/t-paul", {"gender": "MALE"}) in tm.ecrits and "Écrit aussi dans Treemich" in r["message"]
+    assert r["genre"] == {"valeur": "homme", "origine": "main", "treemich": "", "choix": genres.GENRES}
+    # Déjà connu dans l'arbre, et différent : rien n'est écrasé, carnet garde son choix et le dit
+    n = len(tm.ecrits)
+    r = genres.definir(c, "AAAA-1111", "homme")
+    assert len(tm.ecrits) == n and "rien n'y a été écrasé" in r["message"]
+    liaisons.donnees(c, rafraichir=True)
+    assert genres.tous(c)["AAAA-1111"] == {"genre": "homme", "origine": "main"}       # une relecture ne l'écrase pas
+    assert genres.fiche(c, "AAAA-1111")["treemich"] == "femme"
+    # « Autre » reste dans carnet ; retirer son choix rend la main à l'arbre
+    tm.genres["t-paul"] = "UNKNOWN"
+    liaisons.donnees(c, rafraichir=True)
+    genres.definir(c, "DDDD-4444", "autre")
+    assert len(tm.ecrits) == n
+    genres.definir(c, "AAAA-1111", "")
+    assert genres.tous(c)["AAAA-1111"] == {"genre": "femme", "origine": "treemich"}
+    with pytest.raises(ErreurCarnet):
+        genres.definir(c, "AAAA-1111", "licorne")
+
+
+def test_222_treemich_qui_ne_garde_pas_le_genre_coupe_l_ecriture(c, services):
+    """La forme de l'écriture n'a jamais été vue sur la vraie installation : si le genre ne revient pas, carnet arrête."""
+    from app import genres
+    tm = services["treemich"]
+    tm.genres["t-paul"] = "UNKNOWN"
+    liaisons.lier(c, "DDDD-4444", "treemich", "t-paul")
+    tm.oublie = True
+    r = genres.definir(c, "DDDD-4444", "homme")
+    assert c.base.lire(genres.COUPE) is True and "n'a pas gardé" in r["message"]
+    assert genres.de(c, "DDDD-4444") == "homme"                                       # le choix reste dans carnet
+    n = len(tm.ecrits)
+    tm.oublie = False
+    bilan = {"treemich": 0, "details": []}
+    genres.synchroniser(c, liaisons.donnees(c, rafraichir=True), bilan)
+    assert len(tm.ecrits) == n and bilan["treemich"] == 0                             # plus aucune écriture de genre
+
+
+def test_222_genre_en_attente_part_a_la_synchronisation_et_jamais_en_lecture_seule(c, services, tmp_path):
+    from app import connexion, genres
+    tm = services["treemich"]
+    tm.genres["t-paul"] = "UNKNOWN"
+    liaisons.lier(c, "DDDD-4444", "treemich", "t-paul")
+    _en_lecture_seule(c, tmp_path)
+    r = genres.definir(c, "DDDD-4444", "homme")
+    assert not tm.ecrits and "lecture seule" in r["message"] and genres.de(c, "DDDD-4444") == "homme"
+    d = liaisons.donnees(c, rafraichir=True)
+    genres.synchroniser(c, d, {"treemich": 0})
+    assert not tm.ecrits
+    object.__setattr__(c, "cfg", _config(tmp_path))
+    assert genres.en_attente(c, d) == ["DDDD-4444"]
+    connexion.synchroniser(c, "treemich")
+    assert ("/people/t-paul", {"gender": "MALE"}) in tm.ecrits
+    assert genres.en_attente(c, liaisons.donnees(c, rafraichir=True)) == []
+
+
+def test_222_liens_deja_ecrits_corriges_depuis_a_traiter(c, services):
+    """« frère » écrit pour une femme : d'abord la question du genre, puis une ligne par lien à corriger."""
+    from app import genres
+    f = c.fiche("DDDD-4444")
+    f["noms_associes"] = [{"valeur": "Claire MARTIN", "type": "frère"}, {"valeur": "Quelqu'un", "type": "frère"}]
+    actions.valider(c, "DDDD-4444", f)
+    c.oublier()
+    assert "_$!<Brother>!$_" in services["icloud"].texte("DDDD-4444")
+    # Genre inconnu : une seule question, posée sur la personne ; un nom sans fiche ne demande rien
+    [q] = points(c, "genre")
+    assert q["uid"] == "AAAA-1111" and q["tuile"] == "liens" and q["donnees"]["notes"] == [{"fiche": "Paul MARTIN", "type": "frère"}]
+    assert not points(c, "lien_genre")
+    actions.repondre(c, q["id"], "choisir", "femme")
+    assert not points(c, "genre")
+    [p] = points(c, "lien_genre")
+    assert p["uid"] == "DDDD-4444" and (p["donnees"]["de"], p["donnees"]["vers"]) == ("frère", "sœur")
+    # Rien n'est corrigé tout seul ; « Appliquer » écrit la carte, y compris par lot
+    assert "_$!<Brother>!$_" in services["icloud"].texte("DDDD-4444")
+    assert actions.repondre_lot(c, [p["id"]], "appliquer")["faits"] == 1
+    carte = services["icloud"].texte("DDDD-4444")
+    assert "_$!<Sister>!$_" in carte and carte.count("_$!<Brother>!$_") == 1         # l'autre « frère » n'a pas bougé
+    assert not points(c, "lien_genre")
+    # « Autre » : libellé neutre, écrit comme libellé personnalisé et relu tel quel depuis iCloud
+    genres.definir(c, "AAAA-1111", "autre")
+    [p] = points(c, "lien_genre")
+    assert p["donnees"]["vers"] == "frère ou sœur"
+    actions.repondre(c, p["id"], "appliquer")
+    assert "X-ABLabel:frère ou sœur" in services["icloud"].texte("DDDD-4444")
+    with c.ecriture():
+        icloud.relire(c, "test")
+    assert {"valeur": "Claire MARTIN", "type": "frère ou sœur"} in c.fiche("DDDD-4444")["noms_associes"]
+    assert not points(c, "lien_genre") and not points(c, "genre")
+    # Un lien de famille neutre compte toujours comme lien familial
+    from app import attentes
+    assert "frère ou sœur" in attentes.FAMILIAUX
+
+
+def test_222_genre_par_l_api_et_a_la_suppression(c, services):
+    from fastapi.testclient import TestClient
+    from app import genres, main
+    main.ETAT["carnet"] = c
+    with TestClient(main.app) as client:
+        client.post("/api/connexion", json={"mot_de_passe": "secret"})
+        assert client.get("/api/contacts/DDDD-4444").json()["genre"]["valeur"] == ""
+        r = client.post("/api/contacts/DDDD-4444/genre", json={"genre": "homme"}).json()
+        assert r["genre"]["valeur"] == "homme" and r["genre"]["origine"] == "main"
+        assert client.get("/api/contacts/DDDD-4444").json()["genre"]["valeur"] == "homme"
+        assert client.post("/api/contacts/DDDD-4444/genre", json={"genre": "x"}).status_code == 400
+        etag = client.get("/api/contacts/DDDD-4444").json()["etag"]
+        client.post("/api/contacts/DDDD-4444/supprimer", json={"etag": etag, "confirmation": True})
+        assert "DDDD-4444" not in genres.tous(c)                                       # le genre part avec la fiche
+    main.ETAT.clear()

@@ -146,6 +146,13 @@
         <label><input type="radio" name={'soc-' + point.id} value="__autre" bind:group={ecriture} /> Autre écriture
           {#if ecriture === '__autre'}<input class="autre" bind:value={autre} aria-label="Autre écriture" autocomplete="off" />{/if}</label>
       </fieldset>
+    {:else if point.motif === 'genre'}
+      <p>Noté{d.notes.length > 1 ? 'e' : ''} « {[...new Set(d.notes.map((n) => n.type))].join(' », « ')} » sur {d.notes.length > 1 ? 'les fiches' : 'la fiche'} de
+        {d.notes.map((n) => n.fiche).join(', ')}. carnet ne connaît pas son genre.</p>
+      <p class="discret">Le genre reste dans carnet et rejoint Treemich s'il y manque. Les liens à corriger viendront ensuite ici, un par fiche.</p>
+    {:else if point.motif === 'lien_genre'}
+      <p>{d.valeur} : <span class="avant">{d.de}</span> <span class="apres">{d.vers}</span>
+        <span class="discret">({d.genre === 'autre' ? 'genre : autre' : d.genre})</span></p>
     {:else if point.motif === 'mariage'}
       <p>{d.couple} forment un couple dans Treemich, sans date de mariage.</p>
       <label class="saisie-date"><span class="discret">Date du mariage ou du PACS</span>
@@ -206,6 +213,14 @@
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer', null, 'Noté : ces écritures ne seront plus rapprochées.')}>Pas la même société</button>
     {:else if point.motif === 'portables'}
       <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('choisir', roles, 'Types des portables écrits dans iCloud.')}>Écrire dans iCloud</button>
+      <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Laisser comme ça</button>
+    {:else if point.motif === 'genre'}
+      <button class="bouton" disabled={attente} onclick={() => faire('choisir', 'femme', 'Genre enregistré.')}>Femme</button>
+      <button class="bouton" disabled={attente} onclick={() => faire('choisir', 'homme', 'Genre enregistré.')}>Homme</button>
+      <button class="bouton" disabled={attente} onclick={() => faire('choisir', 'autre', 'Genre enregistré.')}>Autre</button>
+      <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Ignorer</button>
+    {:else if point.motif === 'lien_genre'}
+      <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('appliquer', null, 'Lien corrigé dans iCloud.')}>Corriger</button>
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Laisser comme ça</button>
     {:else if point.motif === 'mariage'}
       <button class="bouton bouton-principal" disabled={attente || !saisie.trim()} onclick={() => faire('ecrire', saisie, 'Date de mariage écrite partout.')}>Écrire la date</button>

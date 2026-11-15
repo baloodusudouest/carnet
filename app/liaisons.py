@@ -64,6 +64,8 @@ def donnees(c: Carnet, rafraichir: bool = False) -> dict:
                 res["treemich_ok"], res["erreur_treemich"] = False, str(exc)
             from . import famille
             famille.memoriser(c, res)   # dernier état connu des couples et des décès (2.8)
+            from . import genres
+            genres.memoriser(c, res)    # 2.22 : genre des personnes reliées
         return res
     return c.memo("liens", calcul, duree=DUREE_CACHE)
 
@@ -269,7 +271,8 @@ def relations(c: Carnet, d: dict | None = None) -> list[dict]:
     d = d or donnees(c)
     if not d["relations"]:
         return []
-    genres = {p["id"]: p.get("genre", "") for p in d["treemich"]}
+    from . import genres as G
+    genres = G.par_treemich(c, d)      # 2.22 : le genre choisi dans carnet passe avant celui de l'arbre
     uid_par_tree = {v["treemich"]: u for u, v in c.liaisons().items() if v.get("treemich")}
     fiches = c.fiches()
     res = []

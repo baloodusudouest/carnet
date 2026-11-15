@@ -61,7 +61,7 @@ TYPES = {
     "sites": ["site", "linkedin", "facebook", "instagram", "x", "tiktok", "telegram", "whatsapp",
               "signal", "autre"],
     "noms_associes": ["conjoint", "partenaire", "mère", "père", "parent", "enfant",
-                      "frère", "sœur", "ami", "assistant", "responsable", "autre"],
+                      "frère", "sœur", "frère ou sœur", "ami", "assistant", "responsable", "autre"],
 }
 
 # Ordre de préférence pour proposer une valeur unique (prénom, société…)

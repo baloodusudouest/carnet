@@ -40,6 +40,7 @@ export const ICONES_TUILES = {
   doublons: '<circle cx="9" cy="12" r="5"/><circle cx="15" cy="12" r="5"/>',
   societes: '<path d="M5 20V6.5L12 4v16M12 9.5l7 2V20M4 20h16"/><path d="M8 9.5h1M8 13h1M8 16.5h1M15.5 14h1M15.5 17h1"/>',
   forme: '<path d="M5 18.5 9.5 6h1L15 18.5M6.8 14h6.4"/><path d="M17 11.5h3M17 15h3M17 18.5h3"/>',
+  liens: '<circle cx="8" cy="8" r="2.6"/><circle cx="16" cy="8" r="2.6"/><path d="M3.5 19c.5-3 2.2-4.6 4.5-4.6s4 1.6 4.5 4.6M12 19c.5-3 2-4.6 4-4.6s4 1.6 4.5 4.6"/>',
   reseaux: '<circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M8.2 10.9l7.6-3.8M8.2 13.1l7.6 3.8"/>',
   imports: '<path d="M12 4v10M7.5 10 12 14.5 16.5 10"/><path d="M5 18.5h14"/>',
   incomplet: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 8 8h-8z"/>',

@@ -40,7 +40,7 @@ DEPART = {
     "Urgence": ["telephone"],
     "Moi": [],
 }
-FAMILIAUX = {"conjoint", "partenaire", "mère", "père", "parent", "enfant", "frère", "sœur"}
+FAMILIAUX = {"conjoint", "partenaire", "mère", "père", "parent", "enfant", "frère", "sœur", "frère ou sœur"}
 PERSONNELLES = {"jour", "annee", "fete", "immich", "treemich", "liens"}   # sans objet pour une entreprise
 SANS_GROUPE = "sans_groupe"
 

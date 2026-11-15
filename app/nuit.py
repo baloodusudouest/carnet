@@ -88,6 +88,9 @@ def _suite_de_nuit(c: Carnet, lecture: dict, bilan: dict) -> None:
         # 2.8 : fêtes et dates de famille, seulement si leur interrupteur est allumé (Réglages)
         from . import famille
         famille.appliquer(c, d, bilan, PLAFOND)
+        if famille.actif(c, "famille"):
+            from . import genres
+            genres.synchroniser(c, d, bilan)   # 2.22 : genres choisis dans carnet, inconnus de l'arbre
     from . import connexion
     if connexion.nuit_active(c, "synology"):
         c.tache.update(message="Synology Contacts…", progression=0.85)
