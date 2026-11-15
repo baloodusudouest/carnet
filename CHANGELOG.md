@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.22.1 — 15 novembre 2026
+- **Douze points lit les prénoms et les noms.** Nouvelle adresse `/douze-points/personnes`, ouverte par son propre jeton (`CARNET_JETON_DOUZE_POINTS` ; dans la stack : `DOUZE_POINTS_CARNET_JETON`, la même valeur des deux côtés) ; vide : adresse fermée. Elle ne donne que le prénom et le nom des fiches (ni date, ni téléphone, ni groupe), sans les fiches d'entreprise ni les personnes décédées. Sert à choisir les invités d'une soirée en tapant leur nom. carnet n'écrit rien. Jamais essayée sur la vraie installation.
+
 ## 2.22.0 — 15 novembre 2026
 - **Une sœur n'est plus notée « frère ».** Quand Treemich ne connaît pas le genre d'une personne, carnet proposait « frère » pour toute la fratrie. Il propose maintenant « frère ou sœur », comme il proposait déjà « parent » faute de savoir père ou mère. « frère ou sœur » est un nouveau type de nom associé ; Apple n'a pas de libellé neutre pour la fratrie, il est donc écrit dans iCloud comme libellé personnalisé, que l'iPhone affiche tel quel.
 - **Champ genre sur la fiche** : Femme, Homme, Autre, sous les informations ; toucher le genre choisi le retire. Le genre reste dans la base de carnet (l'iPhone n'a pas ce champ, rien n'est écrit dans iCloud). Il décide du libellé des liens : sœur ou frère, mère ou père ; « Autre » donne « frère ou sœur » et « parent ».

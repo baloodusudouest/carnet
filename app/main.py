@@ -101,6 +101,11 @@ async def garde(request: Request, appel):
         jeton = carnet().cfg.gazette_jeton
         if not jeton or not hmac.compare_digest(request.headers.get("authorization", ""), f"Bearer {jeton}"):
             return JSONResponse({"detail": "Jeton de Gazette manquant ou invalide."}, status_code=401)
+    elif chemin.startswith("/douze-points/"):
+        # 2.22.1 : Douze points lit prénoms et noms (rien d'autre), avec son propre jeton
+        jeton = carnet().cfg.douze_points_jeton
+        if not jeton or not hmac.compare_digest(request.headers.get("authorization", ""), f"Bearer {jeton}"):
+            return JSONResponse({"detail": "Jeton de Douze points manquant ou invalide."}, status_code=401)
     # Sans session : seulement l'envoi du mot de passe et la question « suis-je connecté ? ».
     # La lecture de /api/connexion (l'état des services, 2.9) exige une session comme le reste.
     elif chemin.startswith("/api/") and not (chemin == "/api/session"
@@ -108,7 +113,7 @@ async def garde(request: Request, appel):
         if not ETAT["sessions"].connecte(request.cookies):
             return JSONResponse({"detail": "Connexion nécessaire."}, status_code=401)
     reponse = await appel(request)
-    if chemin.startswith(("/api/", "/ha/", "/sillage/", "/gazette/")):
+    if chemin.startswith(("/api/", "/ha/", "/sillage/", "/gazette/", "/douze-points/")):
         reponse.headers["Cache-Control"] = "no-store"
     return reponse
 
@@ -1012,6 +1017,13 @@ def sillage_personnes():
 @app.get("/gazette/personnes")
 def gazette_personnes():
     return sorties.gazette_personnes(carnet())
+
+
+# ================================================================ Douze points (Bearer)
+
+@app.get("/douze-points/personnes")
+def douze_points_personnes():
+    return sorties.douze_points_personnes(carnet())
 
 
 # ================================================================ Home Assistant (Bearer)

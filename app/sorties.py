@@ -254,6 +254,18 @@ def gazette_personnes(c: Carnet) -> dict:
     return {"genere_le": iso(maintenant()), "personnes": res}
 
 
+def douze_points_personnes(c: Carnet) -> dict:
+    """2.22.1 : prénoms et noms pour Douze points (choisir les invités d'une soirée en tapant leur nom).
+    Rien d'autre n'est donné : ni date, ni téléphone, ni adresse, ni groupe. Les fiches sans prénom
+    (entreprises) et les personnes décédées ne sont pas données. Lecture seule."""
+    from . import attentes
+    morts = attentes.decedes(c)
+    res = [{"carnet_id": p["carnet_id"], "prenom": p["prenom"], "nom": p["nom_carnet"]}
+           for p in contacts_ha(c) if p["prenom"] and p["carnet_id"] not in morts]
+    log.info("Douze points : %d personne(s) renvoyée(s)", len(res))
+    return {"genere_le": iso(maintenant()), "personnes": res}
+
+
 def ha_anniversaires(c: Carnet) -> dict:
     """Naissances, et depuis la 2.8 les mariages (clé « mariages »). Une personne décédée n'est
     plus annoncée ; un couple divorcé non plus."""

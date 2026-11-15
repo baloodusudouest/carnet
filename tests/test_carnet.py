@@ -569,6 +569,14 @@ def test_home_assistant_adresses(c):
         assert paul["nom"] == "Paul MARTIN" and paul["naissance"] == "1983-01-09"
         assert any(x["naissance"] is None and x["jour"] for x in gz)      # sans année : pas de date complète
         assert set(paul) == {"carnet_id", "nom", "nom_carnet", "prenom", "naissance", "jour", "mois", "annee"}
+        # 2.22.1 : la liste pour Douze points (prénom et nom, rien d'autre), fermée sans son jeton à elle
+        assert client.get("/douze-points/personnes").status_code == 401
+        assert client.get("/douze-points/personnes", headers=h).status_code == 401
+        assert client.get("/douze-points/personnes", headers={"Authorization": "Bearer jeton-gazette"}).status_code == 401
+        c.cfg = dataclasses.replace(c.cfg, douze_points_jeton="jeton-douze-points")
+        dp = client.get("/douze-points/personnes", headers={"Authorization": "Bearer jeton-douze-points"}).json()["personnes"]
+        assert dp and all(set(x) == {"carnet_id", "prenom", "nom"} and x["prenom"] for x in dp)
+        assert next(x for x in dp if x["carnet_id"] == "DDDD-4444")["prenom"] == "Paul"
         connecter = client.post("/api/connexion", json={"mot_de_passe": "secret"})
         assert connecter.status_code == 200
         if True:
