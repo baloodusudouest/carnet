@@ -56,7 +56,7 @@
   }
   function annonce(a) {
     const n = a.points
-    if (a.action === 'proposer') return `Le genre proposé d'après le prénom sera enregistré pour ${n} personne(s). Rien n'est écrit dans iCloud ; Treemich reçoit ceux qui lui manquent à sa prochaine synchronisation.`
+    if (a.action === 'proposer') return `Le genre proposé d'après le prénom sera enregistré pour ${n} personne(s). Rien n'est écrit dans iCloud ; Treemich reçoit tout de suite ceux qu'il ne connaît pas (sans rien écraser).`
     if (!a.ecrit) return `${n} point(s) seront écartés et ne seront plus proposés. Rien n'est écrit dans iCloud.`
     if (a.lecture_seule) return `Mode lecture seule : ces ${n} écriture(s) dans iCloud seront refusées.`
     return `${a.a_ecrire} fiche(s) seront modifiées dans iCloud`
@@ -70,7 +70,8 @@
     lotEnCours = true
     try {
       const r = await api.post('/api/a-traiter-lot', { ids, action })
-      dire(`${r.faits} point(s) traité(s)` + (r.reportes ? `, ${r.reportes} remis au prochain lot (plafond d'écritures)` : '')
+      dire(`${r.faits} point(s) traité(s)` + (r.treemich ? `, ${r.treemich} genre(s) écrit(s) dans Treemich` : '')
+           + (r.reportes ? `, ${r.reportes} remis au prochain lot (plafond d'écritures)` : '')
            + (r.erreurs.length ? `, ${r.erreurs.length} erreur(s) : ${r.erreurs[0]}` : '') + '.')
       await charger(); rafraichirAccueil()
     } catch (e) { erreur(e) } finally { lotEnCours = false }

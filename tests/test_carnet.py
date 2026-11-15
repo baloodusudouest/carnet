@@ -2574,11 +2574,11 @@ def test_222_genre_choisi_dans_carnet_ecrit_dans_treemich_seulement_s_il_y_manqu
     liaisons.donnees(c, rafraichir=True)
     assert genres.tous(c)["AAAA-1111"] == {"genre": "homme", "origine": "main"}       # une relecture ne l'écrase pas
     assert genres.fiche(c, "AAAA-1111")["treemich"] == "femme"
-    # « Autre » reste dans carnet ; retirer son choix rend la main à l'arbre
+    # 2.24.2 : « Autre » s'écrit aussi dans l'arbre (OTHER) ; retirer son choix rend la main à l'arbre
     tm.genres["t-paul"] = "UNKNOWN"
     liaisons.donnees(c, rafraichir=True)
     genres.definir(c, "DDDD-4444", "autre")
-    assert len(tm.ecrits) == n
+    assert tm.ecrits[-1] == ("/people/t-paul", {"gender": "OTHER"})
     genres.definir(c, "AAAA-1111", "")
     assert genres.tous(c)["AAAA-1111"] == {"genre": "femme", "origine": "treemich"}
     with pytest.raises(ErreurCarnet):
@@ -2939,3 +2939,47 @@ def test_224_reanalyse_une_fois_et_creation_d_une_fiche_complete(c, services):
     for attendue in ("N:ROY;Léa;Marie;Me;fils", "X-MAIDENNAME:Blanc", "X-PRONUNCIATION-FIRST-NAME:lé-a", "X-PHONETIC-ORG:roa",
                      "X-ABDATE:2001-09-01", "X-ICQ:lea.icq", "IMPP;X-SERVICE-TYPE=ICQ:aim:lea.icq"):
         assert attendue in carte, attendue
+
+
+
+# ------------------------------------------------------------ 2.24.2 : genre synchronisé avec Treemich
+
+def test_2242_desaccord_de_genre_avec_treemich_devient_un_point(c, services):
+    from app import genres
+    tm = services["treemich"]
+    liaisons.lier(c, "AAAA-1111", "treemich", "t-claire")            # l'arbre dit FEMALE
+    liaisons.donnees(c, rafraichir=True)
+    genres.definir(c, "AAAA-1111", "homme")                          # choisi dans carnet : rien n'est écrasé
+    liaisons.donnees(c, rafraichir=True)
+    p = [x for x in traiter.liste(c) if x["motif"] == "genre_treemich"]
+    assert len(p) == 1 and p[0]["donnees"] == {"carnet": "homme", "treemich": "femme"}
+    assert any(t["cle"] == "liens" and t["nombre"] >= 1 for t in traiter.tuiles(c))
+    # Garder celui de carnet : écrit dans l'arbre (seul cas où carnet écrase)
+    r = actions.repondre(c, p[0]["id"], "garder_carnet")
+    assert tm.genres["t-claire"] == "MALE" and "Écrit aussi dans Treemich" in r["message"]
+    liaisons.donnees(c, rafraichir=True)
+    assert not [x for x in traiter.liste(c) if x["motif"] == "genre_treemich"]
+    # Nouveau désaccord, cette fois on prend celui de l'arbre
+    tm.genres["t-claire"] = "FEMALE"
+    liaisons.donnees(c, rafraichir=True)
+    p = [x for x in traiter.liste(c) if x["motif"] == "genre_treemich"]
+    actions.repondre(c, p[0]["id"], "prendre_treemich")
+    assert genres.tous(c)["AAAA-1111"] == {"genre": "femme", "origine": "treemich"}
+    assert not [x for x in traiter.liste(c) if x["motif"] == "genre_treemich"]
+
+
+def test_2242_genres_valides_par_lot_ecrits_tout_de_suite_dans_treemich(c, services):
+    from app import genres
+    tm = services["treemich"]
+    tm.genres["t-paul"] = "UNKNOWN"
+    tm.genres["t-claire"] = "MALE"                                   # déjà connu dans l'arbre : jamais écrasé
+    liaisons.lier(c, "DDDD-4444", "treemich", "t-paul")
+    liaisons.lier(c, "AAAA-1111", "treemich", "t-claire")
+    liaisons.donnees(c, rafraichir=True)
+    c.base.executer("DELETE FROM genres")
+    c.oublier()
+    genres.definir_lot(c, {"DDDD-4444": "homme", "AAAA-1111": "femme"})
+    n = len(tm.ecrits)
+    b = genres.vers_treemich_maintenant(c)
+    assert b.get("treemich") == 1 and tm.genres["t-paul"] == "MALE" and tm.genres["t-claire"] == "MALE"
+    assert len(tm.ecrits) == n + 1

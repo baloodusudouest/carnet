@@ -3,8 +3,12 @@
 Le genre n'est pas dans la carte iCloud (l'iPhone ne l'affiche pas) : il vit dans la base de carnet.
 - Treemich → carnet : à chaque lecture de l'arbre, le genre des personnes reliées est repris, sauf
   si Julien l'a choisi lui-même dans carnet (origine « main », jamais écrasée).
-- carnet → Treemich : un genre choisi dans carnet (homme ou femme) est écrit dans l'arbre seulement
-  s'il y est inconnu. Remplir, jamais écraser. « Autre » reste dans carnet.
+- carnet → Treemich : un genre choisi dans carnet (femme, homme ou autre) est écrit dans l'arbre
+  tout de suite s'il y est inconnu (aussi après une validation par lot ; la nuit rattrape les échecs).
+  Remplir, jamais écraser tout seul.
+- Désaccord (2.24.2) : quand le genre choisi dans carnet n'est pas celui de l'arbre, un point
+  « Genre différent dans Treemich » demande lequel garder ; garder celui de carnet l'écrit dans
+  l'arbre (seul cas où carnet écrase), prendre celui de l'arbre remplace le choix fait dans carnet.
 
 Le genre décide du libellé d'un lien : frère / sœur / « frère ou sœur », père / mère / parent.
 Un lien déjà écrit qui ne s'accorde pas devient une ligne dans « À traiter » ; carnet ne corrige
@@ -19,7 +23,7 @@ from .normalisation import cle_texte
 from .temps import iso, maintenant
 
 GENRES = {"femme": "Femme", "homme": "Homme", "autre": "Autre"}
-DE_TREEMICH = {"FEMALE": "femme", "MALE": "homme"}
+DE_TREEMICH = {"FEMALE": "femme", "MALE": "homme", "OTHER": "autre"}
 VERS_TREEMICH = {v: k for k, v in DE_TREEMICH.items()}
 
 FRATRIE_NEUTRE = "frère ou sœur"
@@ -151,6 +155,17 @@ def _points(c: Carnet) -> list[dict]:
                             "donnees": {"valeur": n["valeur"], "de": type_, "vers": voulu, "cible": cible, "genre": genre}})
             elif not genre and type_ in ("frère", FRATRIE_NEUTRE):
                 a_preciser.setdefault(cible, []).append({"fiche": nom_affiche(f), "type": type_})
+    # 2.24.2 : genre choisi dans carnet ≠ genre de l'arbre (d'après la dernière lecture de Treemich)
+    from . import liaisons
+    d = c.memo_present("liens", liaisons.DUREE_CACHE)
+    if _treemich_parle(d):
+        arbre = {p["id"]: DE_TREEMICH.get(p.get("genre", ""), "") for p in d["treemich"]}
+        for tid, uid in _reliees(c).items():
+            connu = connus.get(uid) or {}
+            g_arbre = arbre.get(tid, "")
+            if connu.get("origine") == "main" and g_arbre and g_arbre != connu.get("genre"):
+                res.append({"motif": "genre_treemich", "uid": uid, "cle": f"{uid}|{connu['genre']}|{g_arbre}",
+                            "donnees": {"carnet": connu["genre"], "treemich": g_arbre}})
     from . import prenoms
     for uid, f in fiches.items():
         if uid in connus or not (f.get("prenom") or f.get("nom")):
@@ -162,8 +177,8 @@ def _points(c: Carnet) -> list[dict]:
 
 
 def definir_lot(c: Carnet, choix: dict[str, str]) -> int:
-    """Plusieurs genres d'un coup (propositions validées par lot). Rien n'est écrit dans Treemich
-    ici : ceux qui lui manquent partent à la prochaine synchronisation ou la nuit."""
+    """Plusieurs genres d'un coup (propositions validées par lot), dans la base de carnet. L'écriture
+    dans Treemich suit avec `vers_treemich_maintenant` (appelée par l'action groupée)."""
     le = iso(maintenant())
     fiches = c.fiches()
     faits = 0
@@ -203,8 +218,10 @@ def definir(c: Carnet, uid: str, genre: str) -> dict:
     return {"ok": True, "genre": fiche(c, uid), "message": message}
 
 
-def _vers_treemich(c: Carnet, uid: str, genre: str, tm=None, personnes: list[dict] | None = None) -> str:
-    """Écrit le genre dans l'arbre s'il y est inconnu, puis relit. Rend ce qui s'est passé, en clair."""
+def _vers_treemich(c: Carnet, uid: str, genre: str, tm=None, personnes: list[dict] | None = None,
+                   ecraser: bool = False) -> str:
+    """Écrit le genre dans l'arbre s'il y est inconnu (ou, avec `ecraser`, s'il y est différent :
+    seulement quand Julien l'a demandé dans un point de désaccord), puis relit."""
     if c.cfg.lecture_seule:
         return "carnet est en lecture seule : rien n'est écrit dans Treemich."
     if not c.cfg.treemich_email:
@@ -219,7 +236,8 @@ def _vers_treemich(c: Carnet, uid: str, genre: str, tm=None, personnes: list[dic
     if actuel in DE_TREEMICH:
         if DE_TREEMICH[actuel] == genre:
             return "Treemich dit la même chose."
-        return f"Treemich dit « {DE_TREEMICH[actuel]} » : rien n'y a été écrasé."
+        if not ecraser:
+            return f"Treemich dit « {DE_TREEMICH[actuel]} » : rien n'y a été écrasé (à trancher dans À traiter)."
     tm.maj_genre(tid, VERS_TREEMICH[genre])
     # Relecture : la forme de l'écriture n'a jamais été vue sur la vraie installation. Si le genre ne
     # revient pas tel qu'écrit, carnet arrête d'en écrire.
@@ -230,7 +248,8 @@ def _vers_treemich(c: Carnet, uid: str, genre: str, tm=None, personnes: list[dic
         raise ErreurLien("l'arbre n'a pas gardé le genre écrit ; carnet ne lui en écrira plus.")
     from . import liaisons
     liaisons._maj_cache(c, "treemich", tid, genre=VERS_TREEMICH[genre])
-    c.base.noter("ecriture", "Genre écrit dans Treemich", {"uid": uid})
+    c.base.noter("ecriture", "Genre écrit dans Treemich" + (" (remplace celui de l'arbre)" if ecraser else ""), {"uid": uid})
+    c.oublier("genres_points")
     return "Écrit aussi dans Treemich."
 
 
@@ -242,6 +261,39 @@ def en_attente(c: Carnet, d: dict | None) -> list[str]:
     return sorted(uid for t, uid in _reliees(c).items()
                   if (tous(c).get(uid) or {}).get("origine") == "main" and de(c, uid) in VERS_TREEMICH
                   and arbre.get(t) not in DE_TREEMICH)
+
+
+def vers_treemich_maintenant(c: Carnet) -> dict:
+    """Juste après une validation par lot : les genres que l'arbre ne connaît pas y sont écrits, d'après
+    la dernière lecture de Treemich. Ce qui échoue sera repris la nuit ou par « Synchroniser »."""
+    from . import liaisons
+    bilan: dict = {}
+    if not c.cfg.treemich_email:
+        return bilan
+    try:
+        with c.ecriture(attendre=5):
+            synchroniser(c, c.memo_present("liens", liaisons.DUREE_CACHE), bilan)
+    except ErreurCarnet as exc:          # occupé : la nuit s'en chargera
+        bilan.setdefault("details", []).append(f"Genre : {exc}")
+    return bilan
+
+
+def garder(c: Carnet, uid: str, lequel: str) -> dict:
+    """Point « Genre différent dans Treemich » : « carnet » écrit le genre de carnet dans l'arbre (écrasé),
+    « treemich » remplace le choix fait dans carnet par celui de l'arbre."""
+    if lequel == "treemich":
+        res = definir(c, uid, "")
+        res["message"] = "La fiche reprend le genre de Treemich."
+        return res
+    if lequel != "carnet":
+        raise ErreurCarnet("Choix inconnu.")
+    genre = de(c, uid)
+    if genre not in VERS_TREEMICH:
+        raise ErreurCarnet("Aucun genre choisi dans carnet pour cette fiche.")
+    with c.ecriture(attendre=5):
+        message = _vers_treemich(c, uid, genre, ecraser=True)
+    c.oublier()
+    return {"ok": True, "genre": fiche(c, uid), "message": message or "Rien à écrire."}
 
 
 def synchroniser(c: Carnet, d: dict | None, bilan: dict) -> None:

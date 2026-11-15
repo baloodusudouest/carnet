@@ -27,6 +27,7 @@ TITRES = {
     "deces_different": "Dates de décès différentes", "societe": "Société écrite de plusieurs façons",
     "portables": "Plusieurs portables : lequel est travail, lequel mobile ?",
     "genre": "Femme ou homme ?", "lien_genre": "Lien à accorder au genre",
+    "genre_treemich": "Genre différent dans Treemich",
 }
 ORDRE = list(TITRES)
 ENREGISTRES = {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit", "import", "linkedin", "reseau"}
@@ -42,7 +43,7 @@ TUILES = [
     ("doublons", "Doublons", {"doublon"}),
     ("societes", "Sociétés", {"societe"}),
     ("forme", "Mise en forme", {"forme", "emoji", "portables"}),
-    ("liens", "Liens à corriger", {"lien_genre"}),             # 2.22
+    ("liens", "Liens à corriger", {"lien_genre", "genre_treemich"}),   # 2.22 ; 2.24.2 : désaccords avec l'arbre
     ("genre", "Genre à préciser", {"genre"}),                  # 2.22.3 : toutes les personnes sans genre, hors compteur
     ("reseaux", "Réseaux", {"reseau"}),
     ("imports", "Imports", {"import", "linkedin"}),

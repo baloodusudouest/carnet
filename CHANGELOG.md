@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 2.24.2 — 15 novembre 2026
+- **Genre synchronisé avec Treemich.**
+  - Les genres validés par lot (« Enregistrer les genres proposés ») partent **tout de suite** dans Treemich pour les personnes reliées dont l'arbre ne connaît pas le genre (avant : à la nuit suivante). La nuit et « Synchroniser » rattrapent ce qui a échoué. Rien n'est écrasé dans l'arbre.
+  - **« Autre »** s'écrit aussi dans l'arbre (`OTHER`), et un « Autre » de l'arbre est repris dans carnet.
+  - **Désaccord** : quand le genre choisi dans carnet n'est pas celui de l'arbre, un point « Genre différent dans Treemich » arrive dans À traiter › Liens. « Garder … (carnet) » l'écrit dans l'arbre (seul cas où carnet y écrase un genre), « Prendre … (Treemich) » remplace le choix fait dans carnet, « Laisser comme ça » ne repose plus la question.
+- Tests : 140 du serveur.
+
 ## 2.24.1 — 15 novembre 2026
 - **Sillage reçoit la date de décès.** L'adresse `/sillage/personnes` donne maintenant, pour chaque fiche liée à Immich, la date de décès que carnet connaît (`deces` : carte iCloud, Treemich ou saisie dans carnet ; vide sinon). Sillage 0.14 y arrête le chemin de la personne. Rien d'autre ne change ; lecture seule, comme avant.
 - Tests : 137 du serveur.

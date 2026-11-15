@@ -156,6 +156,9 @@
       {:else}
         <p class="discret">Prénom mixte ou inconnu de carnet : pas de proposition.</p>
       {/if}
+    {:else if point.motif === 'genre_treemich'}
+      <p>carnet dit <span class={'propose genre-' + d.carnet}>{d.carnet}</span>, Treemich dit
+        <span class={'propose genre-' + d.treemich}>{d.treemich}</span>. Lequel garder ?</p>
     {:else if point.motif === 'lien_genre'}
       <p>{d.valeur} : <span class="avant">{d.de}</span> <span class="apres">{d.vers}</span>
         <span class="discret">({d.genre === 'autre' ? 'genre : autre' : d.genre})</span></p>
@@ -225,6 +228,10 @@
       <button class="bouton genre-homme" disabled={attente} onclick={() => faire('choisir', 'homme', 'Genre enregistré.')}>Homme</button>
       <button class="bouton genre-autre" disabled={attente} onclick={() => faire('choisir', 'autre', 'Genre enregistré.')}>Autre</button>
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Ignorer</button>
+    {:else if point.motif === 'genre_treemich'}
+      <button class={'bouton genre-' + d.carnet} disabled={attente} onclick={() => faire('garder_carnet', null, 'Genre de carnet écrit dans Treemich.')}>Garder {d.carnet} (carnet, écrit dans Treemich)</button>
+      <button class={'bouton genre-' + d.treemich} disabled={attente} onclick={() => faire('prendre_treemich', null, 'La fiche reprend le genre de Treemich.')}>Prendre {d.treemich} (Treemich)</button>
+      <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Laisser comme ça</button>
     {:else if point.motif === 'lien_genre'}
       <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('appliquer', null, 'Lien corrigé dans iCloud.')}>Corriger</button>
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Laisser comme ça</button>
