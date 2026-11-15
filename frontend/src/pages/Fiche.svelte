@@ -242,7 +242,7 @@
           <div class="genre" role="group" aria-label="Genre">
             <span class="discret">Genre</span>
             {#each Object.entries(genre.choix) as [cle, nom]}
-              <button class="pastille" aria-pressed={genre.valeur === cle} disabled={genreEnCours} onclick={() => choisirGenre(cle)}>{nom}</button>
+              <button class={'pastille genre-' + cle} aria-pressed={genre.valeur === cle} disabled={genreEnCours} onclick={() => choisirGenre(cle)}>{nom}</button>
             {/each}
             {#if genre.valeur && genre.origine === 'treemich'}<span class="discret petit">d'après Treemich</span>{/if}
             {#if genre.treemich}<span class="discret petit">Treemich dit « {genre.treemich} » : rien n'y est écrasé</span>{/if}

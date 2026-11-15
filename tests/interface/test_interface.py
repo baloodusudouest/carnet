@@ -729,6 +729,9 @@ def test_222_frere_sans_genre_question_puis_lien_a_corriger(page):
     if not question.count():
         pytest.skip("questions déjà traitées par l'autre format")
     assert "carnet ne connaît pas son genre" in question.inner_text()
+    # 2.22.2 : trois boutons, une couleur chacun (rose, bleu, violet)
+    couleurs = [question.locator(f"button.genre-{g}").evaluate("e => getComputedStyle(e).color") for g in ("femme", "homme", "autre")]
+    assert len(set(couleurs)) == 3
     question.get_by_role("button", name="Femme", exact=True).click()
     page.wait_for_selector(".message >> text=Genre enregistré")
     assert ouvrir_tuile(page, "Liens et genre")

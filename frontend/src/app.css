@@ -69,6 +69,17 @@
   }
   .pastille[aria-pressed="true"] { border-color: var(--color-onglet); color: var(--color-papier);
     background: color-mix(in srgb, var(--color-onglet) 16%, transparent); }
+  /* 2.22.2 : le genre a ses couleurs (rose, bleu, violet), sur les boutons d'« À traiter » et sur la fiche */
+  .genre-femme { --genre: #ec8fb8; }
+  .genre-homme { --genre: #7fb0ee; }
+  .genre-autre { --genre: #c4a5f0; }
+  .bouton.genre-femme, .bouton.genre-homme, .bouton.genre-autre {
+    border-color: color-mix(in srgb, var(--genre) 70%, transparent); color: var(--genre); font-weight: 600;
+    background: color-mix(in srgb, var(--genre) 14%, transparent); }
+  .bouton.genre-femme:hover, .bouton.genre-homme:hover, .bouton.genre-autre:hover {
+    background: color-mix(in srgb, var(--genre) 28%, transparent); border-color: var(--genre); }
+  .pastille.genre-femme[aria-pressed="true"], .pastille.genre-homme[aria-pressed="true"], .pastille.genre-autre[aria-pressed="true"] {
+    border-color: var(--genre); color: var(--genre); background: color-mix(in srgb, var(--genre) 18%, transparent); }
   /* Titres : fins et serrés en grand (signature du socle), plus fermes en petit */
   .titre { font-family: var(--font-sans); font-weight: 600; letter-spacing: -0.015em; }
   h1.titre { font-weight: 300; letter-spacing: -0.035em; }

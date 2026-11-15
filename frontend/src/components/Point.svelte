@@ -215,9 +215,9 @@
       <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('choisir', roles, 'Types des portables écrits dans iCloud.')}>Écrire dans iCloud</button>
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Laisser comme ça</button>
     {:else if point.motif === 'genre'}
-      <button class="bouton" disabled={attente} onclick={() => faire('choisir', 'femme', 'Genre enregistré.')}>Femme</button>
-      <button class="bouton" disabled={attente} onclick={() => faire('choisir', 'homme', 'Genre enregistré.')}>Homme</button>
-      <button class="bouton" disabled={attente} onclick={() => faire('choisir', 'autre', 'Genre enregistré.')}>Autre</button>
+      <button class="bouton genre-femme" disabled={attente} onclick={() => faire('choisir', 'femme', 'Genre enregistré.')}>Femme</button>
+      <button class="bouton genre-homme" disabled={attente} onclick={() => faire('choisir', 'homme', 'Genre enregistré.')}>Homme</button>
+      <button class="bouton genre-autre" disabled={attente} onclick={() => faire('choisir', 'autre', 'Genre enregistré.')}>Autre</button>
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Ignorer</button>
     {:else if point.motif === 'lien_genre'}
       <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('appliquer', null, 'Lien corrigé dans iCloud.')}>Corriger</button>

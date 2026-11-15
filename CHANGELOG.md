@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.22.2 — 15 novembre 2026
+- **« Femme ou homme ? » : trois boutons de couleur.** Dans À traiter › Liens et genre, chaque question porte Femme en rose, Homme en bleu et Autre en violet, puis Ignorer. Les mêmes couleurs marquent le genre choisi sur la fiche.
+
 ## 2.22.1 — 15 novembre 2026
 - **Douze points lit les prénoms et les noms.** Nouvelle adresse `/douze-points/personnes`, ouverte par son propre jeton (`CARNET_JETON_DOUZE_POINTS` ; dans la stack : `DOUZE_POINTS_CARNET_JETON`, la même valeur des deux côtés) ; vide : adresse fermée. Elle ne donne que le prénom et le nom des fiches (ni date, ni téléphone, ni groupe), sans les fiches d'entreprise ni les personnes décédées. Sert à choisir les invités d'une soirée en tapant leur nom. carnet n'écrit rien. Jamais essayée sur la vraie installation.
 
