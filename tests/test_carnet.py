@@ -2622,11 +2622,11 @@ def test_222_liens_deja_ecrits_corriges_depuis_a_traiter(c, services):
     c.oublier()
     assert "_$!<Brother>!$_" in services["icloud"].texte("DDDD-4444")
     # Genre inconnu : une seule question, posée sur la personne ; un nom sans fiche ne demande rien
-    [q] = points(c, "genre")
-    assert q["uid"] == "AAAA-1111" and q["tuile"] == "liens" and q["donnees"]["notes"] == [{"fiche": "Paul MARTIN", "type": "frère"}]
+    q = next(p for p in points(c, "genre") if p["uid"] == "AAAA-1111")
+    assert q["tuile"] == "genre" and q["donnees"]["notes"] == [{"fiche": "Paul MARTIN", "type": "frère"}]
     assert not points(c, "lien_genre")
     actions.repondre(c, q["id"], "choisir", "femme")
-    assert not points(c, "genre")
+    assert not any(p["uid"] == "AAAA-1111" for p in points(c, "genre"))
     [p] = points(c, "lien_genre")
     assert p["uid"] == "DDDD-4444" and (p["donnees"]["de"], p["donnees"]["vers"]) == ("frère", "sœur")
     # Rien n'est corrigé tout seul ; « Appliquer » écrit la carte, y compris par lot
@@ -2644,7 +2644,7 @@ def test_222_liens_deja_ecrits_corriges_depuis_a_traiter(c, services):
     with c.ecriture():
         icloud.relire(c, "test")
     assert {"valeur": "Claire MARTIN", "type": "frère ou sœur"} in c.fiche("DDDD-4444")["noms_associes"]
-    assert not points(c, "lien_genre") and not points(c, "genre")
+    assert not points(c, "lien_genre")
     # Un lien de famille neutre compte toujours comme lien familial
     from app import attentes
     assert "frère ou sœur" in attentes.FAMILIAUX
@@ -2665,3 +2665,58 @@ def test_222_genre_par_l_api_et_a_la_suppression(c, services):
         client.post("/api/contacts/DDDD-4444/supprimer", json={"etag": etag, "confirmation": True})
         assert "DDDD-4444" not in genres.tous(c)                                       # le genre part avec la fiche
     main.ETAT.clear()
+
+
+# ================================================================ 2.22.3 : le genre pour tous les contacts
+
+def test_2223_prenoms_sans_ambiguite_seulement():
+    from app import prenoms
+    assert prenoms.genre("Christelle") == "femme" and prenoms.genre("Julien") == "homme"
+    assert prenoms.genre("Élodie") == "femme" and prenoms.genre("jean-pierre") == "homme"      # accents, composés, casse
+    assert prenoms.genre("Marie") == "femme" and prenoms.genre("CLAIRE") == "femme"
+    for mixte in ("Camille", "Dominique", "Claude", "Stéphane", "Xyzzy", "", None):
+        assert prenoms.genre(mixte) == "", mixte
+
+
+def test_2223_question_de_genre_pour_toute_personne_hors_compteur(c, services):
+    """Chaque fiche avec un prénom ou un nom et sans genre a sa question ; une entreprise seule n'en a pas.
+    La tuile ne compte pas dans le chiffre de l'onglet."""
+    from app import genres
+    fiches = c.fiches()
+    personnes = {u for u, f in fiches.items() if f.get("prenom") or f.get("nom")}
+    entreprises = set(fiches) - personnes
+    assert personnes and entreprises                                    # le jeu de test a les deux
+    q = {p["uid"]: p for p in points(c, "genre")}
+    assert set(q) == personnes
+    assert q["AAAA-1111"]["donnees"] == {"notes": [], "propose": "femme"} and q["DDDD-4444"]["donnees"]["propose"] == "homme"
+    t = {x["cle"]: x for x in traiter.tuiles(c)}
+    assert t["genre"]["nombre"] == len(personnes) and t["genre"]["compte"] is False
+    avant = traiter.compte(c)
+    assert avant["total"] == sum(1 for p in traiter.liste(c) if p["tuile"] != "genre") + avant["sans_groupe"]
+    # La question n'est pas répétée en tête de fiche
+    from fastapi.testclient import TestClient
+    from app import main
+    main.ETAT["carnet"] = c
+    with TestClient(main.app) as client:
+        client.post("/api/connexion", json={"mot_de_passe": "secret"})
+        assert not any(p["motif"] == "genre" for p in client.get("/api/contacts/AAAA-1111").json()["a_traiter"])
+        # Lot : seules les propositions sont enregistrées, en une fois, sans rien écrire ailleurs
+        ids = [p["id"] for p in q.values()]
+        ap = client.post("/api/a-traiter-lot/apercu", json={"ids": ids, "action": "proposer"}).json()
+        assert ap["ecrit"] is False
+        n_icloud, n_tm = len(services["icloud"].ecritures), len(services["treemich"].ecrits)
+        r = client.post("/api/a-traiter-lot", json={"ids": ids, "action": "proposer"}).json()
+    main.ETAT.clear()
+    proposes = {u for u, p in q.items() if p["donnees"]["propose"]}
+    assert r["faits"] == len(proposes) and not r["erreurs"]
+    assert len(services["icloud"].ecritures) == n_icloud and len(services["treemich"].ecrits) == n_tm
+    assert genres.tous(c)["AAAA-1111"] == {"genre": "femme", "origine": "main"}
+    assert {p["uid"] for p in points(c, "genre")} == personnes - proposes
+    assert traiter.compte(c)["total"] == avant["total"]                 # le chiffre de l'onglet n'a pas bougé
+    # Un point sans proposition refuse « proposer » ; « Ignorer » ne repose plus la question
+    reste = points(c, "genre")
+    if reste:
+        with pytest.raises(ErreurCarnet):
+            actions.repondre(c, reste[0]["id"], "proposer")
+        actions.repondre(c, reste[0]["id"], "ignorer")
+        assert reste[0]["uid"] not in {p["uid"] for p in points(c, "genre")}

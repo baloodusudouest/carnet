@@ -127,8 +127,9 @@ def points(c: Carnet) -> list[dict]:
     """Deux sortes de points :
     - « lien_genre » : un lien de fratrie ou de parent qui ne s'accorde pas au genre connu de la
       personne (frère → sœur, « frère ou sœur » → frère, parent → mère…) ;
-    - « genre » : une personne notée « frère » ou « frère ou sœur » dont le genre est inconnu
-      (« frère » était le libellé par défaut jusqu'à la 2.21)."""
+    - « genre » : toute personne (fiche avec un prénom ou un nom ; pas une entreprise seule) dont
+      le genre est inconnu (2.22.3 ; avant : seulement celles notées « frère »). Le point dit sur
+      quelles fiches elle est notée « frère », et le genre que son prénom laisse supposer."""
     return c.memo("genres_points", lambda: _points(c))
 
 
@@ -150,10 +151,30 @@ def _points(c: Carnet) -> list[dict]:
                             "donnees": {"valeur": n["valeur"], "de": type_, "vers": voulu, "cible": cible, "genre": genre}})
             elif not genre and type_ in ("frère", FRATRIE_NEUTRE):
                 a_preciser.setdefault(cible, []).append({"fiche": nom_affiche(f), "type": type_})
-    for cible, notes in a_preciser.items():
-        res.append({"motif": "genre", "uid": cible, "cle": cible,
-                    "donnees": {"notes": sorted(notes, key=lambda x: x["fiche"].casefold())}})
+    from . import prenoms
+    for uid, f in fiches.items():
+        if uid in connus or not (f.get("prenom") or f.get("nom")):
+            continue
+        res.append({"motif": "genre", "uid": uid, "cle": uid,
+                    "donnees": {"notes": sorted(a_preciser.get(uid, []), key=lambda x: x["fiche"].casefold()),
+                                "propose": prenoms.genre(f.get("prenom") or "")}})
     return res
+
+
+def definir_lot(c: Carnet, choix: dict[str, str]) -> int:
+    """Plusieurs genres d'un coup (propositions validées par lot). Rien n'est écrit dans Treemich
+    ici : ceux qui lui manquent partent à la prochaine synchronisation ou la nuit."""
+    le = iso(maintenant())
+    fiches = c.fiches()
+    faits = 0
+    with c.base.transaction() as cx:
+        for uid, genre in choix.items():
+            if uid in fiches and genre in GENRES:
+                cx.execute("INSERT INTO genres(uid, genre, origine, le) VALUES (?,?,'main',?) ON CONFLICT(uid) DO UPDATE "
+                           "SET genre = excluded.genre, origine = 'main', le = excluded.le", (uid, genre, le))
+                faits += 1
+    c.oublier()
+    return faits
 
 
 # ----------------------------------------------------------------- écriture

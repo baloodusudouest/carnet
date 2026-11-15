@@ -134,14 +134,14 @@ flowchart TD
 | Nom différent | Renommer dans le service ; Ignorer |
 | Rapprochement réseau | Lier ; Lier et ajouter le numéro ; Pas lui |
 | Liens familiaux | Ajouter à la fiche ; Ignorer |
-| Femme ou homme ? (2.22) | Femme ; Homme ; Autre ; Ignorer |
+| Femme ou homme ? (2.22) | Femme ; Homme ; Autre ; Ignorer ; par lot : Enregistrer les genres proposés (2.22.3) |
 | Lien à accorder au genre (2.22) | Corriger ; Laisser comme ça |
 | Forme, émoji, LinkedIn | Appliquer ; Ignorer |
 | Date de mariage manquante | Écrire la date (des deux côtés) ; Pas de mariage ni PACS |
 | Dates de mariage ou de décès différentes | Écrire partout (après choix) ; Ignorer |
 | Société écrite de plusieurs façons | Écrire sur N fiches (après choix de l'écriture) ; Pas la même société |
 
-**Tuiles (2.9.0).** Changé sur l'iPhone (modifiée, nouvelle, supprimée, conflit) ; Pas de groupe ; Immich non synchronisé (liaison à confirmer, nom ou naissance qui diffère d'Immich) ; Treemich non synchronisé (liens familiaux, mariage, décès, nom ou naissance qui diffère de l'arbre) ; Doublons ; Sociétés ; Mise en forme ; Liens et genre (2.22 : genre à préciser, lien à accorder) ; Réseaux ; Imports ; Contact incomplet.
+**Tuiles (2.9.0).** Changé sur l'iPhone (modifiée, nouvelle, supprimée, conflit) ; Pas de groupe ; Immich non synchronisé (liaison à confirmer, nom ou naissance qui diffère d'Immich) ; Treemich non synchronisé (liens familiaux, mariage, décès, nom ou naissance qui diffère de l'arbre) ; Doublons ; Sociétés ; Mise en forme ; Liens à corriger (2.22 : lien à accorder au genre) ; Genre à préciser (2.22.3 : toute personne sans genre, hors compteur, genre proposé d'après le prénom et validé par lot) ; Réseaux ; Imports ; Contact incomplet.
 
 **Contact incomplet.** La tuile montre une ligne par information manquante avec son nombre de fiches ; une ligne ouvre Contacts filtré. Elle ne compte pas dans le compteur de l'onglet ; « Pas de groupe » y compte.
 

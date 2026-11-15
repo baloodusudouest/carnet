@@ -286,7 +286,8 @@ def contact(uid: str):
     portrait = c.base.un("SELECT candidats, asset, manuel FROM portraits WHERE uid = ?", (uid,))
     affiche = c.base.un("SELECT immich, posee, le, source FROM affiches WHERE uid = ?", (uid,))
     lk = c.base.un("SELECT url, donnees FROM linkedin WHERE uid = ?", (uid,))
-    points = [p for p in traiter.liste(c) if p.get("uid") == uid]
+    # 2.22.3 : la question du genre n'est pas répétée en tête de fiche, le champ Genre est juste dessous
+    points = [p for p in traiter.liste(c) if p.get("uid") == uid and p["motif"] != "genre"]
     etag = (c.base.un("SELECT etag FROM fiches WHERE uid = ?", (uid,)) or {"etag": ""})["etag"]
     return {"uid": uid, "etag": etag, "fiche": f, "nom": nom_affiche(f), "associes": _associes(c, uid, f),
             "liaisons": {s: {"id": lien[s], "nom": noms.get((s, lien[s])), "statut": lien.get(s + "_statut")}

@@ -270,13 +270,18 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
     if motif == "genre" and action == "choisir":
         from . import genres
         return genres.definir(c, uid, str(valeur or ""))
+    if motif == "genre" and action == "proposer":
+        from . import genres
+        if not d.get("propose"):
+            raise ErreurCarnet("carnet n'a pas de proposition pour ce prénom : choisis femme, homme ou autre.")
+        return genres.definir(c, uid, d["propose"])
     if motif == "doublon" and action == "distincts":
         traiter.ignorer(c, motif, cle)
         return {"ok": True}
     raise ErreurCarnet("Action inconnue pour ce point.")
 
 
-ACTIONS_LOT = ("ignorer", "lier", "pas_lui", "garder", "appliquer")
+ACTIONS_LOT = ("ignorer", "lier", "pas_lui", "garder", "appliquer", "proposer")
 ACTIONS_LOT_QUI_ECRIVENT = ("lier", "appliquer")
 
 
@@ -306,6 +311,14 @@ def repondre_lot(c: Carnet, idents: list[str], action: str) -> dict:
         c.exiger_ecriture("iCloud")
     plafond = _plafond_lot(c)
     bilan = {"faits": 0, "erreurs": [], "reportes": 0}
+    if action == "proposer":
+        # 2.22.3 : genres proposés d'après le prénom, validés par lot. En une fois (des centaines de fiches),
+        # dans la base de carnet seulement : ni iCloud ni Treemich ne sont écrits ici.
+        from . import genres
+        voulus = set(idents)
+        bilan["faits"] = genres.definir_lot(c, {p["uid"]: p["donnees"]["propose"] for p in traiter.liste(c)
+                                                if p["id"] in voulus and p["motif"] == "genre" and p["donnees"].get("propose")})
+        return bilan
     ecritures = 0
     for ident in idents:
         ecrit = action in ACTIONS_LOT_QUI_ECRIVENT

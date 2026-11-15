@@ -722,24 +722,47 @@ def test_222_genre_sur_la_fiche(page):
 
 
 def test_222_frere_sans_genre_question_puis_lien_a_corriger(page):
-    """2.22 : une personne notée « frère » sans genre connu : la question d'abord, puis le lien frère → sœur à corriger."""
-    if not ouvrir_tuile(page, "Liens et genre"):
+    """2.22 : une personne notée « frère » sans genre connu : la question d'abord, puis le lien frère → sœur à corriger.
+    2.22.3 : la question est dans la tuile « Genre à préciser », le lien dans « Liens à corriger »."""
+    if not ouvrir_tuile(page, "Genre à préciser"):
         pytest.skip("déjà traité par l'autre format")
-    question = page.locator("article", has_text="Femme ou homme ?").first
+    question = page.locator("article", has_text="Noté « frère »").first
+    if page.viewport_size["width"] >= 900:                       # PC : le point se choisit dans la liste de gauche
+        for nom in ("Camille GARNIER", "Gaëlle PERRIN"):
+            bouton = page.locator(".sommaire button", has_text=nom)
+            if bouton.count():
+                bouton.first.click()
+                break
     if not question.count():
         pytest.skip("questions déjà traitées par l'autre format")
-    assert "carnet ne connaît pas son genre" in question.inner_text()
     # 2.22.2 : trois boutons, une couleur chacun (rose, bleu, violet)
     couleurs = [question.locator(f"button.genre-{g}").evaluate("e => getComputedStyle(e).color") for g in ("femme", "homme", "autre")]
     assert len(set(couleurs)) == 3
     question.get_by_role("button", name="Femme", exact=True).click()
     page.wait_for_selector(".message >> text=Genre enregistré")
-    assert ouvrir_tuile(page, "Liens et genre")
-    if page.viewport_size["width"] >= 900:                       # PC : le point se choisit dans la liste de gauche
-        page.locator(".sommaire button", has_text="Lien à accorder au genre").first.click()
+    assert ouvrir_tuile(page, "Liens à corriger")
     lien = page.locator("article", has_text="Lien à accorder au genre").first
     lien.wait_for()
     assert "frère" in lien.locator(".avant").inner_text() and "sœur" in lien.locator(".apres").inner_text()
     assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
     lien.get_by_role("button", name="Corriger", exact=True).click()
     page.wait_for_selector(".message >> text=Annuler")
+
+
+def test_2223_genre_pour_tous_propositions_par_lot(page):
+    """2.22.3 : toute personne sans genre a sa question, hors compteur ; les genres proposés d'après le prénom
+    s'enregistrent par lot après annonce."""
+    if not ouvrir_tuile(page, "Genre à préciser"):
+        pytest.skip("déjà traité par l'autre format")
+    lot = page.get_by_role("button", name=re.compile(r"^Enregistrer les genres proposés \(\d+\)$"))
+    if not lot.count():
+        pytest.skip("propositions déjà enregistrées par l'autre format")
+    assert "D'après le prénom" in page.locator("article").first.inner_text() or "pas de proposition" in page.locator("article").first.inner_text()
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+    lot.click()
+    annonce = page.locator(".lot .annonce")
+    annonce.wait_for()
+    assert "Rien n'est écrit dans iCloud" in annonce.inner_text()
+    page.get_by_role("button", name="Confirmer", exact=True).click()
+    page.wait_for_selector(".message >> text=traité")
+    assert not page.get_by_role("button", name=re.compile(r"^Enregistrer les genres proposés")).count()

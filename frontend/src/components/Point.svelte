@@ -147,9 +147,15 @@
           {#if ecriture === '__autre'}<input class="autre" bind:value={autre} aria-label="Autre écriture" autocomplete="off" />{/if}</label>
       </fieldset>
     {:else if point.motif === 'genre'}
-      <p>Noté{d.notes.length > 1 ? 'e' : ''} « {[...new Set(d.notes.map((n) => n.type))].join(' », « ')} » sur {d.notes.length > 1 ? 'les fiches' : 'la fiche'} de
-        {d.notes.map((n) => n.fiche).join(', ')}. carnet ne connaît pas son genre.</p>
-      <p class="discret">Le genre reste dans carnet et rejoint Treemich s'il y manque. Les liens à corriger viendront ensuite ici, un par fiche.</p>
+      {#if d.notes?.length}
+        <p>Noté « {[...new Set(d.notes.map((n) => n.type))].join(' », « ')} » sur {d.notes.length > 1 ? 'les fiches' : 'la fiche'} de
+          {d.notes.map((n) => n.fiche).join(', ')}.</p>
+      {/if}
+      {#if d.propose}
+        <p class="discret">D'après le prénom : <span class={'propose genre-' + d.propose}>{d.propose}</span>.</p>
+      {:else}
+        <p class="discret">Prénom mixte ou inconnu de carnet : pas de proposition.</p>
+      {/if}
     {:else if point.motif === 'lien_genre'}
       <p>{d.valeur} : <span class="avant">{d.de}</span> <span class="apres">{d.vers}</span>
         <span class="discret">({d.genre === 'autre' ? 'genre : autre' : d.genre})</span></p>
@@ -237,6 +243,7 @@
 </article>
 
 <style>
+  .propose { color: var(--genre); font-weight: 600; }
   .autre { display: inline-block; width: 14rem; max-width: 100%; margin-left: 0.4rem; }
   .saisie-date { display: grid; gap: 0.2rem; max-width: 16rem; }
   .point { padding: 1rem 1.1rem; display: grid; gap: 0.75rem; }

@@ -42,12 +42,16 @@ TUILES = [
     ("doublons", "Doublons", {"doublon"}),
     ("societes", "Sociétés", {"societe"}),
     ("forme", "Mise en forme", {"forme", "emoji", "portables"}),
-    ("liens", "Liens et genre", {"genre", "lien_genre"}),      # 2.22
+    ("liens", "Liens à corriger", {"lien_genre"}),             # 2.22
+    ("genre", "Genre à préciser", {"genre"}),                  # 2.22.3 : toutes les personnes sans genre, hors compteur
     ("reseaux", "Réseaux", {"reseau"}),
     ("imports", "Imports", {"import", "linkedin"}),
     ("incomplet", "Contact incomplet", set()),
     ("sans_anniversaire", "Sans anniversaire", set()),   # 2.21 : personnes des scans de Millésime sans date de naissance
 ]
+
+
+HORS_COMPTEUR = ("incomplet", "sans_anniversaire", "genre")     # tuiles qui ne comptent pas dans le chiffre de l'onglet
 
 
 def tuile_de(p: dict) -> str:
@@ -72,7 +76,7 @@ def tuiles(c) -> list[dict]:
     par["incomplet"] = attentes.total(c)["incompletes"]
     from . import millesime
     par["sans_anniversaire"] = len(millesime.sans_anniversaire(c))
-    return [{"cle": cle, "nom": nom, "nombre": par.get(cle, 0), "compte": cle not in ("incomplet", "sans_anniversaire")}
+    return [{"cle": cle, "nom": nom, "nombre": par.get(cle, 0), "compte": cle not in HORS_COMPTEUR}
             for cle, nom, _ in TUILES]
 
 
@@ -175,7 +179,9 @@ def compte(c) -> dict:
     from . import attentes
     sans_groupe = next((l["nombre"] for l in attentes.lignes(c) if l["cle"] == attentes.SANS_GROUPE), 0)
     # 2.9 : une fiche sans groupe est une décision à prendre ; elle compte dans le chiffre de l'onglet
-    return {"total": len(tous) + sans_groupe, "points": len(tous), "sans_groupe": sans_groupe, "par_motif": par}
+    # 2.22.3 : le genre à préciser (une question par personne) ne compte pas : il gonflerait le chiffre de plusieurs centaines
+    points = sum(1 for p in tous if p["tuile"] not in HORS_COMPTEUR)
+    return {"total": points + sans_groupe, "points": points, "sans_groupe": sans_groupe, "par_motif": par}
 
 
 def trouver(c, ident: str) -> dict:

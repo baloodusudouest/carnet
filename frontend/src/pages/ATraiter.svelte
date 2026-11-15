@@ -24,21 +24,27 @@
     immich: [{ action: 'ignorer', libelle: 'Tout ignorer' }],
     imports: [{ action: 'ignorer', libelle: 'Tout ignorer' }],
     liens: [{ action: 'appliquer', libelle: 'Corriger tous les liens' }],   // 2.22
+    genre: [{ action: 'proposer', libelle: 'Enregistrer les genres proposés' }],   // 2.22.3
   }
   const AIDES = {
     icloud: 'Fiches modifiées, créées ou supprimées sur l\'iPhone, et conflits d\'écriture.',
     immich: 'Liaisons proposées, noms et dates de naissance qui diffèrent d\'Immich.',
     treemich: 'Mariages, décès, noms, naissances et liens familiaux qui diffèrent de l\'arbre.',
-    liens: 'Personnes dont carnet ne connaît pas le genre, et liens à accorder (frère, sœur, père, mère).',
+    liens: 'Liens à accorder au genre de la personne (frère, sœur, père, mère).',
+    genre: 'Personnes dont carnet ne connaît pas le genre. Il reste dans carnet et rejoint Treemich s\'il y manque. Cette tuile ne compte pas dans le chiffre de l\'onglet.',
   }
   function ouvrir(t) {
     if (t.cle === 'sans_groupe') { etat.manque = 'sans_groupe'; aller('contacts'); return }
-    tuile = t.cle; aConfirmer = null; choisi = null
+    tuile = t.cle; aConfirmer = null; choisi = null; limite = TRANCHE
     if (t.cle === 'sans_anniversaire') chargerSansAnniversaire()
   }
   const ouverte = $derived(tuiles.find((t) => t.cle === tuile))
   // 2.22 : une question « femme ou homme ? » demande une réponse, elle ne part jamais dans un lot « appliquer »
-  const pourLot = (action) => visibles.filter((p) => !(action === 'appliquer' && p.motif === 'genre'))
+  const pourLot = (action) => visibles.filter((p) => action === 'proposer' ? p.donnees?.propose : !(action === 'appliquer' && p.motif === 'genre'))
+  // 2.22.3 : une tuile peut porter des centaines de points : ils s'affichent par tranches
+  const TRANCHE = 30
+  let limite = $state(TRANCHE)
+  const montres = $derived(visibles.slice(0, limite))
   let lotEnCours = $state(false)
   let aConfirmer = $state(null)   // action groupée en attente de confirmation, avec son aperçu
   // Avant « Confirmer » : carnet dit ce que le lot fera (écritures dans iCloud, plafond, lecture seule)
@@ -50,6 +56,7 @@
   }
   function annonce(a) {
     const n = a.points
+    if (a.action === 'proposer') return `Le genre proposé d'après le prénom sera enregistré pour ${n} personne(s). Rien n'est écrit dans iCloud ; Treemich reçoit ceux qui lui manquent à sa prochaine synchronisation.`
     if (!a.ecrit) return `${n} point(s) seront écartés et ne seront plus proposés. Rien n'est écrit dans iCloud.`
     if (a.lecture_seule) return `Mode lecture seule : ces ${n} écriture(s) dans iCloud seront refusées.`
     return `${a.a_ecrire} fiche(s) seront modifiées dans iCloud`
@@ -166,7 +173,7 @@
     {:else if !visibles.length}
       <p class="discret">Plus rien dans cette tuile.</p>
     {:else}
-    {#if LOTS[tuile] && pourLot(LOTS[tuile][0].action).length > 1}
+    {#if LOTS[tuile] && pourLot(LOTS[tuile][0].action).length > (LOTS[tuile][0].action === 'proposer' ? 0 : 1)}
       <div class="lot">
         {#if aConfirmer}
           <span class="discret annonce" role="status">{aConfirmer.libelle} : {annonce(aConfirmer.apercu)}</span>
@@ -183,7 +190,7 @@
     {#if etat.large}
       <div class="deux-volets">
         <ul class="sommaire" aria-label="Points à traiter">
-          {#each visibles as p (p.id)}
+          {#each montres as p (p.id)}
             <li><button aria-current={affiche?.id === p.id ? 'true' : undefined} onclick={() => (choisi = p.id)}>
               <span class="titre">{p.nom}</span><span class="motif">{p.titre}</span></button></li>
           {/each}
@@ -194,10 +201,13 @@
       </div>
     {:else}
       <div class="liste">
-        {#each visibles as p (p.id)}
+        {#each montres as p (p.id)}
           <Point point={p} ontraite={traite} />
         {/each}
       </div>
+    {/if}
+    {#if visibles.length > limite}
+      <p><button class="bouton" onclick={() => (limite += TRANCHE)}>Afficher la suite ({visibles.length - limite} de plus)</button></p>
     {/if}
     {/if}
   {/if}

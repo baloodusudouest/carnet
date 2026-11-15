@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 2.22.3 — 15 novembre 2026
+- **Le genre pour tous les contacts.** Toute fiche qui a un prénom ou un nom et pas encore de genre a sa question « Femme ou homme ? » (une entreprise seule n'en a pas). Elles sont dans une tuile à part d'À traiter, « Genre à préciser », qui ne compte pas dans le chiffre de l'onglet ; la tuile des liens s'appelle « Liens à corriger ». La question n'est pas répétée en tête de fiche : le champ Genre y est déjà.
+- **Genre proposé d'après le prénom, validé par lot.** Chaque question dit le genre que le prénom laisse supposer, quand il est sans ambiguïté (Camille, Dominique, Claude, Stéphane… n'ont pas de proposition). « Enregistrer les genres proposés » les enregistre tous d'un coup, après annonce ; rien n'est enregistré sans cette validation. Le lot n'écrit ni dans iCloud ni dans Treemich : l'arbre reçoit les genres qui lui manquent à « Synchroniser » ou la nuit.
+- Nouvelle dépendance : `gender-guesser` 0.4.0 (liste de prénoms par pays ; licence GPLv3, données sous GNU FDL), installée à côté de carnet, rien n'en est copié dans le dépôt. Sans elle, carnet ne propose rien et le reste marche.
+- Les listes d'À traiter s'affichent par tranches de 30 (« Afficher la suite »).
+- Tests : 202 réussis (serveur et écrans PC et iPhone).
+
 ## 2.22.2 — 15 novembre 2026
 - **« Femme ou homme ? » : trois boutons de couleur.** Dans À traiter › Liens et genre, chaque question porte Femme en rose, Homme en bleu et Autre en violet, puis Ignorer. Les mêmes couleurs marquent le genre choisi sur la fiche.
 
