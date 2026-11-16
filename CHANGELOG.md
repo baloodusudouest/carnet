@@ -1,5 +1,16 @@
 # Journal des versions
 
+
+## 2.25.0 — 16 novembre 2026
+- **Variables communes de la maison** (module `app/maison.py` du socle 0.5.0, copié tel quel) :
+  - mot de passe : `MAISON_PASSWORD`, repli sur `CARNET_PASSWORD` ;
+  - lecture seule : `MAISON_LECTURE_SEULE` pour toute la maison ; `CARNET_LECTURE_SEULE`, si elle dit oui ou non, l'emporte ;
+  - jeton commun `MAISON_JETON` (et `MAISON_JETON_ANCIEN` pendant un changement) accepté sur `/sillage/`, `/gazette/` et `/douze-points/`, en plus des jetons propres actuels ; `/ha/` garde son jeton de Home Assistant ;
+  - jetons envoyés au kit d'urgence et à Millésime : l'ancien jeton de la paire tant qu'il est dans la stack, puis `MAISON_JETON` ;
+  - lien « Sillage » de la fiche : adresse lue dans l'Anneau (`/externe/services`, Anneau 0.7.0 ; adresse privée quand carnet est ouvert par Tailscale), repli sur `CARNET_SILLAGE_URL`.
+- Rien ne change tant que la stack n'a pas les nouvelles variables : chaque ancien nom reste lu.
+- Tests : jeton commun sur les trois portes (pas sur `/ha/`), variables communes et replis, copie du module non retouchée.
+
 ## 2.24.2 — 15 novembre 2026
 - **Genre synchronisé avec Treemich.**
   - Les genres validés par lot (« Enregistrer les genres proposés ») partent **tout de suite** dans Treemich pour les personnes reliées dont l'arbre ne connaît pas le genre (avant : à la nuit suivante). La nuit et « Synchroniser » rattrapent ce qui a échoué. Rien n'est écrasé dans l'arbre.

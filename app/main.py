@@ -1,7 +1,6 @@
 """Application FastAPI de carnet 2 : interface (3 onglets), API et adresses Home Assistant."""
 from __future__ import annotations
 
-import hmac
 import asyncio
 import json
 import logging
@@ -14,6 +13,7 @@ from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
 from .temps import maintenant
+from . import maison
 from . import (__version__, actions, attentes, completude, connexion, famille, galerie, groupes as groupes_, icloud, liaisons, linkedin, nuit, photos, reseaux, sorties,
                telegram, traiter, vcard)
 from .auth import COMMUN, COOKIE, DUREE, Sessions
@@ -86,6 +86,11 @@ app = FastAPI(title="carnet", version=__version__, lifespan=cycle, docs_url=None
 @app.middleware("http")
 async def garde(request: Request, appel):
     chemin = request.url.path
+    def ouvert(propre: str) -> bool:
+        # 2.25 : le jeton propre à l'appli d'en face (ancien nom) ou le jeton commun MAISON_JETON
+        acceptes = tuple(j for j in (propre, *maison.jetons()) if j)
+        return maison.jeton_valide(maison.jeton_propose(request.headers), acceptes)
+
     if chemin.startswith("/ha/"):
         jeton = carnet().cfg.ha_token
         attendu = f"Bearer {jeton}"
@@ -93,18 +98,15 @@ async def garde(request: Request, appel):
             return JSONResponse({"detail": "Jeton Home Assistant manquant ou invalide."}, status_code=401)
     elif chemin.startswith("/sillage/"):
         # 2.15 : Sillage lit la liste des personnes liées à Immich, avec son propre jeton
-        jeton = carnet().cfg.sillage_jeton
-        if not jeton or not hmac.compare_digest(request.headers.get("authorization", ""), f"Bearer {jeton}"):
+        if not ouvert(carnet().cfg.sillage_jeton):
             return JSONResponse({"detail": "Jeton de Sillage manquant ou invalide."}, status_code=401)
     elif chemin.startswith("/gazette/"):
         # 2.20 : Gazette lit noms et dates de naissance, avec son propre jeton
-        jeton = carnet().cfg.gazette_jeton
-        if not jeton or not hmac.compare_digest(request.headers.get("authorization", ""), f"Bearer {jeton}"):
+        if not ouvert(carnet().cfg.gazette_jeton):
             return JSONResponse({"detail": "Jeton de Gazette manquant ou invalide."}, status_code=401)
     elif chemin.startswith("/douze-points/"):
         # 2.22.1 : Douze points lit prénoms et noms (rien d'autre), avec son propre jeton
-        jeton = carnet().cfg.douze_points_jeton
-        if not jeton or not hmac.compare_digest(request.headers.get("authorization", ""), f"Bearer {jeton}"):
+        if not ouvert(carnet().cfg.douze_points_jeton):
             return JSONResponse({"detail": "Jeton de Douze points manquant ou invalide."}, status_code=401)
     # Sans session : seulement l'envoi du mot de passe et la question « suis-je connecté ? ».
     # La lecture de /api/connexion (l'état des services, 2.9) exige une session comme le reste.
@@ -276,8 +278,17 @@ def _associes(c: Carnet, uid: str, f: dict) -> list[dict | None]:
     return genres.cibles(c, uid, f)
 
 
+ANNUAIRE = maison.Annuaire()
+
+
+def adresse_de(nom: str, request: Request, repli: str = "") -> str:
+    """2.25 : adresse d'une autre appli pour le navigateur, lue dans l'Anneau (privée si la page vient de
+    Tailscale) ; repli : l'ancienne variable (ex. CARNET_SILLAGE_URL)."""
+    return ANNUAIRE.adresse(nom, prive=maison.est_prive(request.headers.get("host", "")), repli=repli)
+
+
 @app.get("/api/contacts/{uid}")
-def contact(uid: str):
+def contact(uid: str, request: Request):
     c = carnet()
     f = c.fiche(uid)
     lien = c.liaison(uid)
@@ -304,8 +315,9 @@ def contact(uid: str):
             "genre": genres.fiche(c, uid),     # 2.22
             "google_logo": galerie.recherche_google(f),
             # 2.15 : le chemin de vie de la personne, si la fiche est liée à Immich et que Sillage a une adresse
-            "sillage": (f"{c.cfg.sillage_adresse}/#/chemin/{c.liaisons().get(uid, {}).get('immich')}"
-                        if c.cfg.sillage_adresse and c.liaisons().get(uid, {}).get("immich") else "")}
+            "sillage": (f"{sillage}/#/chemin/{c.liaisons().get(uid, {}).get('immich')}"
+                        if (sillage := adresse_de("Sillage", request, c.cfg.sillage_adresse))
+                        and c.liaisons().get(uid, {}).get("immich") else "")}
 
 
 @app.get("/api/completude")

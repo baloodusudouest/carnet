@@ -584,6 +584,15 @@ def test_home_assistant_adresses(c):
         dp = client.get("/douze-points/personnes", headers={"Authorization": "Bearer jeton-douze-points"}).json()["personnes"]
         assert dp and all(set(x) == {"carnet_id", "prenom", "nom"} and x["prenom"] for x in dp)
         assert next(x for x in dp if x["carnet_id"] == "DDDD-4444")["prenom"] == "Paul"
+        # 2.25 : le jeton commun de la maison ouvre aussi ces trois portes (pas celle de Home Assistant)
+        import os
+        os.environ["MAISON_JETON"] = "jeton-commun-essai"
+        try:
+            for chemin in ("/sillage/personnes", "/gazette/personnes", "/douze-points/personnes"):
+                assert client.get(chemin, headers={"Authorization": "Bearer jeton-commun-essai"}).status_code == 200
+            assert client.get("/ha/contacts", headers={"Authorization": "Bearer jeton-commun-essai"}).status_code == 401
+        finally:
+            del os.environ["MAISON_JETON"]
         connecter = client.post("/api/connexion", json={"mot_de_passe": "secret"})
         assert connecter.status_code == 200
         if True:
@@ -2983,3 +2992,24 @@ def test_2242_genres_valides_par_lot_ecrits_tout_de_suite_dans_treemich(c, servi
     b = genres.vers_treemich_maintenant(c)
     assert b.get("treemich") == 1 and tm.genres["t-paul"] == "MALE" and tm.genres["t-claire"] == "MALE"
     assert len(tm.ecrits) == n + 1
+
+
+def test_module_commun_maison(monkeypatch, tmp_path):
+    """2.25 : copie non retouchée du module du socle ; MAISON_PASSWORD et MAISON_LECTURE_SEULE lus, anciens noms en repli."""
+    from app import config as config_mod, maison
+    assert maison.empreinte_calculee() == maison.empreinte_ecrite()
+    for v in ("MAISON_PASSWORD", "MAISON_LECTURE_SEULE", "CARNET_LECTURE_SEULE", "MAISON_JETON", "KIT_API_TOKEN"):
+        monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("CARNET_PASSWORD", "ancien-mot-de-passe")
+    monkeypatch.setenv("CARNET_STATE", str(tmp_path))
+    monkeypatch.setenv("CARNET_DATA", str(tmp_path))
+    assert config_mod.charger().password == "ancien-mot-de-passe"
+    monkeypatch.setenv("MAISON_PASSWORD", "mot-de-passe-commun")
+    monkeypatch.setenv("MAISON_LECTURE_SEULE", "oui")
+    monkeypatch.setenv("MAISON_JETON", "jeton-commun")
+    cfg = config_mod.charger()
+    assert cfg.password == "mot-de-passe-commun" and cfg.lecture_seule and cfg.kit_token == "jeton-commun"
+    monkeypatch.setenv("CARNET_LECTURE_SEULE", "non")                # carnet écrit malgré la maison
+    monkeypatch.setenv("KIT_API_TOKEN", "jeton-du-kit")              # transition : l'ancien jeton d'abord
+    cfg = config_mod.charger()
+    assert not cfg.lecture_seule and cfg.kit_token == "jeton-du-kit"

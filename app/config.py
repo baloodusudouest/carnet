@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from . import maison
 
 
 @dataclass(frozen=True)
@@ -71,9 +72,9 @@ def _env(nom: str, defaut: str = "") -> str:
 
 
 def charger() -> Config:
-    mdp = _env("CARNET_PASSWORD")
+    mdp = maison.mot_de_passe("CARNET_PASSWORD")        # 2.25 : MAISON_PASSWORD, repli sur l'ancien nom
     if not mdp or mdp == "change-moi":
-        raise RuntimeError("Variable d'environnement CARNET_PASSWORD absente : à définir dans la stack.")
+        raise RuntimeError("Variable d'environnement MAISON_PASSWORD (ou CARNET_PASSWORD) absente : à définir dans la stack.")
     state = Path(_env("CARNET_STATE", "/state"))
     kit = _env("CARNET_KIT_CONFIG", "/kit-config")
     return Config(
@@ -109,8 +110,8 @@ def charger() -> Config:
         telegram_api_hash=_env("CARNET_TELEGRAM_API_HASH"),
         kit_config=Path(kit) if kit else None,
         kit_url=_env("KIT_URL", "http://kit-urgence:8095").rstrip("/"),
-        kit_token=_env("KIT_API_TOKEN"),
+        kit_token=maison.jeton_a_envoyer("KIT_API_TOKEN"),           # 2.25 : puis MAISON_JETON
         millesime_url=_env("CARNET_MILLESIME_URL", "http://millesime:8098").rstrip("/"),
-        millesime_jeton=_env("CARNET_MILLESIME_JETON"),
-        lecture_seule=_env("CARNET_LECTURE_SEULE").lower() in ("oui", "1", "true", "yes"),
+        millesime_jeton=maison.jeton_a_envoyer("CARNET_MILLESIME_JETON"),   # 2.25 : puis MAISON_JETON
+        lecture_seule=maison.lecture_seule("CARNET_LECTURE_SEULE"),   # 2.25 : MAISON_LECTURE_SEULE, forçable ici
     )

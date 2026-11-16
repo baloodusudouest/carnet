@@ -220,7 +220,7 @@ def pourquoi_rien(c: Carnet, d: dict | None) -> list[str]:
     dite en clair (2.8.3). Une ligne par cause."""
     raisons = []
     if c.cfg.lecture_seule:
-        raisons.append("carnet est en lecture seule (CARNET_LECTURE_SEULE) : rien n'est écrit, ni dans iCloud ni dans Treemich.")
+        raisons.append("carnet est en lecture seule (MAISON_LECTURE_SEULE ou CARNET_LECTURE_SEULE) : rien n'est écrit, ni dans iCloud ni dans Treemich.")
     if not c.cfg.treemich_email:
         return raisons + ["Treemich n'est pas configuré."]
     if d is None:

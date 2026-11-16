@@ -1,6 +1,6 @@
 """Erreurs communes, et garde du mode lecture seule.
 
-Mode lecture seule (CARNET_LECTURE_SEULE=oui dans la stack) : carnet lit tout, calcule tout,
+Mode lecture seule (MAISON_LECTURE_SEULE=oui, ou CARNET_LECTURE_SEULE=oui qui l'emporte, dans la stack) : carnet lit tout, calcule tout,
 mais n'écrit dans aucun service extérieur (iCloud, Immich, Treemich, Synology Contacts, kit
 d'urgence). Sert à essayer une nouvelle version sans risque. La garde est posée deux fois :
 à l'entrée des opérations (message clair avant tout travail) et dans les accès réseau
@@ -22,5 +22,5 @@ class LectureSeule(ErreurCarnet):
 
     def __init__(self, service: str):
         super().__init__(f"Mode lecture seule : rien n'est écrit dans {service}. "
-                         "Retire CARNET_LECTURE_SEULE de la stack pour écrire de nouveau.")
+                         "Retire MAISON_LECTURE_SEULE (ou mets CARNET_LECTURE_SEULE=non) dans la stack pour écrire de nouveau.")
         self.service = service

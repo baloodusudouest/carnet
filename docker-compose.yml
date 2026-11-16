@@ -16,8 +16,11 @@ services:
       - "${PORT_CARNET:-8096}:8096"                # réseau local et Tailscale uniquement
     environment:
       - TZ=Europe/Paris
-      - CARNET_PASSWORD=${CARNET_PASSWORD}         # mot de passe de l'interface
-      - CARNET_LECTURE_SEULE=${CARNET_LECTURE_SEULE:-}   # « oui » : carnet lit tout mais n'écrit nulle part
+      # 2.25 : variables communes de la maison (module app/maison.py) ; les anciennes restent lues en repli
+      - MAISON_PASSWORD=${MAISON_PASSWORD}         # mot de passe commun des applis (repli : CARNET_PASSWORD)
+      - MAISON_JETON=${MAISON_JETON:-}             # jeton commun : Sillage, Gazette, Douze points, Millésime, kit
+      - MAISON_LECTURE_SEULE=${MAISON_LECTURE_SEULE:-}   # « oui » : aucune appli n'écrit ; CARNET_LECTURE_SEULE l'emporte si posée
+      - CARNET_LECTURE_SEULE=${CARNET_LECTURE_SEULE:-}   # « oui » ou « non » : force carnet seul
       - CARNET_VEILLE_HEURE=${CARNET_VEILLE_HEURE:-03:00}   # heure de la nuit ; « off » : désactivée
       - CARNET_EMOJI_GROUPES=${CARNET_EMOJI_GROUPES:-}
       - CARNET_ICLOUD_USER=${CARNET_ICLOUD_USER:-}
