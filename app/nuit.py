@@ -1,4 +1,4 @@
-"""La nuit (CARNET_VEILLE_HEURE, 03:00 par défaut), sous un seul verrou :
+"""La nuit (heure réglée dans Réglages, 03:00 par défaut), sous un seul verrou :
 
 1. lecture complète d'iCloud (arrêt si elle est incomplète ou si trop de fiches disparaissent) ;
 2. relecture d'Immich et de Treemich, liaisons sûres ;
@@ -169,15 +169,19 @@ def prochaine(heure: str, apres: datetime) -> datetime:
     return cible if cible > apres else cible + timedelta(days=1)
 
 
-def demarrer(c: Carnet) -> threading.Thread | None:
-    if not c.cfg.nuit_active:
-        log.info("Nuit désactivée (CARNET_VEILLE_HEURE)")
-        return None
-
+def demarrer(c: Carnet) -> threading.Thread:
+    """Boucle de la nuit. 2.26 : l'heure se règle dans Réglages ; un changement réveille la boucle
+    (c.reveil), qui recalcule la prochaine nuit sans redémarrage. Nuit désactivée : la boucle attend."""
     def boucle():
         while True:
+            c.reveil.clear()
+            if not c.cfg.nuit_active:
+                log.info("Nuit désactivée (Réglages)")
+                c.reveil.wait()                       # attend qu'une heure soit réglée
+                continue
             cible = prochaine(c.cfg.veille_heure, datetime.now(ZONE))
-            time.sleep(max(1.0, (cible - datetime.now(ZONE)).total_seconds()))
+            if c.reveil.wait(max(1.0, (cible - datetime.now(ZONE)).total_seconds())):
+                continue                              # réglage changé : nouvelle heure
             fin = time.monotonic() + REESSAI_PENDANT
             while True:
                 try:

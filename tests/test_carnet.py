@@ -550,54 +550,64 @@ def test_home_assistant_adresses(c):
         assert any(a["annee"] is None for a in ann)          # sans année : null
         liaisons.lier(c, "DDDD-4444", "immich", "im-paul")
         assert client.get("/ha/personnes", headers=h).json()["personnes"] == [{"nom": "Paul MARTIN", "immich": True}]
-        # 2.15 : la liste pour Sillage, fermée sans jeton, et avec son jeton à elle (pas celui de Home Assistant)
-        assert client.get("/sillage/personnes").status_code == 401
-        assert client.get("/sillage/personnes", headers=h).status_code == 401
-        assert client.get("/sillage/personnes", headers={"Authorization": "Bearer "}).status_code == 401   # pas de jeton réglé : fermé
-        import dataclasses
-        c.cfg = dataclasses.replace(c.cfg, sillage_jeton="jeton-sillage", sillage_adresse="http://sillage.exemple")
-        liste = client.get("/sillage/personnes", headers={"Authorization": "Bearer jeton-sillage"}).json()["personnes"]
-        assert [(p["carnet_id"], p["immich_id"], p["decede"]) for p in liste] == [("DDDD-4444", "im-paul", False)]
-        assert set(liste[0]) == {"carnet_id", "nom", "immich_id", "groupes", "proche", "decede", "deces"}
-        assert liste[0]["deces"] == ""                                       # 2.24.1 : vivant, pas de date
-        c.base.executer("INSERT INTO deces (uid, date, origine, le) VALUES (?, ?, 'main', '2026-11-15')", ("DDDD-4444", "2020-02-29"))
-        c.oublier()
-        mort = client.get("/sillage/personnes", headers={"Authorization": "Bearer jeton-sillage"}).json()["personnes"][0]
-        assert (mort["decede"], mort["deces"]) == (True, "2020-02-29")
-        c.base.executer("DELETE FROM deces WHERE uid = ?", ("DDDD-4444",))
-        c.oublier()
-        # 2.20 : la liste pour Gazette (noms et dates), fermée sans son jeton
-        assert client.get("/gazette/personnes").status_code == 401
-        assert client.get("/gazette/personnes", headers=h).status_code == 401
-        c.cfg = dataclasses.replace(c.cfg, gazette_jeton="jeton-gazette")
-        gz = client.get("/gazette/personnes", headers={"Authorization": "Bearer jeton-gazette"}).json()["personnes"]
-        assert {x["carnet_id"] for x in gz} == {"AAAA-1111", "BBBB-2222", "CCCC-3333", "DDDD-4444"}
-        paul = next(x for x in gz if x["carnet_id"] == "DDDD-4444")
-        assert paul["nom"] == "Paul MARTIN" and paul["naissance"] == "1983-01-09"
-        assert any(x["naissance"] is None and x["jour"] for x in gz)      # sans année : pas de date complète
-        assert set(paul) == {"carnet_id", "nom", "nom_carnet", "prenom", "naissance", "jour", "mois", "annee"}
-        # 2.22.1 : la liste pour Douze points (prénom et nom, rien d'autre), fermée sans son jeton à elle
-        assert client.get("/douze-points/personnes").status_code == 401
-        assert client.get("/douze-points/personnes", headers=h).status_code == 401
-        assert client.get("/douze-points/personnes", headers={"Authorization": "Bearer jeton-gazette"}).status_code == 401
-        c.cfg = dataclasses.replace(c.cfg, douze_points_jeton="jeton-douze-points")
-        dp = client.get("/douze-points/personnes", headers={"Authorization": "Bearer jeton-douze-points"}).json()["personnes"]
-        assert dp and all(set(x) == {"carnet_id", "prenom", "nom"} and x["prenom"] for x in dp)
-        assert next(x for x in dp if x["carnet_id"] == "DDDD-4444")["prenom"] == "Paul"
-        # 2.25 : le jeton commun de la maison ouvre aussi ces trois portes (pas celle de Home Assistant)
+        # 2.26 : Sillage, Gazette et Douze points passent par le jeton commun MAISON_JETON seul
         import os
+        from app import maison
+        for v in ("MAISON_JETON", "MAISON_JETON_ANCIEN"):
+            os.environ.pop(v, None)
+        portes = ("/sillage/personnes", "/gazette/personnes", "/douze-points/personnes")
+        for chemin in portes:                                                # MAISON_JETON vide : portes fermées
+            assert client.get(chemin).status_code == 401
+            assert client.get(chemin, headers={"Authorization": "Bearer "}).status_code == 401
+            assert client.get(chemin, headers=h).status_code == 401
+        anciens = {"CARNET_JETON_SILLAGE": "jeton-sillage", "CARNET_JETON_GAZETTE": "jeton-gazette",
+                   "CARNET_JETON_DOUZE_POINTS": "jeton-douze-points"}
+        os.environ.update(anciens)
         os.environ["MAISON_JETON"] = "jeton-commun-essai"
+        commun = {"Authorization": "Bearer jeton-commun-essai"}
         try:
-            for chemin in ("/sillage/personnes", "/gazette/personnes", "/douze-points/personnes"):
-                assert client.get(chemin, headers={"Authorization": "Bearer jeton-commun-essai"}).status_code == 200
-            assert client.get("/ha/contacts", headers={"Authorization": "Bearer jeton-commun-essai"}).status_code == 401
+            for chemin, (nom, ancien) in zip(portes, anciens.items()):
+                assert client.get(chemin, headers=commun).status_code == 200
+                assert client.get(chemin, headers={"Authorization": f"Bearer {ancien}"}).status_code == 401   # ancien jeton : fermé
+            assert client.get("/ha/contacts", headers=commun).status_code == 401      # Home Assistant garde son jeton
+            liste = client.get("/sillage/personnes", headers=commun).json()["personnes"]
+            assert [(p["carnet_id"], p["immich_id"], p["decede"]) for p in liste] == [("DDDD-4444", "im-paul", False)]
+            assert set(liste[0]) == {"carnet_id", "nom", "immich_id", "groupes", "proche", "decede", "deces"}
+            assert liste[0]["deces"] == ""                                       # 2.24.1 : vivant, pas de date
+            c.base.executer("INSERT INTO deces (uid, date, origine, le) VALUES (?, ?, 'main', '2026-11-15')", ("DDDD-4444", "2020-02-29"))
+            c.oublier()
+            mort = client.get("/sillage/personnes", headers=commun).json()["personnes"][0]
+            assert (mort["decede"], mort["deces"]) == (True, "2020-02-29")
+            c.base.executer("DELETE FROM deces WHERE uid = ?", ("DDDD-4444",))
+            c.oublier()
+            # 2.20 : la liste pour Gazette (noms et dates)
+            gz = client.get("/gazette/personnes", headers=commun).json()["personnes"]
+            assert {x["carnet_id"] for x in gz} == {"AAAA-1111", "BBBB-2222", "CCCC-3333", "DDDD-4444"}
+            paul = next(x for x in gz if x["carnet_id"] == "DDDD-4444")
+            assert paul["nom"] == "Paul MARTIN" and paul["naissance"] == "1983-01-09"
+            assert any(x["naissance"] is None and x["jour"] for x in gz)      # sans année : pas de date complète
+            assert set(paul) == {"carnet_id", "nom", "nom_carnet", "prenom", "naissance", "jour", "mois", "annee"}
+            # 2.22.1 : la liste pour Douze points (prénom et nom, rien d'autre)
+            dp = client.get("/douze-points/personnes", headers=commun).json()["personnes"]
+            assert dp and all(set(x) == {"carnet_id", "prenom", "nom"} and x["prenom"] for x in dp)
+            assert next(x for x in dp if x["carnet_id"] == "DDDD-4444")["prenom"] == "Paul"
         finally:
-            del os.environ["MAISON_JETON"]
+            for v in (*anciens, "MAISON_JETON"):
+                os.environ.pop(v, None)
         connecter = client.post("/api/connexion", json={"mot_de_passe": "secret"})
         assert connecter.status_code == 200
-        if True:
+        # 2.26 : l'adresse de Sillage vient seulement de l'annuaire de l'Anneau (plus de CARNET_SILLAGE_URL)
+        os.environ["CARNET_SILLAGE_URL"] = "http://ancienne.exemple"
+        ancien_annuaire = main.ANNUAIRE
+        try:
+            main.ANNUAIRE = maison.Annuaire(jeton="", lire=lambda: [])         # Anneau inconnu : pas de lien
+            assert client.get("/api/contacts/DDDD-4444").json()["sillage"] == ""
+            main.ANNUAIRE = maison.Annuaire(jeton="j", lire=lambda: [{"nom": "Sillage", "locale": "http://sillage.exemple"}])
             assert client.get("/api/contacts/DDDD-4444").json()["sillage"] == "http://sillage.exemple/#/chemin/im-paul"
             assert client.get("/api/contacts/AAAA-1111").json()["sillage"] == ""
+        finally:
+            main.ANNUAIRE = ancien_annuaire
+            os.environ.pop("CARNET_SILLAGE_URL", None)
         assert client.get("/ha/invite", params={"nom": "Paul MARTIN (2026-08-16 → 2026-08-23)"}, headers=h).json()["naissance"] == "1983-01-09"
         assert client.get("/ha/invite", params={"nom": "Personne"}, headers=h).status_code == 404
         statut = client.get("/status").json()
@@ -2995,21 +3005,30 @@ def test_2242_genres_valides_par_lot_ecrits_tout_de_suite_dans_treemich(c, servi
 
 
 def test_module_commun_maison(monkeypatch, tmp_path):
-    """2.25 : copie non retouchée du module du socle ; MAISON_PASSWORD et MAISON_LECTURE_SEULE lus, anciens noms en repli."""
+    """2.26 : copie non retouchée du module du socle ; MAISON_PASSWORD seul (CARNET_PASSWORD n'est plus lu),
+    MAISON_JETON seul pour le kit et Millésime, CARNET_LECTURE_SEULE garde le forçage."""
     from app import config as config_mod, maison
     assert maison.empreinte_calculee() == maison.empreinte_ecrite()
-    for v in ("MAISON_PASSWORD", "MAISON_LECTURE_SEULE", "CARNET_LECTURE_SEULE", "MAISON_JETON", "KIT_API_TOKEN"):
+    for v in ("MAISON_PASSWORD", "MAISON_LECTURE_SEULE", "CARNET_LECTURE_SEULE", "MAISON_JETON", "MAISON_JETON_ANCIEN",
+              "KIT_API_TOKEN", "CARNET_MILLESIME_JETON", "CARNET_PASSWORD"):
         monkeypatch.delenv(v, raising=False)
-    monkeypatch.setenv("CARNET_PASSWORD", "ancien-mot-de-passe")
     monkeypatch.setenv("CARNET_STATE", str(tmp_path))
     monkeypatch.setenv("CARNET_DATA", str(tmp_path))
-    assert config_mod.charger().password == "ancien-mot-de-passe"
+    monkeypatch.setenv("CARNET_PASSWORD", "ancien-mot-de-passe")       # l'ancien nom seul ne suffit plus
+    with pytest.raises(RuntimeError, match="MAISON_PASSWORD est absent ou trop court"):
+        config_mod.charger()
+    monkeypatch.setenv("MAISON_PASSWORD", "court")                     # trop court : refusé
+    with pytest.raises(RuntimeError, match="MAISON_PASSWORD"):
+        config_mod.charger()
     monkeypatch.setenv("MAISON_PASSWORD", "mot-de-passe-commun")
     monkeypatch.setenv("MAISON_LECTURE_SEULE", "oui")
+    monkeypatch.setenv("KIT_API_TOKEN", "jeton-du-kit")                 # n'est plus lu par carnet
+    monkeypatch.setenv("CARNET_MILLESIME_JETON", "jeton-millesime")     # n'est plus lu par carnet
+    cfg = config_mod.charger()
+    assert cfg.password == "mot-de-passe-commun" and cfg.lecture_seule
+    assert cfg.kit_token == "" and cfg.millesime_jeton == ""
     monkeypatch.setenv("MAISON_JETON", "jeton-commun")
     cfg = config_mod.charger()
-    assert cfg.password == "mot-de-passe-commun" and cfg.lecture_seule and cfg.kit_token == "jeton-commun"
-    monkeypatch.setenv("CARNET_LECTURE_SEULE", "non")                # carnet écrit malgré la maison
-    monkeypatch.setenv("KIT_API_TOKEN", "jeton-du-kit")              # transition : l'ancien jeton d'abord
-    cfg = config_mod.charger()
-    assert not cfg.lecture_seule and cfg.kit_token == "jeton-du-kit"
+    assert cfg.kit_token == "jeton-commun" and cfg.millesime_jeton == "jeton-commun"
+    monkeypatch.setenv("CARNET_LECTURE_SEULE", "non")                   # carnet écrit malgré la maison
+    assert not config_mod.charger().lecture_seule

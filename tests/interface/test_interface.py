@@ -159,7 +159,7 @@ def test_cibles_tactiles_et_champs(page):
 
 
 def test_pas_de_defilement_horizontal(page):
-    for route in ("#/a-traiter", "#/contacts", "#/contacts/AAAA-1111", "#/etat"):
+    for route in ("#/a-traiter", "#/contacts", "#/contacts/AAAA-1111", "#/etat", "#/reglages"):
         page.goto(page.url.split("#")[0] + route)
         page.wait_for_timeout(300)
         assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1"), route
@@ -793,3 +793,33 @@ def test_224_champs_de_l_iphone_lecture_et_ajouter_un_champ(page):
     page.wait_for_selector(".message >> text=Annuler")
     page.click(".message >> text=Annuler")
     page.wait_for_selector(".message >> text=revenue")
+
+
+# ------------------------------------------------------------------ 2.26 : réglages d'usage et restauration
+
+def test_226_reglages_d_usage_puis_restaurer(page):
+    page.click("nav.onglets a[aria-label='Réglages']")
+    bloc = page.locator("#reglages-usage")
+    bloc.wait_for()
+    enregistrer = bloc.get_by_role("button", name="Enregistrer les réglages")
+    assert enregistrer.is_disabled()                                   # rien de changé
+    bloc.get_by_label("Heure de la nuit", exact=True).fill("04:20")
+    enregistrer.click()
+    page.wait_for_selector(".message:has-text('Réglages enregistrés')")
+    assert bloc.get_by_label("Heure de la nuit", exact=True).input_value() == "04:20"
+    # Restaurer : choisir une date, voir les différences (avant → sauvegardé), confirmer
+    rest = page.locator("#restaurer")
+    rest.get_by_role("button", name="Voir les sauvegardes").click()
+    rest.get_by_label("Date de la sauvegarde").select_option("2026-11-15")
+    rest.locator("table.diff").wait_for()
+    texte = rest.locator("table.diff").inner_text()
+    assert "Heure de la nuit" in texte and "05:45" in texte and "Vérifier le certificat de Synology" in texte
+    assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1")
+    rest.get_by_role("button", name="Restaurer ces réglages").click()
+    page.wait_for_selector(".message:has-text('Réglages restaurés')")
+    assert bloc.get_by_label("Heure de la nuit", exact=True).input_value() == "05:45"
+    # remis comme avant pour les autres tests (le serveur est partagé)
+    bloc.get_by_label("Heure de la nuit", exact=True).fill("03:00")
+    bloc.get_by_label("Vérifier le certificat de Synology").check()
+    enregistrer.click()
+    page.wait_for_selector(".message:has-text('Réglages enregistrés')")

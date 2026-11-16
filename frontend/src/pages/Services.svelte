@@ -87,7 +87,7 @@
     synology: 'Copie à l\'identique d\'iCloud vers Synology Contacts.',
     kit: 'Les contacts du groupe Urgence sont envoyés au kit d\'urgence.',
     ha: 'Home Assistant vient lire carnet : contacts, anniversaires et mariages (/ha/anniversaires), fêtes (/ha/fetes), invités, portraits. carnet n\'écrit rien dans Home Assistant.',
-    millesime: 'Millésime date les scans de photos papier d\'Immich par l\'âge des visages. carnet vient lire son état toutes les 10 minutes au plus (jeton CARNET_MILLESIME_JETON) et n\'y écrit rien. Les personnes des scans sans date de naissance sont dans À traiter › Sans anniversaire.',
+    millesime: 'Millésime date les scans de photos papier d\'Immich par l\'âge des visages. carnet vient lire son état toutes les 10 minutes au plus (jeton commun MAISON_JETON) et n\'y écrit rien. Les personnes des scans sans date de naissance sont dans À traiter › Sans anniversaire.',
     import: 'Cartes de contacts, relations LinkedIn, exports Facebook et Instagram : carnet reconnaît le fichier et annonce ce qu\'il en fera.',
   }
   onMount(charger)
@@ -154,7 +154,7 @@
         {#if choisi === 'millesime' && service.millesime}
           {@const m = service.millesime}
           {#if !m.configure}
-            <p class="discret">Non configuré : pose <code>CARNET_MILLESIME_JETON</code> (la valeur de <code>MILLESIME_JETON_CARNET</code>) dans la stack.</p>
+            <p class="discret">Non configuré : pose <code>MAISON_JETON</code> (le jeton commun de la maison) dans la stack.</p>
           {:else if m.ok}
             {#if m.message}<p class="alerte" role="status">{m.message}</p>{/if}
             <table class="verif">
@@ -176,7 +176,7 @@
             <span><strong>La nuit{cx.nuit ? ` (${cx.nuit})` : ''}</strong> : {service.nuit.quoi.toLowerCase()}
               <span class="etat-bascule" class:actif={service.nuit.actif}>{service.nuit.actif ? 'allumé' : 'éteint'}</span></span>
           </label>
-          {#if !cx.nuit}<p class="discret">La nuit de carnet est désactivée (CARNET_VEILLE_HEURE) : rien ne se fait tout seul.</p>{/if}
+          {#if !cx.nuit}<p class="discret">La nuit de carnet est désactivée (heure dans <a href="#/reglages">Réglages</a>) : rien ne se fait tout seul.</p>{/if}
         {/if}
 
         {#if attente === 'verifier' && choisi === 'treemich'}

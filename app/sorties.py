@@ -53,7 +53,7 @@ def envoyer_kit(c: Carnet) -> dict:
         except httpx.HTTPError as exc:
             res["regeneration"] = f"kit injoignable ({exc.__class__.__name__})"
     else:
-        res["regeneration"] = "non demandée (KIT_API_TOKEN absent)"
+        res["regeneration"] = "non demandée (MAISON_JETON absent)"
     c.base.ecrire("dernier_envoi_kit", res)
     c.base.noter("kit", f"Kit d'urgence : {res['nb']} contact(s) envoyés, régénération {res['regeneration']}")
     return res

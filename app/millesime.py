@@ -1,6 +1,6 @@
 """Millésime (2.21) : l'appli qui date les scans d'Immich par l'âge des visages.
 
-carnet vient lire `GET /api/etat` de Millésime (jeton MILLESIME_JETON_CARNET) :
+carnet vient lire `GET /api/etat` de Millésime (jeton commun MAISON_JETON, 2.26) :
 - l'état du calcul (photos à dater, visages à analyser, message « allume le PC »), montré dans
   Connexion › Millésime ;
 - les personnes des scans qui n'ont pas de date de naissance dans Immich, montrées dans la tuile
@@ -39,7 +39,7 @@ def lire(c: Carnet, forcer: bool = False) -> dict:
                                headers={"Authorization": f"Bearer {c.cfg.millesime_jeton}"})
             if r.status_code == 401:
                 return {"ok": False, "etat": None, "le": iso(maintenant()),
-                        "erreur": "Millésime refuse le jeton (CARNET_MILLESIME_JETON = MILLESIME_JETON_CARNET)."}
+                        "erreur": "Millésime refuse le jeton commun (MAISON_JETON : même valeur des deux côtés ?)."}
             r.raise_for_status()
             return {"ok": True, "etat": r.json(), "erreur": "", "le": iso(maintenant())}
         except (httpx.HTTPError, ValueError) as exc:

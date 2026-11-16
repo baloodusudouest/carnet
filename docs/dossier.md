@@ -58,12 +58,12 @@ Ce dossier décrit ce qui existe. Le détail de conception de la 2.8 est dans `d
 | Synology Contacts | CardDAV | écriture (copie) | `CARNET_SYNOLOGY_URL`, `CARNET_SYNOLOGY_PASSWORD` |
 | LinkedIn | API de portabilité (OAuth) ou fichier | lecture | `CARNET_LINKEDIN_CLIENT_ID`, `CARNET_LINKEDIN_CLIENT_SECRET` |
 | Telegram | Telethon, session en mémoire | lecture ponctuelle | `CARNET_TELEGRAM_API_ID`, `CARNET_TELEGRAM_API_HASH` |
-| Kit d'urgence | fichier partagé + appel HTTP | écriture | `KIT_URL`, `KIT_API_TOKEN` |
+| Kit d'urgence | fichier partagé + appel HTTP | écriture | `KIT_URL`, `MAISON_JETON` (2.26) |
 | Home Assistant | carnet est interrogé, jeton porteur | lecture par HA | `CARNET_HA_TOKEN` |
 
-**Connexion.** Un mot de passe (`CARNET_PASSWORD`), cookie de session signé valable 30 jours ; « Se déconnecter » invalide tous les cookies. Délai de 1 seconde par essai, 5 secondes après 5 échecs. Les routes `/ha/…` demandent un jeton distinct.
+**Connexion.** Un mot de passe (`MAISON_PASSWORD` depuis la 2.26, commun aux applis, 12 caractères au moins), cookie de session signé valable 30 jours ; « Se déconnecter » invalide tous les cookies. Délai de 1 seconde par essai, 5 secondes après 5 échecs. Les routes `/ha/…` demandent un jeton distinct.
 
-**Garde-fous d'écriture.** Verrou tenu pendant toute une opération. Contrôle de version de la carte (ETag) avant et après écriture. Coupe-circuit si la lecture d'iCloud est partielle ou si plus de 5 % des fiches disparaissent. Pause de 15 minutes après un refus d'identifiants iCloud. Plafonds de créations et de modifications la nuit. Mode lecture seule (`CARNET_LECTURE_SEULE`). Écritures automatiques de la 2.8 derrière deux interrupteurs, journalisées avec la valeur d'avant ; Treemich relu juste avant et juste après chaque écriture.
+**Garde-fous d'écriture.** Verrou tenu pendant toute une opération. Contrôle de version de la carte (ETag) avant et après écriture. Coupe-circuit si la lecture d'iCloud est partielle ou si plus de 5 % des fiches disparaissent. Pause de 15 minutes après un refus d'identifiants iCloud. Plafonds de créations et de modifications la nuit. Mode lecture seule (`MAISON_LECTURE_SEULE`, ou `CARNET_LECTURE_SEULE` pour carnet seul). Écritures automatiques de la 2.8 derrière deux interrupteurs, journalisées avec la valeur d'avant ; Treemich relu juste avant et juste après chaque écriture.
 
 ---
 

@@ -1,4 +1,4 @@
-"""Application FastAPI de carnet 2 : interface (3 onglets), API et adresses Home Assistant."""
+"""Application FastAPI de carnet 2 : interface (6 onglets), API, adresses Home Assistant et sauvegarde des réglages."""
 from __future__ import annotations
 
 import asyncio
@@ -22,6 +22,7 @@ from .carnet import Carnet, ErreurCarnet, Occupe
 from .config import charger
 from . import millesime as millesime_
 from . import genres
+from . import reglages as reglages_
 from .liens import ErreurLien
 from .modele import groupes_tous, nom_affiche
 from .normalisation import cle_texte
@@ -86,10 +87,9 @@ app = FastAPI(title="carnet", version=__version__, lifespan=cycle, docs_url=None
 @app.middleware("http")
 async def garde(request: Request, appel):
     chemin = request.url.path
-    def ouvert(propre: str) -> bool:
-        # 2.25 : le jeton propre à l'appli d'en face (ancien nom) ou le jeton commun MAISON_JETON
-        acceptes = tuple(j for j in (propre, *maison.jetons()) if j)
-        return maison.jeton_valide(maison.jeton_propose(request.headers), acceptes)
+    def ouvert() -> bool:
+        # 2.26 : le jeton commun MAISON_JETON seul (les anciens jetons par paire ne sont plus lus) ; vide : fermé
+        return maison.jeton_valide(maison.jeton_propose(request.headers), maison.jetons())
 
     if chemin.startswith("/ha/"):
         jeton = carnet().cfg.ha_token
@@ -97,17 +97,18 @@ async def garde(request: Request, appel):
         if not jeton or request.headers.get("authorization", "") != attendu:
             return JSONResponse({"detail": "Jeton Home Assistant manquant ou invalide."}, status_code=401)
     elif chemin.startswith("/sillage/"):
-        # 2.15 : Sillage lit la liste des personnes liées à Immich, avec son propre jeton
-        if not ouvert(carnet().cfg.sillage_jeton):
+        # 2.15 : Sillage lit la liste des personnes liées à Immich (jeton commun)
+        if not ouvert():
             return JSONResponse({"detail": "Jeton de Sillage manquant ou invalide."}, status_code=401)
     elif chemin.startswith("/gazette/"):
-        # 2.20 : Gazette lit noms et dates de naissance, avec son propre jeton
-        if not ouvert(carnet().cfg.gazette_jeton):
+        # 2.20 : Gazette lit noms et dates de naissance (jeton commun)
+        if not ouvert():
             return JSONResponse({"detail": "Jeton de Gazette manquant ou invalide."}, status_code=401)
     elif chemin.startswith("/douze-points/"):
-        # 2.22.1 : Douze points lit prénoms et noms (rien d'autre), avec son propre jeton
-        if not ouvert(carnet().cfg.douze_points_jeton):
+        # 2.22.1 : Douze points lit prénoms et noms, rien d'autre (jeton commun)
+        if not ouvert():
             return JSONResponse({"detail": "Jeton de Douze points manquant ou invalide."}, status_code=401)
+    # /externe/… (2.26 : sauvegarde pour l'Anneau) : pas de session, la route vérifie le jeton commun.
     # Sans session : seulement l'envoi du mot de passe et la question « suis-je connecté ? ».
     # La lecture de /api/connexion (l'état des services, 2.9) exige une session comme le reste.
     elif chemin.startswith("/api/") and not (chemin == "/api/session"
@@ -115,7 +116,7 @@ async def garde(request: Request, appel):
         if not ETAT["sessions"].connecte(request.cookies):
             return JSONResponse({"detail": "Connexion nécessaire."}, status_code=401)
     reponse = await appel(request)
-    if chemin.startswith(("/api/", "/ha/", "/sillage/", "/gazette/", "/douze-points/")):
+    if chemin.startswith(("/api/", "/ha/", "/sillage/", "/gazette/", "/douze-points/", "/externe/")):
         reponse.headers["Cache-Control"] = "no-store"
     return reponse
 
@@ -281,10 +282,10 @@ def _associes(c: Carnet, uid: str, f: dict) -> list[dict | None]:
 ANNUAIRE = maison.Annuaire()
 
 
-def adresse_de(nom: str, request: Request, repli: str = "") -> str:
-    """2.25 : adresse d'une autre appli pour le navigateur, lue dans l'Anneau (privée si la page vient de
-    Tailscale) ; repli : l'ancienne variable (ex. CARNET_SILLAGE_URL)."""
-    return ANNUAIRE.adresse(nom, prive=maison.est_prive(request.headers.get("host", "")), repli=repli)
+def adresse_de(nom: str, request: Request) -> str:
+    """2.25 : adresse d'une autre appli pour le navigateur, lue dans l'annuaire de l'Anneau (privée si la page
+    vient de Tailscale). 2.26 : plus de variable de repli ; l'Anneau ne la connaît pas : vide."""
+    return ANNUAIRE.adresse(nom, prive=maison.est_prive(request.headers.get("host", "")))
 
 
 @app.get("/api/contacts/{uid}")
@@ -316,7 +317,7 @@ def contact(uid: str, request: Request):
             "google_logo": galerie.recherche_google(f),
             # 2.15 : le chemin de vie de la personne, si la fiche est liée à Immich et que Sillage a une adresse
             "sillage": (f"{sillage}/#/chemin/{c.liaisons().get(uid, {}).get('immich')}"
-                        if (sillage := adresse_de("Sillage", request, c.cfg.sillage_adresse))
+                        if (sillage := adresse_de("Sillage", request))
                         and c.liaisons().get(uid, {}).get("immich") else "")}
 
 
@@ -775,6 +776,74 @@ def automatique_regler(quoi: str, corps: dict = Body(...)):
 @app.post("/api/automatique/defaire/{ident}")
 def automatique_defaire(ident: int):
     return famille.defaire(carnet(), ident)
+
+
+# ---------------------------------------------------------------- réglages d'usage, sauvegarde, restauration (2.26)
+
+LIRE_ANNEAU = None      # tests et démonstration : faux Anneau (fonction (adresse, jeton) → dict) ; None : HTTP
+
+
+@app.get("/api/reglages")
+def reglages_lire():
+    c = carnet()
+    return {"reglages": reglages_.tout(c), "lecture_seule": c.cfg.lecture_seule,
+            "origine_lecture_seule": maison.origine_lecture_seule("CARNET_LECTURE_SEULE")}
+
+
+@app.put("/api/reglages")
+def reglages_ecrire(corps: dict = Body(...)):
+    """Change un ou plusieurs réglages ; une valeur de mauvais type : 400, rien n'est changé."""
+    valeurs = corps.get("reglages", corps) if isinstance(corps, dict) else corps
+    return {"reglages": reglages_.changer(carnet(), valeurs)}
+
+
+def _anneau(le: str = "") -> dict:
+    """Lit les sauvegardes de carnet chez l'Anneau ; message clair (503 / 404) si rien ne vient."""
+    import urllib.error
+    if not maison.jeton_a_envoyer() and LIRE_ANNEAU is None:
+        raise HTTPException(503, "MAISON_JETON n'est pas posé : carnet ne peut pas lire les sauvegardes de l'Anneau.")
+    try:
+        r = maison.lire_sauvegarde(reglages_.ID_APPLI, le, lire=LIRE_ANNEAU)
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise HTTPException(404, "L'Anneau n'a pas de sauvegarde de carnet" + (f" du {le}." if le else ".")) from exc
+        raise HTTPException(503, f"L'Anneau a refusé la demande (erreur {exc.code}).") from exc
+    except Exception as exc:  # noqa: BLE001 — Anneau éteint, réseau, réponse illisible
+        raise HTTPException(503, f"Anneau injoignable ({exc.__class__.__name__}) : réessaie plus tard.") from exc
+    if not isinstance(r, dict):
+        raise HTTPException(503, "Réponse de l'Anneau illisible.")
+    return r
+
+
+@app.get("/api/restaurer")
+def restaurer_lire(le: str = ""):
+    c = carnet()
+    if not le:
+        return {"dates": list(_anneau().get("dates") or [])}
+    s = _anneau(le)
+    if not isinstance(s.get("reglages"), dict):
+        raise HTTPException(404, f"L'Anneau n'a pas de sauvegarde de carnet du {le}.")
+    return {"le": s.get("le", le), "version": s.get("version", ""), "differences": reglages_.differences(c, s["reglages"])}
+
+
+@app.post("/api/restaurer")
+def restaurer_appliquer(corps: dict = Body(...)):
+    """Applique les réglages d'une sauvegarde (rien d'autre). Permis en lecture seule : tout reste dans carnet."""
+    le = str(corps.get("le") or "").strip()
+    if not le:
+        raise HTTPException(400, "Choisis la date de la sauvegarde à restaurer.")
+    s = _anneau(le)
+    if not isinstance(s.get("reglages"), dict):
+        raise HTTPException(404, f"L'Anneau n'a pas de sauvegarde de carnet du {le}.")
+    return reglages_.restaurer(carnet(), {**s, "le": s.get("le", le)})
+
+
+@app.get("/externe/sauvegarde")
+def externe_sauvegarde(request: Request):
+    """Réglages d'usage pour l'Anneau (collecte de nuit) : jeton commun seulement ; sans jeton réglé, porte fermée."""
+    if not maison.jeton_valide(maison.jeton_propose(request.headers), maison.jetons()):
+        raise HTTPException(404, "Not Found")
+    return maison.sauvegarde(reglages_.ID_APPLI, __version__, reglages_.tout(carnet()), exclus=reglages_.EXCLUS)
 
 
 # ---------------------------------------------------------------- fusion

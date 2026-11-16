@@ -1,6 +1,19 @@
 # Journal des versions
 
 
+## 2.26.0 — 16 novembre 2026
+- **Réglages dans l'appli.** L'heure de la nuit (ou nuit désactivée), les émojis → groupes, le nom du carnet d'adresses de Synology Contacts et la vérification de son certificat se changent dans Réglages › « Réglages d'usage », plus dans la stack. Ils sont gardés dans `/state/reglages.json`. Une nouvelle heure de nuit prend effet tout de suite, sans redémarrer.
+  - Au premier démarrage de la 2.26, chaque réglage reprend son ancienne variable si elle est encore dans la stack (`CARNET_VEILLE_HEURE`, `CARNET_EMOJI_GROUPES`, `CARNET_SYNOLOGY_CARNET`, `CARNET_SYNOLOGY_VERIFIER_TLS`), avec une ligne au journal ; ensuite la variable n'est plus jamais lue.
+  - Une valeur de mauvais type ou une heure impossible est refusée avec un message clair, rien n'est changé.
+- **Sauvegarde pour l'Anneau.** Nouvelle adresse `/externe/sauvegarde`, ouverte seulement par le jeton commun `MAISON_JETON` (fermée s'il est vide) : les réglages d'usage et les interrupteurs « la nuit » de chaque service, la version de carnet, rien d'autre (ni variable, ni chemin, ni secret).
+- **Restaurer les réglages.** Dans Réglages : choisir une date parmi les sauvegardes de l'Anneau, voir ce qui changerait (avant → sauvegardé), confirmer. Seuls les réglages changent, une ligne au journal ; permis même en lecture seule. Anneau injoignable : un message, rien d'autre.
+- **Anciens noms retirés.** carnet ne lit plus :
+  - `CARNET_PASSWORD` : seulement `MAISON_PASSWORD`, 12 caractères au moins, sinon carnet ne démarre pas ;
+  - `CARNET_JETON_SILLAGE`, `CARNET_JETON_GAZETTE`, `CARNET_JETON_DOUZE_POINTS` : `/sillage/`, `/gazette/` et `/douze-points/` ne s'ouvrent plus qu'avec `MAISON_JETON` ;
+  - `CARNET_MILLESIME_JETON` et `KIT_API_TOKEN` : carnet envoie `MAISON_JETON` à Millésime et au kit d'urgence (kit 2.4.0) ;
+  - `CARNET_SILLAGE_URL` : le lien « Sillage » de la fiche vient seulement de l'annuaire de l'Anneau.
+- `CARNET_LECTURE_SEULE` reste (forçage de carnet seul), comme `CARNET_HA_TOKEN` (Home Assistant).
+- Tests : 147 du serveur (réglages, reprise une seule fois, mauvais types, nuit réveillée, sauvegarde, restauration, anciens jetons refusés) et l'écran Réglages sur PC et iPhone.
 ## 2.25.0 — 16 novembre 2026
 - **Variables communes de la maison** (module `app/maison.py` du socle 0.5.0, copié tel quel) :
   - mot de passe : `MAISON_PASSWORD`, repli sur `CARNET_PASSWORD` ;

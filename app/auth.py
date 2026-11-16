@@ -1,4 +1,4 @@
-"""Connexion par mot de passe unique (CARNET_PASSWORD) et cookie de session signé (HMAC).
+"""Connexion par mot de passe unique (MAISON_PASSWORD, commun aux applis de la maison) et cookie de session signé (HMAC).
 
 Changer le mot de passe déconnecte tous les navigateurs ; « Se déconnecter » change la
 génération enregistrée : tous les cookies émis avant deviennent invalides.

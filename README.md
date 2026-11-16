@@ -4,7 +4,7 @@ Gardien de tes contacts iCloud, auto-hébergé sur le NAS. iCloud reste la **sou
 
 Accès en réseau local et par Tailscale uniquement, jamais exposé sur Internet.
 
-## Les trois onglets
+## Les onglets
 
 | Onglet | Rôle |
 |---|---|
@@ -47,14 +47,23 @@ Une date saisie en **1900** (par exemple 14/03/1900) veut dire « année inconnu
 - **Sauvegardes** : copie complète avant la première écriture du jour et chaque nuit, gardée 30 jours puis une par mois pendant un an (2 Go au plus). État › Sauvegardes compare une copie à iCloud et remet les fiches choisies à l'identique.
 - **Suppression** : seulement quand tu réunis deux fiches (la carte absorbée est retirée, ses liaisons, photo, affiche et relation LinkedIn passent sur la fiche gardée).
 
-## La nuit (`CARNET_VEILLE_HEURE`, 03:00)
+## La nuit (03:00 par défaut, heure dans Réglages)
 
 1. Lecture complète d'iCloud (veille).
 2. Relecture d'Immich et Treemich, liaisons sûres.
 3. Sauvegarde, puis les écritures sûres.
 4. Copie dans Synology Contacts, kit d'urgence, purge des sauvegardes.
 
-Si une autre opération tourne, la nuit réessaie toutes les 10 min pendant 3 h. `CARNET_VEILLE_HEURE=off` la désactive.
+Si une autre opération tourne, la nuit réessaie toutes les 10 min pendant 3 h. Réglages › Réglages d'usage › « La nuit chaque jour » la désactive ; une nouvelle heure prend effet tout de suite, sans redémarrer.
+
+## Réglages d'usage, sauvegarde et restauration (2.26)
+
+Réglages › **Réglages d'usage** : heure de la nuit (ou nuit désactivée), émojis → groupes (« 🍕:Amis;🔧:Artisans et services »), nom du carnet d'adresses de Synology Contacts (plusieurs noms séparés par « | »), vérification du certificat HTTPS de Synology. Ils sont gardés dans `/state/reglages.json`. Avant la 2.26, ils venaient de la stack (`CARNET_VEILLE_HEURE`, `CARNET_EMOJI_GROUPES`, `CARNET_SYNOLOGY_CARNET`, `CARNET_SYNOLOGY_VERIFIER_TLS`) : au premier démarrage de la 2.26, chacun reprend sa variable si elle est posée (une ligne au journal), puis la variable n'est plus jamais lue.
+
+Les interrupteurs « la nuit » de chaque service (Connexion) font aussi partie des réglages sauvegardés.
+
+- `GET /externe/sauvegarde` : les réglages pour l'Anneau (collecte de nuit), ouverte seulement par le jeton commun `MAISON_JETON` (`Authorization: Bearer …`) ; jeton vide : 404. Ni variable, ni chemin, ni secret.
+- Réglages › **Restaurer les réglages** : choisir une date parmi les sauvegardes de l'Anneau, voir les différences (avant → sauvegardé), confirmer. Seuls les réglages changent ; permis même en lecture seule. Anneau injoignable : un message, rien d'autre.
 
 ## Home Assistant
 
@@ -73,7 +82,7 @@ Le paquet `homeassistant/carnet.yaml` de la 1.3 fonctionne sans changement.
 
 ## Installation (Portainer, stack homelab.yml)
 
-Le service est décrit dans `docker-compose.yml` ; les variables sont dans `.env.example` (les mêmes que pour la 1.3). Volumes :
+Le service est décrit dans `docker-compose.yml` ; les variables sont dans `.env.example`. Variables communes de la maison : `MAISON_PASSWORD` (12 caractères au moins, sinon carnet ne démarre pas), `MAISON_JETON` (Sillage, Gazette, Douze points, Millésime, kit d'urgence, sauvegardes de l'Anneau), `MAISON_LECTURE_SEULE`. Volumes :
 
 | Volume | Dossier du NAS | Contenu |
 |---|---|---|
@@ -85,7 +94,7 @@ Le service est décrit dans `docker-compose.yml` ; les variables sont dans `.env
 
 ### Mode lecture seule
 
-`CARNET_LECTURE_SEULE=oui` dans les variables de la stack, puis Recreate : carnet lit iCloud, Immich et Treemich, calcule les points à traiter et affiche tout, mais **n'écrit nulle part** hors de sa propre base (ni iCloud, ni Immich, Treemich, Synology Contacts ou le kit d'urgence). Un bandeau le rappelle en haut de chaque écran, et la nuit relit sans rien lier ni écrire. À utiliser pour essayer une nouvelle version ; retirer la variable pour écrire de nouveau.
+`MAISON_LECTURE_SEULE=oui` (toutes les applis) ou `CARNET_LECTURE_SEULE=oui` (carnet seul, l'emporte sur la variable commune) dans les variables de la stack, puis Recreate : carnet lit iCloud, Immich et Treemich, calcule les points à traiter et affiche tout, mais **n'écrit nulle part** hors de sa propre base (ni iCloud, ni Immich, Treemich, Synology Contacts ou le kit d'urgence). Un bandeau le rappelle en haut de chaque écran, et la nuit relit sans rien lier ni écrire. À utiliser pour essayer une nouvelle version ; retirer la variable pour écrire de nouveau.
 
 ### Revenir à une version précédente
 

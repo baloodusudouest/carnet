@@ -15,7 +15,6 @@ from typing import Any
 
 import httpx
 
-from . import normalisation
 from .base import Base
 from .carddav import CardDAV
 from .config import Config
@@ -37,7 +36,9 @@ class Carnet:
         self._treemich: Treemich | None = None
         self.logos: dict[str, list[dict]] = {}    # uid → logos trouvés ou déposé, en attente d'un choix (2.8)
         self.tache: dict = {"nom": None, "etat": "libre", "message": ""}
-        normalisation.configurer_emojis(cfg.emoji_groupes)
+        self.reveil = threading.Event()           # 2.26 : réveille la boucle de la nuit (heure changée dans Réglages)
+        from . import reglages                    # 2.26 : réglages d'usage (fichier reglages.json, reprise une fois)
+        reglages.ouvrir(self)
 
     # ------------------------------------------------------------ verrou
 

@@ -113,12 +113,12 @@ class CardDAV:
             erreur.passagere = "CERTIFICATE" not in str(exc).upper()
             if not erreur.passagere:
                 erreur = ErreurICloud(f"{self.service} : certificat HTTPS refusé (adresse IP ou certificat auto-signé). "
-                                      "En réseau local, mets CARNET_SYNOLOGY_VERIFIER_TLS=non.")
+                                      "En réseau local, décoche « Vérifier le certificat de Synology » dans Réglages.")
             raise erreur from exc
         except httpx.HTTPError as exc:
             if "CERTIFICATE" in str(exc).upper():
                 raise ErreurICloud(f"{self.service} : certificat HTTPS refusé (adresse IP ou certificat auto-signé). "
-                                   "En réseau local, mets CARNET_SYNOLOGY_VERIFIER_TLS=non.") from exc
+                                   "En réseau local, décoche « Vérifier le certificat de Synology » dans Réglages.") from exc
             raise ErreurICloud(f"{self.service} injoignable ({exc.__class__.__name__}).") from exc
         if r.status_code == 401:
             _refus[self._cle_compte] = time.monotonic() + PAUSE_REFUS

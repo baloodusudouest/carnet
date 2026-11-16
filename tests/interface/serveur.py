@@ -64,7 +64,21 @@ def preparer(dossier: Path) -> tuple[Carnet, FauxICloud]:
                                          {"ext_id": "camille.garnier", "nom": "", "pseudo": "camille.garnier"}])
     reseaux.proposer(c)
     c.transports["logos"] = faux_logos()
+    main.LIRE_ANNEAU = faux_anneau()          # 2.26 : sauvegardes simulées pour « Restaurer les réglages »
     return c, ic
+
+
+def faux_anneau():
+    """2.26 : l'Anneau simulé (GET /externe/sauvegardes/carnet) : deux sauvegardes."""
+    sauvegardes = {"2026-11-15": {"veille_heure": "05:45", "synology_verifier_tls": False, "nuit_kit": False},
+                   "2026-11-14": {"veille_heure": "03:00"}}
+
+    def lire(adresse, jeton):
+        if "?le=" not in adresse:
+            return {"dates": sorted(sauvegardes, reverse=True)}
+        le = adresse.rsplit("=", 1)[1]
+        return {"le": le, "version": "2.26.0", "reglages": sauvegardes[le]}
+    return lire
 
 
 def faux_millesime():

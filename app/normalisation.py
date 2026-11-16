@@ -362,7 +362,7 @@ def note(texte: str) -> str:
     return t if any(c.isalnum() for c in t) else ""
 
 
-# Règles « émoji → groupe » lues dans la configuration (CARNET_EMOJI_GROUPES), jamais dans le code
+# Règles « émoji → groupe » lues dans les réglages (écran Réglages, 2.26), jamais dans le code
 EMOJI_GROUPES: dict[str, str] = {}
 
 
