@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.31.2 — 17 novembre 2026 (corrections de l'audit, suite)
+- Nuit : une lecture d'iCloud en échec (panne passagère à 03:00) est réessayée toutes les 10 minutes pendant 3 heures, comme quand carnet est occupé ; avant, la copie Synology, le kit et le coffre sautaient jusqu'au lendemain.
+- La copie en clair d'avant le chiffrement (`carnet2.db.clair-*`) est effacée chaque nuit une fois ses 14 jours passés, et plus seulement au redémarrage du conteneur.
+
 ## 2.31.1 — 17 novembre 2026 (connexion plus sûre)
 - **Connexion plus sûre** (audit du 17/11/2026, même correctif dans toutes les applis maison) :
   - un cookie portant un caractère non ASCII donnait une erreur 500 sur toute l'API ; il est maintenant simplement refusé ;

@@ -47,6 +47,8 @@ def passer(c: Carnet, origine: str = "nuit") -> dict:
             else:
                 _suite_de_nuit(c, lecture, bilan)
             icloud.purger(c)
+            from .base import _effacer_copies_claires   # 2.31.2 : aussi chaque nuit, pas seulement au démarrage
+            _effacer_copies_claires(c.cfg.db_path)
         except Exception as exc:  # noqa: BLE001
             if not bilan["erreur"]:
                 bilan["erreur"] = str(exc)
@@ -195,7 +197,11 @@ def demarrer(c: Carnet) -> threading.Thread:
             fin = time.monotonic() + REESSAI_PENDANT
             while True:
                 try:
-                    passer(c)
+                    bilan = passer(c)
+                    # 2.31.2 : une lecture d'iCloud en échec (panne passagère à 03:00) est réessayée comme « occupé »
+                    if bilan.get("erreur_lecture") and time.monotonic() <= fin:
+                        time.sleep(REESSAI)
+                        continue
                     break
                 except Occupe:
                     if time.monotonic() > fin:
