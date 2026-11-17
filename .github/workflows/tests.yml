@@ -1,6 +1,10 @@
 # Tests du back-end sur des contacts fictifs, à chaque push et pull request
 name: Tests
-on: [push, pull_request]
+on:
+  push:
+    branches-ignore: [main]   # sur main, docker.yml appelle ces tests avant de publier
+  pull_request:
+  workflow_call:
 permissions:
   contents: read
 jobs:

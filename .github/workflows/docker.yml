@@ -1,4 +1,4 @@
-# Construit l'image et la publie sur ghcr.io à chaque push sur main (Watchtower la met à jour sur le NAS)
+# Lance les tests, puis construit l'image et la publie sur ghcr.io, à chaque push sur main (Watchtower la met à jour sur le NAS)
 name: Image Docker
 on:
   push:
@@ -6,10 +6,16 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-  packages: write
 jobs:
+  # Audit du 17/11/2026 : rien n'est publié si les tests échouent
+  tests:
+    uses: ./.github/workflows/tests.yml
   build:
+    needs: tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
