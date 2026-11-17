@@ -242,8 +242,11 @@ def gazette_personnes(c: Carnet) -> dict:
     """2.20 : noms et dates de naissance pour Gazette (livret « le monde le jour de votre naissance »).
     `nom` : le nom donné à Home Assistant (celui d'Immich quand la fiche est liée), celui que HA annonce
     pour un séjour ; `nom_carnet` : le nom de la fiche. `naissance` : AAAA-MM-JJ seulement si jour, mois et
-    année sont connus, sinon null. Les personnes décédées ne sont pas données. Lecture seule."""
-    from . import attentes
+    année sont connus, sinon null. `genre` (2.27) : « femme », « homme », « autre » ou vide si inconnu,
+    pour accorder le titre du journal à scandale de Gazette ; `immich_id` (2.27) : la personne d'Immich liée
+    à la fiche (vide sinon), pour chercher ses photos entre deux séjours. Les personnes décédées ne sont pas données.
+    Lecture seule."""
+    from . import attentes, genres
     morts = attentes.decedes(c)
     res = []
     for p in contacts_ha(c):
@@ -251,7 +254,8 @@ def gazette_personnes(c: Carnet) -> dict:
             continue
         complete = f"{p['annee']:04d}-{p['mois']:02d}-{p['jour']:02d}" if p["jour"] and p["mois"] and p["annee"] else None
         res.append({"carnet_id": p["carnet_id"], "nom": p["nom"], "nom_carnet": p["nom_carnet"], "prenom": p["prenom"],
-                    "naissance": complete, "jour": p["jour"], "mois": p["mois"], "annee": p["annee"]})
+                    "naissance": complete, "jour": p["jour"], "mois": p["mois"], "annee": p["annee"],
+                    "genre": genres.de(c, p["carnet_id"]), "immich_id": p["immich_id"] or ""})
     log.info("Gazette : %d personne(s) renvoyée(s)", len(res))
     return {"genere_le": iso(maintenant()), "personnes": res}
 

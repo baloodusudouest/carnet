@@ -1,6 +1,10 @@
 # Journal des versions
 
 
+## 2.27.0 — 17 novembre 2026
+- **Genre pour Gazette.** `GET /gazette/personnes` donne aussi `genre` (« femme », « homme », « autre », vide si inconnu), le genre choisi dans carnet ou repris de Treemich. Gazette 0.9.0 s'en sert pour accorder le titre de son journal à scandale (« Elle est revenue » / « Il est revenu »). Elle donne aussi `immich_id` (la personne d'Immich liée à la fiche, vide sinon), pour que Gazette cherche les photos de l'invité entre deux séjours. Rien d'autre ne change ; toujours ouvert seulement par `MAISON_JETON`.
+- Tests : `genre` vide sans genre, suit un genre défini ; `immich_id` d'une fiche liée.
+
 ## 2.26.0 — 16 novembre 2026
 - **Réglages dans l'appli.** L'heure de la nuit (ou nuit désactivée), les émojis → groupes, le nom du carnet d'adresses de Synology Contacts et la vérification de son certificat se changent dans Réglages › « Réglages d'usage », plus dans la stack. Ils sont gardés dans `/state/reglages.json`. Une nouvelle heure de nuit prend effet tout de suite, sans redémarrer.
   - Au premier démarrage de la 2.26, chaque réglage reprend son ancienne variable si elle est encore dans la stack (`CARNET_VEILLE_HEURE`, `CARNET_EMOJI_GROUPES`, `CARNET_SYNOLOGY_CARNET`, `CARNET_SYNOLOGY_VERIFIER_TLS`), avec une ligne au journal ; ensuite la variable n'est plus jamais lue.

@@ -586,7 +586,16 @@ def test_home_assistant_adresses(c):
             paul = next(x for x in gz if x["carnet_id"] == "DDDD-4444")
             assert paul["nom"] == "Paul MARTIN" and paul["naissance"] == "1983-01-09"
             assert any(x["naissance"] is None and x["jour"] for x in gz)      # sans année : pas de date complète
-            assert set(paul) == {"carnet_id", "nom", "nom_carnet", "prenom", "naissance", "jour", "mois", "annee"}
+            assert set(paul) == {"carnet_id", "nom", "nom_carnet", "prenom", "naissance", "jour", "mois", "annee", "genre", "immich_id"}
+            assert paul["genre"] == ""                                          # 2.27 : genre inconnu → vide
+            assert paul["immich_id"] == "im-paul"                               # 2.27 : personne d'Immich liée
+            from app import genres as G
+            G.definir(c, "DDDD-4444", "homme")
+            c.oublier()
+            gz = client.get("/gazette/personnes", headers=commun).json()["personnes"]
+            assert next(x for x in gz if x["carnet_id"] == "DDDD-4444")["genre"] == "homme"
+            G.definir(c, "DDDD-4444", "")
+            c.oublier()
             # 2.22.1 : la liste pour Douze points (prénom et nom, rien d'autre)
             dp = client.get("/douze-points/personnes", headers=commun).json()["personnes"]
             assert dp and all(set(x) == {"carnet_id", "prenom", "nom"} and x["prenom"] for x in dp)
