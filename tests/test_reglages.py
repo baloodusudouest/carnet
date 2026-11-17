@@ -63,7 +63,7 @@ def test_defauts_sans_variable_et_reprise_impossible(tmp_path, monkeypatch):
     assert r["synology_carnet"] == "My Contacts|Mes contacts"
     assert not journal(c)
     assert set(r) == {"emoji_groupes", "veille_heure", "synology_carnet", "synology_verifier_tls",
-                      "auto_fetes", "auto_famille", "nuit_immich", "nuit_synology", "nuit_kit"}
+                      "auto_fetes", "auto_famille", "nuit_immich", "nuit_synology", "nuit_kit", "nuit_contacts"}
     monkeypatch.setenv("CARNET_VEILLE_HEURE", "25:00")                  # heure impossible : défaut, et c'est dit
     c = Carnet(_config(tmp_path / "b"))
     assert c.cfg.veille_heure == "03:00"

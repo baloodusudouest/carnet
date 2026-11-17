@@ -18,6 +18,7 @@ carnet : Connexion › iCloud › Vérifier, avant de lancer la sonde.
 from __future__ import annotations
 
 import re
+import os
 import shutil
 import sqlite3
 import sys
@@ -26,6 +27,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+from .base import connecter
 from .config import charger
 
 __version__ = "1"
@@ -69,7 +71,7 @@ def lire_cartes(chemin: Path) -> list[str]:
             source = Path(str(chemin) + suffixe)
             if source.is_file():
                 shutil.copy2(source, travail / source.name)
-        cx = sqlite3.connect(str(travail / chemin.name))
+        cx = connecter(travail / chemin.name, os.environ.get("CARNET_DB_KEY", ""))   # 2.28 : base peut-être chiffrée
         try:
             return [l[0] for l in cx.execute("SELECT texte FROM fiches")]
         finally:

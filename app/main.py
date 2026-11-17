@@ -22,6 +22,7 @@ from .carnet import Carnet, ErreurCarnet, Occupe
 from .config import charger
 from . import millesime as millesime_
 from . import genres
+from . import alimentation, coffre, personnes
 from . import reglages as reglages_
 from .liens import ErreurLien
 from .modele import groupes_tous, nom_affiche
@@ -47,6 +48,14 @@ def demarrage(c: Carnet) -> None:
                 icloud.relire(c, "démarrage")
         # La reprise des choix de la 1.3 a été retirée en 2.6.5. Si l'ancienne base est là et que
         # la reprise n'a jamais eu lieu, on le dit une fois plutôt que de perdre ces choix en silence.
+        # 2.28 : chiffrement de la base (SQLCipher, CARNET_DB_KEY)
+        if c.base.chiffrement:
+            c.base.noter("base", f"Base chiffrée au démarrage ({c.base.chiffrement['tables']} tables) ; copie en clair "
+                                 f"gardée 14 jours pour un retour à la 2.27 : {c.base.chiffrement['copie_claire']}")
+        elif not c.base.chiffree and not c.base.lire("base_en_clair_signalee"):
+            c.base.noter("base", "La base n'est pas chiffrée : pose CARNET_DB_KEY dans la stack pour la chiffrer "
+                                 "(allergies et alimentation y sont rangées).")
+            c.base.ecrire("base_en_clair_signalee", True)
         icloud.reanalyser(c)    # passage à la 2.8 : champs nouveaux déjà présents dans les cartes
         if c.fiches():
             attentes.semer(c)   # passage à la 2.8 sur une base déjà lue
@@ -314,6 +323,8 @@ def contact(uid: str, request: Request):
             "deces": {"date": attentes.decedes(c).get(uid), "decede": uid in attentes.decedes(c),
                       "coche": bool(c.base.un("SELECT 1 FROM deces WHERE uid = ? AND origine = 'main'", (uid,)))},
             "genre": genres.fiche(c, uid),     # 2.22
+            "personne_id": personnes.de(c, uid),           # 2.28 : identifiant maison stable
+            "alimentation": alimentation.fiche(c, uid),     # 2.28 : allergies, intolérances, non aimés, plaisirs
             "google_logo": galerie.recherche_google(f),
             # 2.15 : le chemin de vie de la personne, si la fiche est liée à Immich et que Sillage a une adresse
             "sillage": (f"{sillage}/#/chemin/{c.liaisons().get(uid, {}).get('immich')}"
@@ -745,6 +756,24 @@ def genre(uid: str, corps: dict = Body(...)):
     return genres.definir(carnet(), uid, str(corps.get("genre") or ""))
 
 
+@app.put("/api/contacts/{uid}/alimentation")
+def changer_alimentation(uid: str, corps: dict = Body(...)):
+    """2.28 : allergies, intolérances, « aucune connue », vérifiée le, aliments non aimés, plaisirs coupables.
+    Reste dans carnet (jamais écrit dans iCloud) ; permis en lecture seule."""
+    return alimentation.definir(carnet(), uid, corps)
+
+
+@app.get("/api/personnes/sans-fiche")
+def personnes_sans_fiche():
+    """2.28 : identifiants maison dont la fiche a été retirée (à rattacher si la carte revient)."""
+    return {"personnes": personnes.sans_fiche(carnet())}
+
+
+@app.post("/api/personnes/{ident}/rattacher")
+def rattacher_personne(ident: str, corps: dict = Body(...)):
+    return personnes.rattacher(carnet(), ident, str(corps.get("uid") or ""))
+
+
 @app.post("/api/contacts/{uid}/decede")
 def decede(uid: str, corps: dict = Body(...)):
     return famille.marquer_decede(carnet(), uid, bool(corps.get("oui", True)))
@@ -897,6 +926,7 @@ def sante(c) -> dict:
         "telegram": un(c.cfg.telegram_api_id and c.cfg.telegram_api_hash),
         "millesime": un(c.cfg.millesime_jeton, millesime_.lire(c)["erreur"] if c.cfg.millesime_jeton else ""),
         "linkedin": un(c.cfg.linkedin_client_id),
+        "contacts": coffre.sante(c),     # 2.28 : coffre Obsidian « Contacts »
     }
 
 
@@ -1134,6 +1164,19 @@ def ha_fetes():
 def ha_invite(nom: str = ""):
     try:
         return sorties.ha_invite(carnet(), nom)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+
+
+@app.get("/ha/allergies")
+def ha_allergies(personne_id: str = "", nom: str = ""):
+    """2.28 : indicateur d'allergies (statut et date de vérification seulement)."""
+    if not personne_id and not nom:
+        raise HTTPException(400, "Donne personne_id ou nom.")
+    try:
+        return sorties.ha_allergies(carnet(), personne_id, nom)
     except LookupError as exc:
         raise HTTPException(404, str(exc))
     except ValueError as exc:

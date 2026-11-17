@@ -11,3 +11,5 @@ pillow==12.3.0
 gender-guesser==0.4.0
 # Import manuel des contacts Telegram (session en mémoire seulement)
 telethon==1.45.0
+# 2.28 : chiffrement de carnet2.db (SQLCipher 4, clé CARNET_DB_KEY)
+sqlcipher3-wheels==0.5.7

@@ -198,13 +198,16 @@ def _noms_immich(c: Carnet) -> dict[str, str]:
 
 def contacts_ha(c: Carnet) -> list[dict]:
     """Toutes les fiches, avec le nom donné à HA : celui d'Immich quand la fiche est liée."""
+    from . import personnes
     noms = _noms_immich(c)
     liens = c.liaisons()
+    ids = personnes.ids(c)
     res = []
     for uid, f in c.fiches().items():
         lien = liens.get(uid, {})
         lue = anniversaires.analyser(f.get("anniversaire"))
-        res.append({"carnet_id": uid, "nom": noms.get(lien.get("immich")) or nom_affiche(f), "nom_carnet": nom_affiche(f),
+        res.append({"carnet_id": uid, "personne_id": ids.get(uid, ""),
+                    "nom": noms.get(lien.get("immich")) or nom_affiche(f), "nom_carnet": nom_affiche(f),
                     "prenom": f.get("prenom", ""), "immich_id": lien.get("immich"), "treemich_id": lien.get("treemich"),
                     "groupes": f.get("groupes", []), "proche": bool(set(f.get("groupes", [])) & GROUPES_PROCHES),
                     "naissance": f.get("anniversaire") or None,
@@ -216,8 +219,8 @@ def ha_contacts(c: Carnet) -> dict:
     liste = contacts_ha(c)
     log.info("HA contacts : %d fiche(s) renvoyée(s)", len(liste))
     return {"genere_le": iso(maintenant()), "nombre": len(liste),
-            "contacts": [{k: p[k] for k in ("carnet_id", "nom", "prenom", "immich_id", "treemich_id", "groupes", "proche",
-                                            "naissance", "jour", "mois", "annee")} for p in liste]}
+            "contacts": [{k: p[k] for k in ("carnet_id", "personne_id", "nom", "prenom", "immich_id", "treemich_id",
+                                            "groupes", "proche", "naissance", "jour", "mois", "annee")} for p in liste]}
 
 
 def ha_personnes(c: Carnet) -> dict:
@@ -232,7 +235,8 @@ def sillage_personnes(c: Carnet) -> dict:
     2.24.1 : `deces`, la date de décès connue de carnet (« AAAA-MM-JJ », partielle ou vide) : Sillage y arrête le chemin."""
     from . import attentes
     morts = attentes.decedes(c)
-    return {"personnes": [{"carnet_id": p["carnet_id"], "nom": p["nom_carnet"], "immich_id": p["immich_id"],
+    return {"personnes": [{"carnet_id": p["carnet_id"], "personne_id": p["personne_id"], "nom": p["nom_carnet"],
+                           "immich_id": p["immich_id"],
                            "groupes": p["groupes"], "proche": p["proche"], "decede": p["carnet_id"] in morts,
                            "deces": morts.get(p["carnet_id"], "")}
                           for p in contacts_ha(c) if p["immich_id"]]}
@@ -253,7 +257,8 @@ def gazette_personnes(c: Carnet) -> dict:
         if p["carnet_id"] in morts:
             continue
         complete = f"{p['annee']:04d}-{p['mois']:02d}-{p['jour']:02d}" if p["jour"] and p["mois"] and p["annee"] else None
-        res.append({"carnet_id": p["carnet_id"], "nom": p["nom"], "nom_carnet": p["nom_carnet"], "prenom": p["prenom"],
+        res.append({"carnet_id": p["carnet_id"], "personne_id": p["personne_id"], "nom": p["nom"],
+                    "nom_carnet": p["nom_carnet"], "prenom": p["prenom"],
                     "naissance": complete, "jour": p["jour"], "mois": p["mois"], "annee": p["annee"],
                     "genre": genres.de(c, p["carnet_id"]), "immich_id": p["immich_id"] or ""})
     log.info("Gazette : %d personne(s) renvoyée(s)", len(res))
@@ -266,7 +271,7 @@ def douze_points_personnes(c: Carnet) -> dict:
     (entreprises) et les personnes décédées ne sont pas données. Lecture seule."""
     from . import attentes
     morts = attentes.decedes(c)
-    res = [{"carnet_id": p["carnet_id"], "prenom": p["prenom"], "nom": p["nom_carnet"]}
+    res = [{"carnet_id": p["carnet_id"], "personne_id": p["personne_id"], "prenom": p["prenom"], "nom": p["nom_carnet"]}
            for p in contacts_ha(c) if p["prenom"] and p["carnet_id"] not in morts]
     log.info("Douze points : %d personne(s) renvoyée(s)", len(res))
     return {"genere_le": iso(maintenant()), "personnes": res}
@@ -346,8 +351,26 @@ def ha_invite(c: Carnet, nom: str) -> dict:
         raise ValueError(f"Plusieurs personnes s'appellent « {brut} » : mets l'identifiant Immich dans le champ.")
     p = trouves[0]
     annif = p["naissance"] or ""
+    from . import alimentation
+    # 2.28 : identifiant maison et indicateur d'allergies (statut seulement, jamais le contenu)
     return {"nom": p["nom"], "prenom": p["prenom"], "naissance": annif or None, "annee_connue": len(annif) == 10,
-            "immich_id": p["immich_id"], "treemich_id": p["treemich_id"], "groupes": p["groupes"], "carnet_id": p["carnet_id"]}
+            "immich_id": p["immich_id"], "treemich_id": p["treemich_id"], "groupes": p["groupes"], "carnet_id": p["carnet_id"],
+            "personne_id": p["personne_id"], **alimentation.indicateur(c, p["personne_id"])}
+
+
+def ha_allergies(c: Carnet, personne_id: str = "", nom: str = "") -> dict:
+    """2.28 : indicateur d'allergies d'une personne pour Home Assistant, par identifiant maison (suivi des
+    fusions) ou par nom (même recherche que /ha/invite). Statut « inconnu », « aucune » ou « a_connaitre »,
+    et la date de vérification ; jamais la liste. Identifiant inconnu : statut « inconnu »."""
+    from . import alimentation, personnes
+    if personne_id:
+        uid = personnes.uid_de(c, personne_id.strip())
+        ident = personnes.ids(c).get(uid) if uid else None
+        log.info("HA allergies : demande par identifiant")
+        return {"personne_id": ident or personne_id.strip(), "connue": bool(ident), **alimentation.indicateur(c, ident)}
+    fiche = ha_invite(c, nom)
+    log.info("HA allergies : demande par nom")
+    return {"personne_id": fiche["personne_id"], "connue": True, **alimentation.indicateur(c, fiche["personne_id"])}
 
 
 def _uid_immich(c: Carnet, immich_id: str) -> str | None:

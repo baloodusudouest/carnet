@@ -9,7 +9,7 @@ sont leurs valeurs par défaut.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from . import maison
 
@@ -48,6 +48,8 @@ class Config:
     millesime_url: str = "http://millesime:8098"   # 2.21 : Millésime (datation des scans)
     millesime_jeton: str = ""                      # 2.26 : MAISON_JETON ; vide : Millésime non lu
     lecture_seule: bool = False      # CARNET_LECTURE_SEULE : aucune écriture hors de carnet
+    db_key: str = field(default="", repr=False)   # 2.28 : CARNET_DB_KEY, chiffrement SQLCipher de carnet2.db ; vide : en clair
+    contacts: Path | None = None     # 2.28 : coffre Obsidian « Contacts » (volume) ; notes dans Personnes/
 
     @property
     def db_path(self) -> Path:
@@ -106,4 +108,6 @@ def charger() -> Config:
         millesime_url=_env("CARNET_MILLESIME_URL", "http://millesime:8098").rstrip("/"),
         millesime_jeton=maison.jeton_a_envoyer(),   # 2.26 : MAISON_JETON seul
         lecture_seule=maison.lecture_seule("CARNET_LECTURE_SEULE"),   # 2.25 : MAISON_LECTURE_SEULE, forçable ici
+        db_key=os.environ.get("CARNET_DB_KEY", ""),   # 2.28 : jamais rognée, jamais écrite dans un journal
+        contacts=Path(contacts) if (contacts := _env("CARNET_CONTACTS", "/contacts")) else None,
     )

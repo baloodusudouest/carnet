@@ -537,6 +537,8 @@ def annuler(c: Carnet, jeton: str) -> dict:
                     cles = list(l)
                     cx.execute(f"INSERT OR IGNORE INTO {table}({', '.join(cles)}) VALUES ({', '.join('?' * len(cles))})",
                                tuple(l[k] for k in cles))
+            from . import personnes
+            personnes.rattacher_ancien(cx, a["uid"])     # 2.28 : l'identifiant maison revient sur sa fiche
         c.oublier()
         c.base.noter("ecriture", "Suppression annulée : fiche remise dans iCloud", {"uid": a["uid"]})
         return res

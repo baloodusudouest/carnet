@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from . import fiches as F, icloud, liaisons, traiter
+from . import fiches as F, icloud, liaisons, personnes, traiter
 from .carddav import ErreurICloud
 from .carnet import Carnet, ErreurCarnet
 from .modele import nom_affiche
@@ -108,6 +108,7 @@ def supprimer(c: Carnet, uid: str, etag_vu: str | None, confirmation: bool) -> d
             for table in TABLES_D_UNE_FICHE:
                 cx.execute(f"DELETE FROM {table} WHERE uid = ?", (uid,))
             cx.execute("UPDATE linkedin SET uid = NULL WHERE uid = ?", (uid,))
+            personnes.detacher(cx, uid)        # 2.28 : l'identifiant maison et l'alimentation restent
         c.logos.pop(uid, None)
         c.oublier()
     jeton = secrets.token_urlsafe(12)
@@ -142,6 +143,7 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
                 for table in ("liaisons", "portraits", "affiches", "en_attente"):
                     cx.execute(f"DELETE FROM {table} WHERE uid = ?", (uid,))
                 cx.execute("UPDATE linkedin SET uid = NULL WHERE uid = ?", (uid,))
+                personnes.detacher(cx, uid)    # 2.28 : l'identifiant maison et l'alimentation restent
                 cx.execute("DELETE FROM a_traiter WHERE motif = ? AND cle = ?", (motif, cle))
             c.oublier()
             return {"ok": True}
@@ -373,6 +375,7 @@ def fusionner(c: Carnet, garder: str, absorber: str, fiche: dict) -> dict:
             cx.execute(f"DELETE FROM {table} WHERE uid = ?", (absorber,))
         cx.execute("UPDATE linkedin SET uid = ? WHERE uid = ?", (garder, absorber))
         cx.execute("DELETE FROM en_attente WHERE uid = ?", (absorber,))
+        personnes.fusionner(cx, garder, absorber)     # 2.28 : l'identifiant gardé reste, l'alimentation suit
         cx.execute("DELETE FROM a_traiter WHERE uid = ?", (absorber,))
         cx.execute("DELETE FROM a_traiter WHERE motif = 'doublon' AND cle = ?", (F.cle_paire(garder, absorber),))
     c.oublier()

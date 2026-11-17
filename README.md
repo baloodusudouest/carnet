@@ -52,7 +52,7 @@ Une date saisie en **1900** (par exemple 14/03/1900) veut dire « année inconnu
 1. Lecture complète d'iCloud (veille).
 2. Relecture d'Immich et Treemich, liaisons sûres.
 3. Sauvegarde, puis les écritures sûres.
-4. Copie dans Synology Contacts, kit d'urgence, purge des sauvegardes.
+4. Copie dans Synology Contacts, kit d'urgence, notes du coffre Obsidian « Contacts » (2.28), purge des sauvegardes.
 
 Si une autre opération tourne, la nuit réessaie toutes les 10 min pendant 3 h. Réglages › Réglages d'usage › « La nuit chaque jour » la désactive ; une nouvelle heure prend effet tout de suite, sans redémarrer.
 
@@ -65,16 +65,26 @@ Les interrupteurs « la nuit » de chaque service (Connexion) font aussi partie 
 - `GET /externe/sauvegarde` : les réglages pour l'Anneau (collecte de nuit), ouverte seulement par le jeton commun `MAISON_JETON` (`Authorization: Bearer …`) ; jeton vide : 404. Ni variable, ni chemin, ni secret.
 - Réglages › **Restaurer les réglages** : choisir une date parmi les sauvegardes de l'Anneau, voir les différences (avant → sauvegardé), confirmer. Seuls les réglages changent ; permis même en lecture seule. Anneau injoignable : un message, rien d'autre.
 
+## Identifiant maison, alimentation et coffre Contacts (2.28)
+
+- **Identifiant maison** : chaque fiche reçoit un identifiant propre à carnet (`personne_id`, « p- » + 10 caractères), créé une fois et jamais réutilisé. L'UID iCloud (`carnet_id`) n'en est qu'un attribut : il change quand une carte est fusionnée, supprimée puis recréée ; l'identifiant reste. Fiche retirée : l'identifiant et l'alimentation restent (`GET /api/personnes/sans-fiche`, `POST /api/personnes/{id}/rattacher` pour une carte recréée). Fusion : l'identifiant de la fiche gardée reste, celui de la fiche absorbée pointe vers lui.
+- **Alimentation** (fiche › Alimentation) : allergies, intolérances, « aucune allergie ni intolérance connue », date de vérification, aliments non aimés, plaisirs coupables. Rangée dans la base de carnet seulement, par identifiant maison : jamais écrite dans iCloud, Synology Contacts ou le kit. Le journal ne porte jamais son contenu. `PUT /api/contacts/{uid}/alimentation`.
+- **Statut** pour Home Assistant : `inconnu` (rien de dit : demander), `aucune`, `a_connaitre`. Une absence d'information n'est jamais « rien à signaler ».
+- **Coffre Obsidian « Contacts »** (volume `/contacts`) : une note par personne (fiches avec un prénom ou un nom), créée dans `Personnes/`. Le bloc entre `<!-- carnet:debut … -->` et `<!-- carnet:fin -->` est réécrit à chaque synchronisation (fiche, famille et proches avec liens `[[…]]`, alimentation, notes iCloud, liens vers carnet, Immich et Sillage, identifiants) ; tout le reste de la note (zone « Mes notes », texte avant ou après le bloc, clés ajoutées à l'en-tête) n'est jamais touché. Une note est retrouvée par son `personne_id` même déplacée ou renommée ; carnet ne renomme, ne déplace ni ne supprime jamais une note. Note dont le bloc a été effacé : laissée telle quelle. Fiche retirée : `carnet: retirée` dans l'en-tête.
+- **Garde-fou** : rien n'est écrit si le dossier `Personnes/` n'existe pas (à créer une fois dans Obsidian) : un dossier chiffré non monté ne reçoit jamais de copie en clair. Synchronisation chaque nuit (interrupteur dans Connexion › Coffre Contacts) et à la demande (« Synchroniser »). Respecte le mode lecture seule.
+- **Base chiffrée** : `CARNET_DB_KEY` posée → `carnet2.db` est chiffrée par SQLCipher. Une base en clair est chiffrée au démarrage, après vérification (mêmes tables, mêmes nombres de lignes) ; la copie en clair `carnet2.db.clair-AAAAMMJJ` est gardée 14 jours pour revenir à la 2.27, puis effacée. Base chiffrée sans clé, ou mauvaise clé : carnet refuse de démarrer, rien n'est créé ni effacé.
+
 ## Home Assistant
 
 Toutes les adresses `/ha/…` demandent `Authorization: Bearer <CARNET_HA_TOKEN>`, sont en lecture seule, et rien de personnel (nom, date) n'est écrit dans les journaux. `/status` ne donne que des compteurs, sans jeton.
 
 | Adresse | Contenu |
 |---|---|
-| `/ha/contacts` | Toutes les fiches : `carnet_id` (UID iCloud), `nom` (celui d'Immich si liée), `prenom`, `immich_id`, `treemich_id`, `groupes`, `proche`, `naissance`, `jour`, `mois`, `annee` (null si inconnue) |
+| `/ha/contacts` | Toutes les fiches : `carnet_id` (UID iCloud), `personne_id` (identifiant maison, 2.28), `nom` (celui d'Immich si liée), `prenom`, `immich_id`, `treemich_id`, `groupes`, `proche`, `naissance`, `jour`, `mois`, `annee` (null si inconnue) |
 | `/ha/personnes` | Fiches liées à Immich et proches (carte de réservation) — identique à la 1.3 |
 | `/ha/anniversaires` | Calendrier des anniversaires — identique à la 1.3 |
-| `/ha/invite?nom=` | Fiche d'un invité (« Nom (dates) » accepté) ; 404 inconnu, 409 plusieurs — identique à la 1.3 |
+| `/ha/invite?nom=` | Fiche d'un invité (« Nom (dates) » accepté) ; 404 inconnu, 409 plusieurs. 2.28 : aussi `personne_id`, `allergies` (statut) et `allergies_verifiees_le` |
+| `/ha/allergies?personne_id=` ou `?nom=` | 2.28 : statut d'allergies seulement (`inconnu`, `aucune`, `a_connaitre`) et date de vérification, jamais la liste ; l'identifiant suit les fusions ; identifiant inconnu : `inconnu` |
 | `/ha/portraits/candidats?immich=` et `/ha/portrait?immich=` | Portraits pour les cadres ; en-tête `X-Visage` — identiques à la 1.3 |
 | `/status` | Compteurs (mêmes champs que la 1.3 pour le paquet `homeassistant/carnet.yaml`, plus `a_traiter` et `par_motif`) |
 
@@ -87,10 +97,11 @@ Le service est décrit dans `docker-compose.yml` ; les variables sont dans `.env
 | Volume | Dossier du NAS | Contenu |
 |---|---|---|
 | `/data` | `/volume1/homes/<utilisateur>/carnet` | fichiers déposés à la main (`depot/`) |
-| `/state` | `/volume1/docker/carnet/state` | `carnet2.db`, `sauvegardes/`, ancienne base `carnet.db` de la 1.3 |
+| `/state` | dossier partagé chiffré (2.28 : par ex. un sous-dossier caché du coffre, `<dossier chiffré>/.carnet`) | `carnet2.db` (chiffrée si `CARNET_DB_KEY`), `sauvegardes/` |
+| `/contacts` | dossier partagé chiffré du coffre Obsidian « Contacts » (2.28) | notes `Personnes/*.md` |
 | `/kit-config` | `${KIT_DATA_DIR}/config` | `contacts-urgence.vcf` pour le kit |
 
-`/state` n'est ni partagé ni synchronisé vers OneDrive : la base et les sauvegardes y restent.
+`/state` n'est ni partagé ni synchronisé vers OneDrive : la base et les sauvegardes y restent. 2.28 : `/state` et `/contacts` sont montés avec `create_host_path: false` : si le dossier chiffré n'est pas monté sur le NAS, le conteneur ne démarre pas (Docker ne crée pas de dossier vide en clair). Après un redémarrage du NAS : monter le dossier chiffré, puis démarrer carnet.
 
 ### Mode lecture seule
 
@@ -100,7 +111,7 @@ Le service est décrit dans `docker-compose.yml` ; les variables sont dans `.env
 
 Chaque version reste publiée : `CARNET_VERSION=2.6.4` (par exemple) dans les variables de la stack, puis Recreate. La base est la même d'une version à l'autre tant que le journal des versions ne dit pas le contraire.
 
-La reprise des choix de la 1.3 (base SQLCipher, `CARNET_DB_KEY`) a été retirée en 2.6.5 : elle a été faite par les versions 2.0.0 à 2.6.4. `CARNET_DB_KEY` peut être supprimée de la stack.
+La reprise des choix de la 1.3 a été retirée en 2.6.5. Depuis la 2.28, `CARNET_DB_KEY` sert de nouveau, au chiffrement de `carnet2.db` : pour revenir à la 2.27 après le chiffrement, remettre la copie `carnet2.db.clair-AAAAMMJJ` (gardée 14 jours) à la place de `carnet2.db`.
 
 ### Droits de la clé d'API Immich
 `person.read`, `person.update` (liaisons, noms, dates) ; `asset.read`, `asset.view`, `asset.download`, `face.read` (portraits) ; `asset.upload`, `asset.delete`, `album.create`, `album.read`, `albumAsset.create` (affiches).

@@ -7,7 +7,7 @@ carnet ne remplace aucun de ces outils : il vérifie qu'ils disent la même chos
 """
 from __future__ import annotations
 
-from . import attentes, famille, liaisons, millesime, sorties, traiter
+from . import attentes, coffre, famille, liaisons, millesime, sorties, traiter
 from .carnet import Carnet, ErreurCarnet
 from .fiches import date_lisible
 from .modele import nom_affiche
@@ -27,6 +27,7 @@ SERVICES = {
     "ha": ("Home Assistant", None),
     "kit": ("Kit d'urgence", "Envoyer les contacts d'urgence"),
     "millesime": ("Millésime", None),
+    "contacts": ("Coffre Contacts", "Écrire les notes du coffre Obsidian"),    # 2.28
 }
 _ANCIENS = {"icloud": "fetes", "treemich": "famille"}       # interrupteurs de la 2.8, gardés tels quels
 
@@ -76,10 +77,11 @@ def etat(c: Carnet, sante: dict, reseaux_: dict) -> list[dict]:
         "sauvegardes": f"{len(sauvegardes)} copie(s) d'iCloud", "import": "Cartes, LinkedIn, Facebook, Instagram",
         "ha": "Contacts, anniversaires, mariages, fêtes", "kit": "Groupe Urgence",
         "millesime": millesime.resume(c),
+        "contacts": coffre.resume(c),
     }
     le = {"icloud": lecture.get("le"), "immich": d.get("le"), "treemich": d.get("le"), "synology": syno.get("le"),
           "sauvegardes": sauvegardes[0].get("le") if sauvegardes else None, "kit": c.base.lire("dernier_envoi_kit"),
-          "millesime": millesime.lire(c)["le"]}
+          "millesime": millesime.lire(c)["le"], "contacts": (c.base.lire("coffre_contacts") or {}).get("le")}
     res = []
     for cle, (nom, nuit_quoi) in SERVICES.items():
         s = sante.get(cle) or {"etat": "ok", "message": ""}
@@ -89,7 +91,7 @@ def etat(c: Carnet, sante: dict, reseaux_: dict) -> list[dict]:
                     "le": le.get(cle) or (r or {}).get("importe_le"), "differences": diff.get(cle, 0),
                     "nuit": None if nuit_quoi is None else {"actif": nuit_active(c, cle), "quoi": nuit_quoi},
                     "verifiable": cle in ("icloud", "immich", "treemich", "synology"),
-                    "synchronisable": cle in ("icloud", "immich", "treemich", "synology", "kit")})
+                    "synchronisable": cle in ("icloud", "immich", "treemich", "synology", "kit", "contacts")})
         if cle == "millesime":
             res[-1]["millesime"] = millesime.detail(c)
     if nuit_.get("erreur") and res:
@@ -218,6 +220,12 @@ def synchroniser(c: Carnet, service: str) -> dict:
     if service == "kit":
         b = sorties.envoyer_kit(c)
         return {**b, "message": "Contacts d'urgence envoyés au kit."}
+    if service == "contacts":
+        b = coffre.synchroniser(c)
+        return {**b, "message": f"Coffre Contacts : {b['crees']} note(s) créée(s), {b['mises_a_jour']} mise(s) à jour, "
+                               f"{b['inchangees']} inchangée(s)"
+                               + (f", {b['sans_bloc']} sans bloc carnet (non touchée(s))" if b["sans_bloc"] else "")
+                               + (f" ; {len(b['erreurs'])} erreur(s) : {b['erreurs'][0]}" if b["erreurs"] else "") + "."}
     if service not in ("icloud", "immich", "treemich"):
         raise ErreurCarnet("Ce service ne se synchronise pas.")
     c.exiger_ecriture(SERVICES[service][0])

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import re
+import os
 import shutil
 import sqlite3
 import sys
@@ -28,6 +29,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
+from .base import connecter
 from .config import charger
 from .liens import ErreurLien, Treemich
 
@@ -117,8 +119,8 @@ def sonder_base(chemin) -> dict:
         source = Path(str(chemin) + suffixe)
         if source.is_file():
             shutil.copy2(source, travail / source.name)
-    cx = sqlite3.connect(str(travail / Path(chemin).name))
-    cx.row_factory = sqlite3.Row
+    cx = connecter(travail / Path(chemin).name, os.environ.get("CARNET_DB_KEY", ""))   # 2.28 : base peut-être chiffrée
+    cx.row_factory = sqlite3.Row if isinstance(cx, sqlite3.Connection) else __import__("sqlcipher3").Row
     lignes = cx.execute("SELECT uid, texte, fiche, photo FROM fiches").fetchall()
     liens: dict[str, set] = {}
     for l in cx.execute("SELECT uid, service FROM liaisons"):

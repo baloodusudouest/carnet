@@ -51,6 +51,7 @@
     synology_verifier_tls: 'Vérifier le certificat de Synology', auto_fetes: 'Nuit : écrire les fêtes (iCloud)',
     auto_famille: 'Nuit : mariages et décès (Treemich)', nuit_immich: 'Nuit : Immich', nuit_synology: 'Nuit : copie Synology',
     nuit_kit: 'Nuit : kit d\'urgence',
+    nuit_contacts: 'Nuit : coffre Contacts',
   }
   const lisible = (v) => v === true ? 'oui' : v === false ? 'non' : (v === '' || v == null) ? '(vide)' : String(v)
   let r = $state(null)            // réglages enregistrés

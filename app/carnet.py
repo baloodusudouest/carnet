@@ -28,7 +28,7 @@ log = logging.getLogger("carnet")
 class Carnet:
     def __init__(self, cfg: Config, transports: dict[str, httpx.BaseTransport] | None = None):
         self.cfg = cfg
-        self.base = Base(cfg.db_path)
+        self.base = Base(cfg.db_path, cfg.db_key)
         self.transports = transports or {}
         self.verrou = threading.Lock()
         self.annulations: dict[str, dict] = {}    # jeton → écriture à défaire (10 s)

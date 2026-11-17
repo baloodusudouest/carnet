@@ -3,17 +3,29 @@
 Une table par sujet, schéma versionné (PRAGMA user_version). Une seule connexion protégée par
 un verrou : carnet n'a qu'un utilisateur et des accès courts. Chaque écriture incrémente un
 compteur de génération, qui sert à invalider les calculs gardés en mémoire.
+
+2.28 : la base peut être chiffrée par SQLCipher (clé `CARNET_DB_KEY`). Avec une clé, une base encore
+en clair est chiffrée au démarrage (copie en clair gardée 14 jours pour un retour arrière, puis
+effacée) ; sans clé, une base chiffrée refuse de s'ouvrir plutôt que d'en créer une vide.
 """
 from __future__ import annotations
 
 import json
+import logging
+import os
 import sqlite3
 import threading
 from contextlib import contextmanager
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterator
 
-VERSION = 4   # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22)
+log = logging.getLogger("carnet")
+
+VERSION = 5   # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
+              # 5 : personnes, alimentation (2.28)
+ENTETE_CLAIR = b"SQLite format 3\x00"
+GARDE_CLAIR = timedelta(days=14)     # copie en clair d'avant le chiffrement, pour revenir à la 2.27 : effacée ensuite
 
 SCHEMA = """
 -- Cartes contact lues dans iCloud : la source maître. `fiche` est la forme lisible (JSON),
@@ -201,15 +213,139 @@ CREATE TABLE IF NOT EXISTS genres (
     origine TEXT NOT NULL,       -- main / treemich
     le      TEXT NOT NULL
 );
+-- ---- 2.28 (schéma 5) : deux ajouts, la 2.27 rouvre une base en clair sans rien perdre ----
+-- Identifiant maison stable d'une personne. L'UID iCloud n'est qu'un attribut : il change quand une
+-- carte est fusionnée, supprimée puis recréée ; l'identifiant, lui, reste. Une fiche retirée garde son
+-- identifiant (uid vide, ancien_uid gardé) ; une fiche absorbée par une fusion pointe vers celle gardée.
+CREATE TABLE IF NOT EXISTS personnes (
+    id            TEXT PRIMARY KEY,          -- « p- » + 10 caractères hexadécimaux
+    uid           TEXT UNIQUE,               -- fiche iCloud actuelle ; vide si retirée ou fusionnée
+    ancien_uid    TEXT,
+    remplacee_par TEXT,                      -- identifiant gardé après une fusion
+    cree_le       TEXT NOT NULL,
+    retiree_le    TEXT
+);
+-- Alimentation d'une personne (par identifiant maison, jamais écrite dans iCloud) : allergies,
+-- intolérances, « aucune connue », date de vérification, aliments non aimés, plaisirs coupables.
+CREATE TABLE IF NOT EXISTS alimentation (
+    personne      TEXT PRIMARY KEY,
+    allergies     TEXT NOT NULL DEFAULT '[]',
+    intolerances  TEXT NOT NULL DEFAULT '[]',
+    aucune        INTEGER NOT NULL DEFAULT 0,  -- « aucune allergie ni intolérance connue », dit par Julien
+    verifiee_le   TEXT,
+    non_aimes     TEXT NOT NULL DEFAULT '[]',
+    plaisirs      TEXT NOT NULL DEFAULT '[]',
+    le            TEXT NOT NULL
+);
 """
 
 
+class CleInvalide(RuntimeError):
+    """Base chiffrée sans clé, clé fausse, ou clé posée sans SQLCipher : carnet ne démarre pas."""
+
+
+def _sqlcipher():
+    try:
+        import sqlcipher3
+    except ImportError as exc:   # pragma: no cover — l'image contient toujours SQLCipher
+        raise CleInvalide("CARNET_DB_KEY est posée mais SQLCipher n'est pas installé dans l'image.") from exc
+    return sqlcipher3
+
+
+def _pragma_cle(cle: str) -> str:
+    return "PRAGMA key = '" + cle.replace("'", "''") + "'"
+
+
+def est_en_clair(chemin: Path) -> bool:
+    """Vrai si le fichier existe et commence par l'entête d'une base SQLite non chiffrée."""
+    if not chemin.is_file() or chemin.stat().st_size == 0:
+        return False
+    with chemin.open("rb") as f:
+        return f.read(16) == ENTETE_CLAIR
+
+
+def connecter(chemin: Path, cle: str = "", **kw):
+    """Connexion à une base carnet, chiffrée ou non. Aussi utilisée par les sondes (copie de la base).
+    Lève CleInvalide si la clé ne correspond pas, ou si la base est chiffrée et qu'aucune clé n'est donnée."""
+    if not cle:
+        if chemin.is_file() and chemin.stat().st_size and not est_en_clair(chemin):
+            raise CleInvalide("La base carnet2.db est chiffrée mais CARNET_DB_KEY est absente de la stack : "
+                              "carnet ne démarre pas (rien n'est créé ni effacé).")
+        return sqlite3.connect(str(chemin), **kw)
+    cx = _sqlcipher().connect(str(chemin), **kw)
+    cx.execute(_pragma_cle(cle))
+    try:
+        cx.execute("SELECT count(*) FROM sqlite_master").fetchone()
+    except Exception as exc:   # noqa: BLE001 — « file is not a database » : clé fausse
+        cx.close()
+        raise CleInvalide("CARNET_DB_KEY ne correspond pas à la base carnet2.db : carnet ne démarre pas "
+                          "(vérifie la valeur rangée dans le gestionnaire de mots de passe).") from exc
+    return cx
+
+
+def chiffrer_si_besoin(chemin: Path, cle: str) -> dict | None:
+    """Base en clair + clé : copie chiffrée vérifiée (mêmes tables, mêmes nombres de lignes), puis bascule.
+    La base en clair est gardée à côté (carnet2.db.clair-AAAAMMJJ) pour un retour à la 2.27, et effacée
+    après GARDE_CLAIR. Renvoie le bilan, ou None s'il n'y avait rien à faire."""
+    _effacer_copies_claires(chemin)
+    if not cle or not est_en_clair(chemin):
+        return None
+    sq = _sqlcipher()
+    neuve = chemin.with_name(chemin.name + ".chiffrement")
+    for f in (neuve, Path(str(neuve) + "-wal"), Path(str(neuve) + "-shm")):
+        f.unlink(missing_ok=True)
+    source = sq.connect(str(chemin))
+    try:
+        source.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        tables = [r[0] for r in source.execute("SELECT name FROM sqlite_master WHERE type = 'table' "
+                                               "AND name NOT LIKE 'sqlite_%'")]
+        comptes = {t: source.execute(f'SELECT count(*) FROM "{t}"').fetchone()[0] for t in tables}
+        version = source.execute("PRAGMA user_version").fetchone()[0]
+        source.execute(f"ATTACH DATABASE '{str(neuve).replace(chr(39), chr(39) * 2)}' AS chiffree "
+                       f"KEY '{cle.replace(chr(39), chr(39) * 2)}'")
+        source.execute("SELECT sqlcipher_export('chiffree')")
+        source.execute(f"PRAGMA chiffree.user_version = {int(version)}")
+        source.execute("DETACH DATABASE chiffree")
+    finally:
+        source.close()
+    verif = connecter(neuve, cle)
+    try:
+        for t, n in comptes.items():
+            if verif.execute(f'SELECT count(*) FROM "{t}"').fetchone()[0] != n:
+                raise CleInvalide(f"Chiffrement de la base : la table {t} n'a pas le même nombre de lignes. "
+                                  "Rien n'a été basculé, la base en clair est intacte.")
+    finally:
+        verif.close()
+    claire = chemin.with_name(f"{chemin.name}.clair-{datetime.now().strftime('%Y%m%d')}")
+    os.replace(chemin, claire)
+    for suffixe in ("-wal", "-shm"):
+        Path(str(chemin) + suffixe).unlink(missing_ok=True)
+    os.replace(neuve, chemin)
+    log.info("Base chiffrée par SQLCipher (%d tables) ; copie en clair gardée %d jours : %s",
+             len(comptes), GARDE_CLAIR.days, claire.name)
+    return {"tables": len(comptes), "lignes": sum(comptes.values()), "copie_claire": claire.name}
+
+
+def _effacer_copies_claires(chemin: Path) -> None:
+    """Efface les copies en clair d'avant le chiffrement une fois GARDE_CLAIR passé."""
+    limite = datetime.now() - GARDE_CLAIR
+    for f in chemin.parent.glob(chemin.name + ".clair-*"):
+        try:
+            if datetime.strptime(f.name.rsplit("-", 1)[1], "%Y%m%d") < limite:
+                f.unlink()
+                log.info("Copie en clair d'avant le chiffrement effacée : %s", f.name)
+        except (ValueError, OSError):
+            continue
+
+
 class Base:
-    def __init__(self, chemin: Path):
+    def __init__(self, chemin: Path, cle: str = ""):
         chemin.parent.mkdir(parents=True, exist_ok=True)
         self.chemin = chemin
-        self.cx = sqlite3.connect(str(chemin), check_same_thread=False, isolation_level=None)
-        self.cx.row_factory = sqlite3.Row
+        self.chiffree = bool(cle)
+        self.chiffrement = chiffrer_si_besoin(chemin, cle)    # 2.28 : base en clair + clé → chiffrée
+        self.cx = connecter(chemin, cle, check_same_thread=False, isolation_level=None)
+        self.cx.row_factory = _sqlcipher().Row if cle else sqlite3.Row
         self.cx.execute("PRAGMA journal_mode=WAL")
         self.cx.execute("PRAGMA foreign_keys=ON")
         self._verrou = threading.RLock()

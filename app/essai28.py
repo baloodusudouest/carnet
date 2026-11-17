@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import random
+import os
 import shutil
 import sqlite3
 import sys
@@ -37,6 +38,7 @@ from pathlib import Path
 
 from . import logos
 from .carddav import CardDAV
+from .base import connecter
 from .config import charger
 from .normalisation import domaine_pro
 
@@ -143,7 +145,7 @@ def fiches_sans_photo(chemin) -> list[dict]:
         source = Path(str(chemin) + suffixe)
         if source.is_file():
             shutil.copy2(source, travail / source.name)
-    cx = sqlite3.connect(str(travail / Path(chemin).name))
+    cx = connecter(travail / Path(chemin).name, os.environ.get("CARNET_DB_KEY", ""))   # 2.28 : base peut-être chiffrée
     lignes = cx.execute("SELECT fiche FROM fiches WHERE NOT COALESCE(photo, 0)").fetchall()
     cx.close()
     shutil.rmtree(travail, ignore_errors=True)

@@ -29,6 +29,7 @@ export const ICONES_SERVICES = {
   kit: '<rect x="4" y="7.5" width="16" height="11.5" rx="2"/><path d="M9 7.5V6a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 6v1.5"/><path d="M12 10.5v5M9.5 13h5"/>',
   attentes: '<rect x="4" y="4.5" width="16" height="15" rx="2"/><path d="m7.5 10 1.6 1.6 2.9-3M7.5 15.5l1.6 1.6 2.9-3M14.5 10h2.5M14.5 15.5h2.5"/>',
   millesime: '<rect x="4" y="5" width="16" height="14" rx="1.5"/><path d="M4 15.5l4.5-4 3.5 3 2.5-2 5.5 4.5"/><circle cx="15.5" cy="9" r="1.5"/>',
+  contacts: '<path d="M6 4.5h10.5a1.5 1.5 0 0 1 1.5 1.5v13.5H7.5A1.5 1.5 0 0 1 6 18z"/><path d="M6 16.5h12"/><circle cx="12" cy="9.5" r="2.2"/><path d="M8.8 14c.6-1.4 1.8-2.1 3.2-2.1s2.6.7 3.2 2.1"/>',
   defaut: '<circle cx="12" cy="12" r="7.5"/>',
 }
 // Icônes des tuiles d'« À traiter »

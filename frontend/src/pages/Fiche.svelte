@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import { aller, apresEcriture, erreur, dire, etat, rafraichirContacts } from '../lib/etat.svelte.js'
+  import Alimentation from '../components/Alimentation.svelte'
   import Avatar from '../components/Avatar.svelte'
   import ChoixPhoto from '../components/ChoixPhoto.svelte'
   import Changements from '../components/Changements.svelte'
@@ -261,6 +262,11 @@
           </div>
         {/if}
       </div>
+
+      {#if (f.prenom || f.nom) && donnees.alimentation}
+        <!-- 2.28 : allergies, intolérances, non aimés, plaisirs (dans carnet seulement) -->
+        <Alimentation {uid} alimentation={donnees.alimentation} onchange={charger} />
+      {/if}
 
       <div class="feuille bloc completude">
         <div class="ligne-titre">

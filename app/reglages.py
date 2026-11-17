@@ -36,6 +36,7 @@ INTERRUPTEURS = {
     "nuit_immich": ("connexion", "immich"),
     "nuit_synology": ("connexion", "synology"),
     "nuit_kit": ("connexion", "kit"),
+    "nuit_contacts": ("connexion", "contacts"),     # 2.28 : coffre Obsidian « Contacts »
 }
 
 # Clés qui ne sortent jamais de carnet, même si un jour elles entraient dans les réglages :

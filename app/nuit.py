@@ -5,7 +5,7 @@
 3. sauvegarde, puis au plus 20 écritures sûres : photo d'une fiche liée qui n'en a pas, date
    de naissance manquante connue sans conflit, nouveau poste ou société LinkedIn quand la fiche
    portait l'ancien ; jamais de suppression ; une carte changée sur l'iPhone n'est pas écrasée ;
-4. copie dans Synology Contacts, kit d'urgence, purge des sauvegardes.
+4. copie dans Synology Contacts, kit d'urgence, notes du coffre Contacts (2.28), purge des sauvegardes.
 La nuit n'écrit rien tant qu'aucune lecture complète n'a servi de référence.
 """
 from __future__ import annotations
@@ -103,6 +103,16 @@ def _suite_de_nuit(c: Carnet, lecture: dict, bilan: dict) -> None:
                 sorties.envoyer_kit(c)
         except ErreurCarnet as exc:
             bilan["details"].append(f"Kit : {exc}")
+    # 2.28 : notes du coffre Obsidian « Contacts » (rien si le dossier chiffré n'est pas monté)
+    if c.cfg.contacts and connexion.nuit_active(c, "contacts") and c.fiches():
+        c.tache.update(message="Coffre Contacts…", progression=0.95)
+        from . import coffre
+        try:
+            b = coffre.synchroniser(c)
+            if b["erreurs"]:
+                bilan["details"].append(f"Coffre Contacts : {b['erreurs'][0]}")
+        except ErreurCarnet as exc:
+            bilan["details"].append(f"Coffre Contacts : {exc}")
 
 
 def _ecritures_sures(c: Carnet, d: dict, bilan: dict) -> None:

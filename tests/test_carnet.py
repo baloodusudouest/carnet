@@ -572,7 +572,7 @@ def test_home_assistant_adresses(c):
             assert client.get("/ha/contacts", headers=commun).status_code == 401      # Home Assistant garde son jeton
             liste = client.get("/sillage/personnes", headers=commun).json()["personnes"]
             assert [(p["carnet_id"], p["immich_id"], p["decede"]) for p in liste] == [("DDDD-4444", "im-paul", False)]
-            assert set(liste[0]) == {"carnet_id", "nom", "immich_id", "groupes", "proche", "decede", "deces"}
+            assert set(liste[0]) == {"carnet_id", "personne_id", "nom", "immich_id", "groupes", "proche", "decede", "deces"}
             assert liste[0]["deces"] == ""                                       # 2.24.1 : vivant, pas de date
             c.base.executer("INSERT INTO deces (uid, date, origine, le) VALUES (?, ?, 'main', '2026-11-15')", ("DDDD-4444", "2020-02-29"))
             c.oublier()
@@ -586,7 +586,8 @@ def test_home_assistant_adresses(c):
             paul = next(x for x in gz if x["carnet_id"] == "DDDD-4444")
             assert paul["nom"] == "Paul MARTIN" and paul["naissance"] == "1983-01-09"
             assert any(x["naissance"] is None and x["jour"] for x in gz)      # sans année : pas de date complète
-            assert set(paul) == {"carnet_id", "nom", "nom_carnet", "prenom", "naissance", "jour", "mois", "annee", "genre", "immich_id"}
+            assert set(paul) == {"carnet_id", "personne_id", "nom", "nom_carnet", "prenom", "naissance", "jour", "mois", "annee",
+                                 "genre", "immich_id"}
             assert paul["genre"] == ""                                          # 2.27 : genre inconnu → vide
             assert paul["immich_id"] == "im-paul"                               # 2.27 : personne d'Immich liée
             from app import genres as G
@@ -598,7 +599,7 @@ def test_home_assistant_adresses(c):
             c.oublier()
             # 2.22.1 : la liste pour Douze points (prénom et nom, rien d'autre)
             dp = client.get("/douze-points/personnes", headers=commun).json()["personnes"]
-            assert dp and all(set(x) == {"carnet_id", "prenom", "nom"} and x["prenom"] for x in dp)
+            assert dp and all(set(x) == {"carnet_id", "personne_id", "prenom", "nom"} and x["prenom"] for x in dp)
             assert next(x for x in dp if x["carnet_id"] == "DDDD-4444")["prenom"] == "Paul"
         finally:
             for v in (*anciens, "MAISON_JETON"):
