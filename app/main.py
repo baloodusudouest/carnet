@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import os
@@ -103,7 +104,7 @@ async def garde(request: Request, appel):
     if chemin.startswith("/ha/"):
         jeton = carnet().cfg.ha_token
         attendu = f"Bearer {jeton}"
-        if not jeton or request.headers.get("authorization", "") != attendu:
+        if not jeton or not hmac.compare_digest(request.headers.get("authorization", "").encode(), attendu.encode()):
             return JSONResponse({"detail": "Jeton Home Assistant manquant ou invalide."}, status_code=401)
     elif chemin.startswith("/sillage/"):
         # 2.15 : Sillage lit la liste des personnes liées à Immich (jeton commun)

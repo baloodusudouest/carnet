@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 2.31.1 — 17 novembre 2026 (connexion plus sûre)
+- **Connexion plus sûre** (audit du 17/11/2026, même correctif dans toutes les applis maison) :
+  - un cookie portant un caractère non ASCII donnait une erreur 500 sur toute l'API ; il est maintenant simplement refusé ;
+  - les clés qui signent les cookies (celui de l'appli et le cookie commun `maison_session` posé par l'Anneau) sont tirées du mot de passe par PBKDF2 : un cookie capté sur le réseau local ne permet plus de chercher le mot de passe à grande vitesse. **Toutes les applis doivent être à jour ensemble** ; une seule reconnexion est demandée après la mise à jour ;
+  - des essais de mot de passe lancés en parallèle ne contournent plus le délai : au-delà de 30 essais en 5 minutes, tout est refusé sans comparer.
+- Module commun `maison.py` (socle 0.7.0) : l'annuaire de l'Anneau est relu 30 s après un échec (avant : 10 min sans adresses après un redémarrage de la stack) ; un réglage `nan` ou infini est refusé ; un `reglages.json` abîmé est mis de côté (`.corrompu`) au lieu d'être écrasé.
+- Le jeton de Home Assistant (`/ha/`) est comparé en temps constant.
+
 ## 2.31.0 — 17 novembre 2026
 - **Livre d'or** (fiche › Pour les journaux) : les mots que les invités laissent dans le livre d'or de leur chambre (carte de Home Assistant) arrivent sur leur fiche. Home Assistant envoie chaque signature à `POST /ha/livre-or` (jeton Home Assistant), avec le ou les signataires choisis sur la carte ; l'existant peut être renvoyé une fois (script `livre_dor_renvoyer_carnet`). Chaque signataire reconnu par son nom reçoit le mot ; un nom inconnu ou porté par plusieurs fiches attend sous « Mots non rattachés », à rattacher depuis la bonne fiche (« C'est cette personne »). Un mot renvoyé n'entre pas deux fois. Jamais dans iCloud.
 - **Gazette** : `GET /gazette/personnes` donne `livre_or` (les 10 derniers mots) pour les rumeurs, le courrier des lecteurs et le droit de réponse de La Récidive (Gazette 0.19).
