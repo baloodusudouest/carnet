@@ -1189,6 +1189,19 @@ def ha_invite(nom: str = ""):
         raise HTTPException(409, str(exc))
 
 
+@app.post("/ha/livre-or")
+def ha_livre_or(corps: dict = Body(...)):
+    """2.31 : Home Assistant envoie chaque mot signé dans le livre d'or (script.livre_dor_signer), et l'existant une
+    fois (script.livre_dor_renvoyer_carnet). Reste dans carnet : permis en lecture seule."""
+    return journaux.recevoir_livre(carnet(), corps)
+
+
+@app.put("/api/livre-or/{mot_id}/rattacher")
+def rattacher_livre(mot_id: int, corps: dict = Body(...)):
+    """2.31 : rattache un mot du livre d'or (signataire non reconnu) à une fiche."""
+    return journaux.rattacher_livre(carnet(), mot_id, str((corps or {}).get("uid") or ""))
+
+
 @app.get("/ha/allergies")
 def ha_allergies(personne_id: str = "", nom: str = ""):
     """2.28 : indicateur d'allergies (statut et date de vérification seulement)."""

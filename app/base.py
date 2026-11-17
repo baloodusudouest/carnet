@@ -22,8 +22,8 @@ from typing import Any, Iterator
 
 log = logging.getLogger("carnet")
 
-VERSION = 7   # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
-              # 5 : personnes, alimentation (2.28) ; 6 : journaux (2.29) ; 7 : journaux_parus (2.30)
+VERSION = 8   # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
+              # 5 : personnes, alimentation (2.28) ; 6 : journaux (2.29) ; 7 : journaux_parus (2.30) ; 8 : livre_or (2.31)
 ENTETE_CLAIR = b"SQLite format 3\x00"
 GARDE_CLAIR = timedelta(days=14)     # copie en clair d'avant le chiffrement, pour revenir à la 2.27 : effacée ensuite
 
@@ -254,6 +254,19 @@ CREATE TABLE IF NOT EXISTS journaux_parus (
     donnees  TEXT NOT NULL,          -- JSON
     maj      TEXT NOT NULL,
     PRIMARY KEY (personne, cle)
+);
+-- 2.31 : livre d'or de la maison — les mots que les invités laissent depuis leur chambre (carte Home Assistant),
+-- envoyés par Home Assistant à chaque signature ; rattachés à la fiche de chaque signataire reconnu (personne vide :
+-- pas encore rattaché, à rattacher depuis une fiche). Jamais dans iCloud.
+CREATE TABLE IF NOT EXISTS livre_or (
+    id       INTEGER PRIMARY KEY,
+    cle      TEXT NOT NULL UNIQUE,   -- un même mot renvoyé n'entre pas deux fois
+    personne TEXT NOT NULL DEFAULT '',
+    nom      TEXT NOT NULL,          -- le nom tel que Home Assistant l'a envoyé
+    message  TEXT NOT NULL,
+    chambre  TEXT NOT NULL DEFAULT '',
+    le       TEXT NOT NULL,          -- début du séjour (AAAA-MM-JJ)
+    recu     TEXT NOT NULL
 );
 """
 

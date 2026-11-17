@@ -160,6 +160,11 @@ def bloc(c: Carnet, uid: str, f: dict, ident: str, cibles: dict[str, str]) -> st
             l += _liste(alimentation.LIBELLES[k], a[k])
     if (pj := journaux.de_personne(c, ident)):          # 2.29 : « Pour les journaux » (Gazette)
         l += ["", "## Pour les journaux (Gazette)", *[f"> {x}" if x else ">" for x in pj.splitlines()]]
+    if (mots := journaux.livre_or(c, ident)):           # 2.31 : livre d'or de la maison (Home Assistant)
+        l += ["", "## Livre d'or"]
+        for m in mots:
+            l.append(f"- **{date_lisible(m['le'])}**" + (f" ({m['chambre']})" if m.get("chambre") else "") + " :")
+            l += [f"  > {x}" if x else "  >" for x in m["message"].splitlines()]
     if (parus := journaux.parus(c, ident)):              # 2.30 : journaux parus (Gazette)
         l += ["", "## Journaux parus (Gazette)"]
         for p in parus:

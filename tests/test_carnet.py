@@ -587,7 +587,7 @@ def test_home_assistant_adresses(c):
             assert paul["nom"] == "Paul MARTIN" and paul["naissance"] == "1983-01-09"
             assert any(x["naissance"] is None and x["jour"] for x in gz)      # sans année : pas de date complète
             assert set(paul) == {"carnet_id", "personne_id", "nom", "nom_carnet", "prenom", "naissance", "jour", "mois", "annee",
-                                 "genre", "immich_id", "journaux", "parus"}
+                                 "genre", "immich_id", "journaux", "parus", "livre_or"}
             assert paul["genre"] == ""                                          # 2.27 : genre inconnu → vide
             assert paul["immich_id"] == "im-paul"                               # 2.27 : personne d'Immich liée
             from app import genres as G
@@ -625,6 +625,23 @@ def test_home_assistant_adresses(c):
             assert J.fiche(c, "DDDD-4444")["parus"][0]["cle"] == "recidive-2026-11-19"
             bloc = __import__("app.coffre", fromlist=["bloc"]).bloc(c, "DDDD-4444", c.fiche("DDDD-4444"), paul["personne_id"], {})
             assert "## Journaux parus (Gazette)" in bloc and "19/11/2026 — La Récidive N° 2" in bloc and "Photo : Paul en tigre" in bloc
+            # 2.31 : le livre d'or envoyé par Home Assistant, rattaché à chaque signataire reconnu
+            ha = {"authorization": "Bearer " + c.cfg.ha_token}
+            mot = {"invites": "Paul MARTIN & Inconnu TOTAL", "message": "Merci pour tout,\nà très vite !", "chambre": "Chambre d'Ami", "le": "2026-08-16"}
+            r = client.post("/ha/livre-or", headers=ha, json=mot)
+            assert r.status_code == 200 and r.json() == {"rattaches": ["Paul MARTIN"], "a_rattacher": ["Inconnu TOTAL"], "nouveaux": 2}
+            assert client.post("/ha/livre-or", headers=ha, json=mot).json()["nouveaux"] == 0          # renvoyé : pas en double
+            assert client.post("/ha/livre-or", json=mot).status_code == 401
+            assert client.post("/ha/livre-or", headers=ha, json={"invites": "Paul MARTIN", "message": " "}).status_code == 400
+            gz = client.get("/gazette/personnes", headers=commun).json()["personnes"]
+            assert next(x for x in gz if x["carnet_id"] == "DDDD-4444")["livre_or"] == [{"le": "2026-08-16", "message": "Merci pour tout,\nà très vite !"}]
+            fj = J.fiche(c, "DDDD-4444")
+            assert fj["livre_or"][0]["chambre"] == "Chambre d'Ami" and fj["orphelins"][0]["nom"] == "Inconnu TOTAL"
+            assert client.put(f"/api/livre-or/{fj['orphelins'][0]['id']}/rattacher", json={"uid": "CCCC-3333"}).status_code in (200, 401)
+            J.rattacher_livre(c, fj["orphelins"][0]["id"], "CCCC-3333")
+            assert J.orphelins(c) == [] and J.livre_or(c, J.fiche(c, "CCCC-3333")["personne_id"])[0]["nom"] == "Inconnu TOTAL"
+            bloc = __import__("app.coffre", fromlist=["bloc"]).bloc(c, "DDDD-4444", c.fiche("DDDD-4444"), paul["personne_id"], {})
+            assert "## Livre d'or" in bloc and "> à très vite !" in bloc
             J.definir(c, "DDDD-4444", {"texte": ""})
             # 2.22.1 : la liste pour Douze points (prénom et nom, rien d'autre)
             dp = client.get("/douze-points/personnes", headers=commun).json()["personnes"]

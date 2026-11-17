@@ -250,7 +250,7 @@ def gazette_personnes(c: Carnet) -> dict:
     pour accorder le titre du journal à scandale de Gazette ; `immich_id` (2.27) : la personne d'Immich liée
     à la fiche (vide sinon), pour chercher ses photos entre deux séjours. `journaux` (2.29) : « Pour les journaux »,
     ce que Julien sait de la personne (vide sinon). `parus` (2.30) : les 10 derniers numéros parus (événement,
-    descriptions, textes imprimés). Les personnes décédées ne sont pas données. Lecture seule."""
+    descriptions, textes imprimés). `livre_or` (2.31) : les 10 derniers mots laissés dans le livre d'or. Les personnes décédées ne sont pas données. Lecture seule."""
     from . import attentes, genres, journaux
     morts = attentes.decedes(c)
     res = []
@@ -263,7 +263,9 @@ def gazette_personnes(c: Carnet) -> dict:
                     "naissance": complete, "jour": p["jour"], "mois": p["mois"], "annee": p["annee"],
                     "genre": genres.de(c, p["carnet_id"]), "immich_id": p["immich_id"] or "",
                     "journaux": journaux.de_personne(c, p["personne_id"]),
-                    "parus": journaux.parus(c, p["personne_id"])[:journaux.PARUS_LISTE]})
+                    "parus": journaux.parus(c, p["personne_id"])[:journaux.PARUS_LISTE],
+                    "livre_or": [{"le": x["le"], "message": x["message"]}
+                                 for x in journaux.livre_or(c, p["personne_id"])[:journaux.LIVRE_LISTE]]})
     log.info("Gazette : %d personne(s) renvoyée(s)", len(res))
     return {"genere_le": iso(maintenant()), "personnes": res}
 

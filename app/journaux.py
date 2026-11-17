@@ -10,7 +10,12 @@ Permis en lecture seule : rien ne sort de carnet.
 2.30 : « Journaux parus » — chaque numéro de La Récidive approuvé dans Gazette arrive ici (date du séjour, N°,
 événement du séjour, indices, descriptions des photos écrites pour l'IA, textes imprimés) : la fiche contact garde
 toute l'histoire des journaux de la personne, Gazette la relit pour ne pas se répéter et broder dessus, le coffre
-« Contacts » la recopie. PUT /gazette/personnes/{personne_id}/parus/{cle} (jeton commun)."""
+« Contacts » la recopie. PUT /gazette/personnes/{personne_id}/parus/{cle} (jeton commun).
+
+2.31 : « Livre d'or » — les mots laissés par les invités dans le livre d'or de la maison (carte de Home Assistant),
+envoyés par Home Assistant à chaque signature (POST /ha/livre-or). Chaque signataire reconnu reçoit le mot sur sa
+fiche ; un nom que carnet ne reconnaît pas attend d'être rattaché depuis une fiche. Gazette les lit pour ses rumeurs,
+son courrier des lecteurs et son droit de réponse."""
 from __future__ import annotations
 
 import json
@@ -40,7 +45,8 @@ def fiche(c: Carnet, uid: str) -> dict:
     ident = personnes.de(c, uid)
     j = tous(c).get(ident) or {}
     return {"personne_id": ident, "texte": j.get("texte", ""), "le": j.get("le"), "par": j.get("par", ""),
-            "parus": parus(c, ident)}                     # 2.30
+            "parus": parus(c, ident),                     # 2.30
+            "livre_or": livre_or(c, ident), "orphelins": orphelins(c)}     # 2.31
 
 
 def _propre(texte) -> str:
@@ -131,3 +137,86 @@ def paru_lisible(p: dict) -> str:
     nom = {"recidive": "La Récidive", "gazette": "La Gazette"}.get(p.get("journal") or "", p.get("journal") or "Journal")
     le = p.get("le") or ""
     return f"{le[8:10]}/{le[5:7]}/{le[:4]} — {nom}" + (f" N° {p['numero']}" if p.get("numero") else "")
+
+
+# ================================================================ 2.31 : livre d'or
+
+LIVRE_LISTE = 10            # mots donnés à Gazette (les plus récents)
+
+
+def _livre(c: Carnet) -> list[dict]:
+    return c.memo("livre_or", lambda: [dict(l) for l in c.base.tous("SELECT * FROM livre_or ORDER BY le DESC, id DESC")])
+
+
+def livre_or(c: Carnet, ident: str | None) -> list[dict]:
+    """Les mots du livre d'or d'une personne, du plus récent au plus ancien."""
+    if not ident:
+        return []
+    return [{k: l[k] for k in ("id", "message", "chambre", "le", "nom")} for l in _livre(c) if l["personne"] == ident]
+
+
+def orphelins(c: Carnet) -> list[dict]:
+    """Les mots dont le signataire n'a pas été reconnu (à rattacher depuis une fiche)."""
+    return [{k: l[k] for k in ("id", "message", "chambre", "le", "nom")} for l in _livre(c) if not l["personne"]]
+
+
+def _noms(corps: dict) -> list[str]:
+    """`noms` (liste) ou `invites` (« Audrey & Paul », « Audrey et Paul », « Audrey, Paul »)."""
+    noms = corps.get("noms")
+    if isinstance(noms, str):
+        noms = [noms]
+    if not noms:
+        noms = re.split(r"\s*(?:&|,|\bet\b|/|\+)\s*", str(corps.get("invites") or ""))
+    res = []
+    for n in noms or []:
+        n = re.sub(r"\s*\(.*$", "", " ".join(str(n).split())).strip()     # « Nom (dates) » : dates retirées
+        if n and n.casefold() not in ("invité", "invite", "invités") and n not in res:
+            res.append(n[:80])
+    return res[:4]
+
+
+def recevoir_livre(c: Carnet, corps: dict) -> dict:
+    """POST /ha/livre-or : {noms[] ou invites, message, chambre, le}. Rattache le mot à chaque signataire reconnu (même
+    recherche par nom que /ha/invite, sur toutes les fiches) ; un nom inconnu ou porté par plusieurs fiches reste à
+    rattacher. Un mot déjà reçu n'entre pas deux fois."""
+    import hashlib
+    from .normalisation import cle_texte
+    from .sorties import contacts_ha
+    if not isinstance(corps, dict):
+        raise ErreurCarnet("Un objet est attendu.")
+    message = "\n".join(" ".join(l.split()) for l in str(corps.get("message") or "").replace("\r", "").split("\n")).strip()[:2000]
+    if not message:
+        raise ErreurCarnet("Mot vide.")
+    le = str(corps.get("le") or "")[:10]
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", le):
+        le = iso(maintenant())[:10]
+    chambre = " ".join(str(corps.get("chambre") or "").split())[:60]
+    noms = _noms(corps) or ["Invité"]
+    fiches = contacts_ha(c)
+    rattaches, inconnus, nouveaux = [], [], 0
+    for nom in noms:
+        cle_n = cle_texte(nom)
+        trouves = {p["personne_id"] for p in fiches if p.get("personne_id") and cle_n in (cle_texte(p["nom"]), cle_texte(p["nom_carnet"]))}
+        ident = next(iter(trouves)) if len(trouves) == 1 else ""
+        (rattaches if ident else inconnus).append(nom)
+        cle = hashlib.sha1(f"{cle_n}|{le}|{message}".encode()).hexdigest()[:20]
+        avant = c.base.tous("SELECT id FROM livre_or WHERE cle = ?", (cle,))
+        if avant:
+            continue
+        c.base.executer("INSERT INTO livre_or(cle, personne, nom, message, chambre, le, recu) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        (cle, ident, nom, message, chambre, le, iso(maintenant())))
+        nouveaux += 1
+    c.base.noter("journaux", "Mot du livre d'or reçu de Home Assistant",
+                 {"rattaches": len(rattaches), "a_rattacher": len(inconnus), "nouveaux": nouveaux})
+    return {"rattaches": rattaches, "a_rattacher": inconnus, "nouveaux": nouveaux}
+
+
+def rattacher_livre(c: Carnet, mot_id: int, uid: str) -> dict:
+    """Rattache un mot du livre d'or à la fiche `uid` (depuis la fiche, « C'est elle / lui »)."""
+    ident = personnes.de(c, uid)
+    if not ident:
+        raise ErreurCarnet("Fiche inconnue.")
+    if not c.base.tous("SELECT id FROM livre_or WHERE id = ?", (int(mot_id),)):
+        raise ErreurCarnet("Mot du livre d'or introuvable.")
+    c.base.executer("UPDATE livre_or SET personne = ? WHERE id = ?", (ident, int(mot_id)))
+    return {"ok": True}

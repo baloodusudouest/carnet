@@ -13,6 +13,13 @@
   function dateLisible(v) {
     return v ? `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}` : ''
   }
+  async function rattacher(m) {
+    try {
+      await api.put(`/api/livre-or/${m.id}/rattacher`, { uid })
+      dire('Mot du livre d\'or rattaché à cette fiche.')
+      onchange()
+    } catch (err) { erreur(err) }
+  }
   async function enregistrer() {
     attente = true
     try {
@@ -48,6 +55,28 @@
     </div>
   {/if}
 
+  <!-- 2.31 : livre d'or de la maison (envoyé par Home Assistant) -->
+  <h3 class="sous-titre">Livre d'or</h3>
+  {#if j.livre_or?.length}
+    <ul class="livre">
+      {#each j.livre_or as m (m.id)}
+        <li><p class="mot">« {m.message} »</p><p class="discret petit">{dateLisible(m.le)}{m.chambre ? ` · ${m.chambre}` : ''}{m.nom ? ` · signé ${m.nom}` : ''}</p></li>
+      {/each}
+    </ul>
+  {:else}<p class="discret petit">Aucun mot : ceux qu'elle ou il laissera dans le livre d'or de la chambre arriveront ici.</p>{/if}
+  {#if j.orphelins?.length}
+    <details class="orphelins">
+      <summary class="petit">Mots non rattachés ({j.orphelins.length}) : signataire que carnet n'a pas reconnu</summary>
+      <ul class="livre">
+        {#each j.orphelins as m (m.id)}
+          <li><p class="mot">« {m.message} »</p>
+            <p class="discret petit">{dateLisible(m.le)} · signé « {m.nom} »{m.chambre ? ` · ${m.chambre}` : ''}
+              <button class="bouton petit" onclick={() => rattacher(m)}>C'est cette personne</button></p></li>
+        {/each}
+      </ul>
+    </details>
+  {/if}
+
   <!-- 2.30 : numéros approuvés dans Gazette (lecture seule ici) -->
   <h3 class="sous-titre">Journaux parus</h3>
   {#if j.parus?.length}
@@ -72,6 +101,10 @@
   .formulaire label { display: grid; gap: 0.3rem; }
   .texte { white-space: pre-line; margin: 0.8rem 0 0.3rem; }
   .sous-titre { font-size: 0.95rem; margin: 1.2rem 0 0.4rem; }
+  .livre { display: grid; gap: 0.6rem; padding: 0; list-style: none; }
+  .livre .mot { font-style: italic; white-space: pre-line; margin: 0; overflow-wrap: anywhere; }
+  .livre p { margin: 0.2rem 0; }
+  .orphelins summary { cursor: pointer; margin-top: 0.6rem; }
   .parus { display: grid; gap: 0.5rem; padding: 0; list-style: none; }
   .parus summary { cursor: pointer; overflow-wrap: anywhere; }
   .parus ul { margin: 0.2rem 0 0.4rem 1.1rem; padding: 0; }

@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 2.31.0 — 17 novembre 2026
+- **Livre d'or** (fiche › Pour les journaux) : les mots que les invités laissent dans le livre d'or de leur chambre (carte de Home Assistant) arrivent sur leur fiche. Home Assistant envoie chaque signature à `POST /ha/livre-or` (jeton Home Assistant), avec le ou les signataires choisis sur la carte ; l'existant peut être renvoyé une fois (script `livre_dor_renvoyer_carnet`). Chaque signataire reconnu par son nom reçoit le mot ; un nom inconnu ou porté par plusieurs fiches attend sous « Mots non rattachés », à rattacher depuis la bonne fiche (« C'est cette personne »). Un mot renvoyé n'entre pas deux fois. Jamais dans iCloud.
+- **Gazette** : `GET /gazette/personnes` donne `livre_or` (les 10 derniers mots) pour les rumeurs, le courrier des lecteurs et le droit de réponse de La Récidive (Gazette 0.19).
+- **Coffre « Contacts »** : section « Livre d'or ». Schéma 8 (table `livre_or`).
 ## 2.30.0 — 17 novembre 2026
 - **« Journaux parus »** (fiche › Pour les journaux) : chaque numéro de La Récidive approuvé dans Gazette (0.16) est rangé sur la fiche — date du séjour, N°, gros titre, événement du séjour, indices, descriptions des photos écrites pour l'IA, textes imprimés. Choix de Julien du 17/11 : tout centraliser sur la fiche contact. Un numéro réapprouvé remplace le précédent. Jamais dans iCloud, Synology Contacts ou le kit.
 - **Gazette** : `PUT /gazette/personnes/{personne_id}/parus/{cle}` (jeton commun, clé « recidive-AAAA-MM-JJ ») ; `GET /gazette/personnes` donne `parus` (les 10 derniers numéros).
