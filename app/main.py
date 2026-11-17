@@ -17,7 +17,7 @@ from .temps import maintenant
 from . import maison
 from . import (__version__, actions, attentes, completude, connexion, famille, galerie, groupes as groupes_, icloud, liaisons, linkedin, nuit, photos, reseaux, sorties,
                telegram, traiter, vcard)
-from .auth import COMMUN, COOKIE, DUREE, Sessions
+from .auth import COMMUN, COOKIE, DUREE, Sessions, en_https
 from .carddav import ErreurICloud
 from .carnet import Carnet, ErreurCarnet, Occupe
 from .config import charger
@@ -186,13 +186,13 @@ def session(request: Request):
 
 
 @app.post("/api/connexion")
-async def ouvrir_session(corps: dict = Body(...)):
+async def ouvrir_session(request: Request, corps: dict = Body(...)):
     s = ETAT["sessions"]
     await asyncio.sleep(s.attente())
     if not s.verifier_mot_de_passe(str(corps.get("mot_de_passe", ""))):
         raise HTTPException(401, "Mot de passe incorrect.")
     r = JSONResponse({"ok": True})
-    r.set_cookie(COOKIE, s.creer(), max_age=DUREE, httponly=True, samesite="strict")
+    r.set_cookie(COOKIE, s.creer(), max_age=DUREE, httponly=True, samesite="strict", secure=en_https(request))
     return r
 
 
