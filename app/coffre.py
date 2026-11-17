@@ -160,6 +160,14 @@ def bloc(c: Carnet, uid: str, f: dict, ident: str, cibles: dict[str, str]) -> st
             l += _liste(alimentation.LIBELLES[k], a[k])
     if (pj := journaux.de_personne(c, ident)):          # 2.29 : « Pour les journaux » (Gazette)
         l += ["", "## Pour les journaux (Gazette)", *[f"> {x}" if x else ">" for x in pj.splitlines()]]
+    if (parus := journaux.parus(c, ident)):              # 2.30 : journaux parus (Gazette)
+        l += ["", "## Journaux parus (Gazette)"]
+        for p in parus:
+            l.append(f"- **{journaux.paru_lisible(p)}**" + (f" — {p['titre']}" if p.get("titre") else ""))
+            if p.get("evenement"):
+                l.append(f"  - Événement : {p['evenement']}")
+            l += [f"  - Photo : {x}" for x in p.get("descriptions") or []]
+            l += [f"  - Imprimé : {x}" for x in p.get("textes") or []]
     if f.get("notes"):
         l += ["", "## Notes de la fiche (iCloud)", *[f"> {x}" if x else ">" for x in f["notes"].splitlines()]]
     lien = c.liaisons().get(uid, {})

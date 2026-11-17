@@ -1144,6 +1144,12 @@ def gazette_journaux(personne_id: str, corps: dict = Body(...)):
     return journaux.ecrire(carnet(), personne_id, (corps or {}).get("texte"), "gazette")
 
 
+@app.put("/gazette/personnes/{personne_id}/parus/{cle}")
+def gazette_paru(personne_id: str, cle: str, corps: dict = Body(...)):
+    """2.30 : Gazette range ici un numéro de La Récidive approuvé (journaux parus de la fiche)."""
+    return journaux.ecrire_paru(carnet(), personne_id, cle, corps)
+
+
 # ================================================================ Douze points (Bearer)
 
 @app.get("/douze-points/personnes")

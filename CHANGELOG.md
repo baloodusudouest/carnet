@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 2.30.0 — 17 novembre 2026
+- **« Journaux parus »** (fiche › Pour les journaux) : chaque numéro de La Récidive approuvé dans Gazette (0.16) est rangé sur la fiche — date du séjour, N°, gros titre, événement du séjour, indices, descriptions des photos écrites pour l'IA, textes imprimés. Choix de Julien du 17/11 : tout centraliser sur la fiche contact. Un numéro réapprouvé remplace le précédent. Jamais dans iCloud, Synology Contacts ou le kit.
+- **Gazette** : `PUT /gazette/personnes/{personne_id}/parus/{cle}` (jeton commun, clé « recidive-AAAA-MM-JJ ») ; `GET /gazette/personnes` donne `parus` (les 10 derniers numéros).
+- **Coffre « Contacts »** : section « Journaux parus (Gazette) » dans le bloc écrit par carnet.
+- Schéma 7 (table `journaux_parus`) : la 2.29 rouvre la base sans rien perdre.
 
 ## 2.29.0 — 17 novembre 2026
 - **« Pour les journaux »** (fiche › Pour les journaux) : ce qu'on sait d'une personne (passions, manies, petites histoires), pour les rumeurs loufoques de La Récidive (Gazette 0.10). Rangé par identifiant maison dans la base de carnet seulement, jamais dans iCloud, Synology Contacts ou le kit ; le journal de carnet ne porte jamais le texte. Permis en lecture seule.

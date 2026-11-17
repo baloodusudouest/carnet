@@ -587,7 +587,7 @@ def test_home_assistant_adresses(c):
             assert paul["nom"] == "Paul MARTIN" and paul["naissance"] == "1983-01-09"
             assert any(x["naissance"] is None and x["jour"] for x in gz)      # sans année : pas de date complète
             assert set(paul) == {"carnet_id", "personne_id", "nom", "nom_carnet", "prenom", "naissance", "jour", "mois", "annee",
-                                 "genre", "immich_id", "journaux"}
+                                 "genre", "immich_id", "journaux", "parus"}
             assert paul["genre"] == ""                                          # 2.27 : genre inconnu → vide
             assert paul["immich_id"] == "im-paul"                               # 2.27 : personne d'Immich liée
             from app import genres as G
@@ -609,6 +609,22 @@ def test_home_assistant_adresses(c):
             assert J.fiche(c, "DDDD-4444")["par"] == "gazette"
             assert "## Pour les journaux (Gazette)" in __import__("app.coffre", fromlist=["bloc"]).bloc(
                 c, "DDDD-4444", c.fiche("DDDD-4444"), paul["personne_id"], {})
+            # 2.30 : un numéro de La Récidive approuvé dans Gazette, rangé sur la fiche, relu par Gazette, recopié au coffre
+            corps = {"journal": "recidive", "numero": 2, "le": "2026-11-19", "titre": "Paul récidive !",
+                     "evenement": "soirée Eurovision", "indices": "fan de pétanque",
+                     "descriptions": ["Paul en tigre", ""], "textes": ["Paul récidive !", "Selon nos sources, Paul…"]}
+            r = client.put(f"/gazette/personnes/{paul['personne_id']}/parus/recidive-2026-11-19", headers=commun, json=corps)
+            assert r.status_code == 200 and r.json()["descriptions"] == ["Paul en tigre"]
+            assert client.put(f"/gazette/personnes/{paul['personne_id']}/parus/n-importe", headers=commun, json=corps).status_code in (400, 409, 422)
+            assert client.put(f"/gazette/personnes/{paul['personne_id']}/parus/recidive-2026-11-19", json=corps).status_code == 401
+            client.put(f"/gazette/personnes/{paul['personne_id']}/parus/recidive-2026-11-19", headers=commun,
+                       json={**corps, "evenement": "soirée Eurovision 2026"})                       # réapprouvé : remplacé
+            gz = client.get("/gazette/personnes", headers=commun).json()["personnes"]
+            pp = next(x for x in gz if x["carnet_id"] == "DDDD-4444")["parus"]
+            assert len(pp) == 1 and pp[0]["evenement"] == "soirée Eurovision 2026" and pp[0]["numero"] == 2
+            assert J.fiche(c, "DDDD-4444")["parus"][0]["cle"] == "recidive-2026-11-19"
+            bloc = __import__("app.coffre", fromlist=["bloc"]).bloc(c, "DDDD-4444", c.fiche("DDDD-4444"), paul["personne_id"], {})
+            assert "## Journaux parus (Gazette)" in bloc and "19/11/2026 — La Récidive N° 2" in bloc and "Photo : Paul en tigre" in bloc
             J.definir(c, "DDDD-4444", {"texte": ""})
             # 2.22.1 : la liste pour Douze points (prénom et nom, rien d'autre)
             dp = client.get("/douze-points/personnes", headers=commun).json()["personnes"]
