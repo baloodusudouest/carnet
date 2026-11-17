@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from app import actions, alimentation, base as base_, coffre, connexion, icloud, liaisons, nuit, personnes
+from app import actions, alimentation, base as base_, coffre, connexion, icloud, liaisons, nuit, personnes, temps
 from app.base import Base, CleInvalide, est_en_clair
 from app.carnet import Carnet, ErreurCarnet
 
@@ -97,13 +97,13 @@ def test_alimentation_saisie_statuts_et_garde_fous(c):
                                               "plaisirs": "chocolat noir", "verifiee": True})
     assert a["allergies"] == ["Arachide", "noix"] and a["statut"] == "a_connaitre"
     assert a["non_aimes"] == ["coriandre"] and a["plaisirs"] == ["chocolat noir"]
-    assert a["verifiee_le"] == datetime.now().strftime("%Y-%m-%d")
+    assert a["verifiee_le"] == temps.iso(temps.maintenant())[:10]          # heure de Paris (le CI tourne en UTC)
     with pytest.raises(ErreurCarnet):
         alimentation.definir(c, "AAAA-1111", {"allergies": ["noix"], "aucune": True})
     with pytest.raises(ErreurCarnet):
         alimentation.definir(c, "AAAA-1111", {"verifiee_le": "17/11/2026", "aucune": True})
     a = alimentation.definir(c, "AAAA-1111", {"aucune": True})
-    assert a["statut"] == "aucune" and a["verifiee_le"] == datetime.now().strftime("%Y-%m-%d")   # date gardée
+    assert a["statut"] == "aucune" and a["verifiee_le"] == temps.iso(temps.maintenant())[:10]   # date gardée
     assert alimentation.definir(c, "AAAA-1111", {})["statut"] == "inconnu"   # tout vidé : retour à inconnu
     assert not c.base.tous("SELECT 1 FROM alimentation")
     journal = " ".join(str(l) for l in c.base.journal("alimentation"))
