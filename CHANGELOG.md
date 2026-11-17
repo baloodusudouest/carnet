@@ -1,6 +1,12 @@
 # Journal des versions
 
 
+## 2.29.0 — 17 novembre 2026
+- **« Pour les journaux »** (fiche › Pour les journaux) : ce qu'on sait d'une personne (passions, manies, petites histoires), pour les rumeurs loufoques de La Récidive (Gazette 0.10). Rangé par identifiant maison dans la base de carnet seulement, jamais dans iCloud, Synology Contacts ou le kit ; le journal de carnet ne porte jamais le texte. Permis en lecture seule.
+- **Gazette** : `GET /gazette/personnes` donne `journaux` ; nouvelle adresse `PUT /gazette/personnes/{personne_id}/journaux` (jeton commun) pour que Gazette garde ici ce que Julien a écrit dans l'édition.
+- **Coffre « Contacts »** : section « Pour les journaux (Gazette) » dans le bloc écrit par carnet.
+- Schéma 6 (table `journaux`) : la 2.28 rouvre la base sans rien perdre.
+
 ## 2.28.0 — 17 novembre 2026
 - **Identifiant maison stable.** Chaque fiche reçoit un identifiant propre à carnet (`personne_id`, « p- » + 10 caractères), créé une fois et jamais réutilisé. L'UID iCloud n'en est plus qu'un attribut. Une fiche supprimée garde son identifiant (et son alimentation) ; « Annuler » le remet ; une carte recréée peut le reprendre (`POST /api/personnes/{id}/rattacher`). Une fusion garde l'identifiant de la fiche gardée ; celui de la fiche absorbée pointe vers lui. `personne_id` est ajouté à `/ha/contacts`, `/ha/invite`, `/sillage/personnes`, `/gazette/personnes`, `/douze-points/personnes` (rien d'autre ne change dans ces réponses).
 - **Alimentation** (fiche › Alimentation) : allergies, intolérances, « aucune allergie ni intolérance connue », vérifiée le, aliments non aimés, plaisirs coupables. Dans la base de carnet seulement : jamais écrite dans iCloud, Synology Contacts ou le kit. Le journal ne porte jamais son contenu.

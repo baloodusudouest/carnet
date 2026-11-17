@@ -7,6 +7,8 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 - **2.17.2 (13/11/2026)** : `synchro.empreinte_synology` / `ligne_comme_synology` (comparaison avec Synology seulement : TYPE réunis et triés, paramètres triés, « ; » de fin retirés sur N/ORG/ADR, X-AB* et X-ADDRESSBOOKSERVER-* ignorés). Cause du blocage de la copie de la nuit trouvée avec Vérifier (2.17.1). L'empreinte d'iCloud ne change pas.
 - **2.17.0 (13/11/2026)** : `sorties.apercu_synology` (Vérifier de Synology, lecture seule : créer / modifier / retirer et propriétés qui diffèrent). Vu sur la vraie installation le 13/11 : copie Synology bloquée la nuit (524/573) ; cause encore inconnue — le rapport de Vérifier la dira (piste : DSM mis à jour qui réécrit les cartes, ou photos posées sur les fiches). Immich et Treemich « injoignables » à 17:25, revenus à 17:40 (Immich était tombé).
 
+## État (17/11/2026) — 2.29.0 : `app/journaux.py` (table `journaux` : personne, texte, le, par ; `tous`, `de_personne`, `fiche`, `ecrire(c, ident, texte, par)`, `definir`), routes `PUT /api/contacts/{uid}/journaux` et `PUT /gazette/personnes/{personne_id}/journaux`, champ `journaux` de `/gazette/personnes`, section du coffre (`coffre.bloc`), composant `Journaux.svelte`. Jamais essayé sur la vraie installation.
+
 ## État (17/11/2026)
 
 - **2.28.0** (17/11/2026) : identifiant maison, alimentation, coffre Obsidian « Contacts », base chiffrée. Décisions de Julien du 17/11 (conseil sur le coffre Contacts, puis arbitrages) : carnet maître de toutes les informations contact, synchronisé à sens unique vers le coffre ; allergies dans carnet ; ce que Julien ne veut pas confier à carnet reste dans la zone libre des notes. **Jamais essayé sur la vraie installation.**

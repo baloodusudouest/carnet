@@ -587,7 +587,7 @@ def test_home_assistant_adresses(c):
             assert paul["nom"] == "Paul MARTIN" and paul["naissance"] == "1983-01-09"
             assert any(x["naissance"] is None and x["jour"] for x in gz)      # sans année : pas de date complète
             assert set(paul) == {"carnet_id", "personne_id", "nom", "nom_carnet", "prenom", "naissance", "jour", "mois", "annee",
-                                 "genre", "immich_id"}
+                                 "genre", "immich_id", "journaux"}
             assert paul["genre"] == ""                                          # 2.27 : genre inconnu → vide
             assert paul["immich_id"] == "im-paul"                               # 2.27 : personne d'Immich liée
             from app import genres as G
@@ -597,6 +597,19 @@ def test_home_assistant_adresses(c):
             assert next(x for x in gz if x["carnet_id"] == "DDDD-4444")["genre"] == "homme"
             G.definir(c, "DDDD-4444", "")
             c.oublier()
+            # 2.29 : « Pour les journaux », écrit par Gazette, relu dans la liste et sur la fiche
+            assert paul["journaux"] == ""
+            r = client.put(f"/gazette/personnes/{paul['personne_id']}/journaux", headers=commun, json={"texte": "fan de pétanque"})
+            assert r.status_code == 200 and r.json()["texte"] == "fan de pétanque"
+            assert client.put(f"/gazette/personnes/{paul['personne_id']}/journaux", json={"texte": "x"}).status_code == 401
+            assert client.put("/gazette/personnes/p-inconnue00/journaux", headers=commun, json={"texte": "x"}).status_code in (400, 404, 409, 422)
+            gz = client.get("/gazette/personnes", headers=commun).json()["personnes"]
+            assert next(x for x in gz if x["carnet_id"] == "DDDD-4444")["journaux"] == "fan de pétanque"
+            from app import journaux as J
+            assert J.fiche(c, "DDDD-4444")["par"] == "gazette"
+            assert "## Pour les journaux (Gazette)" in __import__("app.coffre", fromlist=["bloc"]).bloc(
+                c, "DDDD-4444", c.fiche("DDDD-4444"), paul["personne_id"], {})
+            J.definir(c, "DDDD-4444", {"texte": ""})
             # 2.22.1 : la liste pour Douze points (prénom et nom, rien d'autre)
             dp = client.get("/douze-points/personnes", headers=commun).json()["personnes"]
             assert dp and all(set(x) == {"carnet_id", "personne_id", "prenom", "nom"} and x["prenom"] for x in dp)

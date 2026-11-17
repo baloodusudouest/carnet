@@ -3,6 +3,7 @@
   import { api } from '../lib/api.js'
   import { aller, apresEcriture, erreur, dire, etat, rafraichirContacts } from '../lib/etat.svelte.js'
   import Alimentation from '../components/Alimentation.svelte'
+  import Journaux from '../components/Journaux.svelte'
   import Avatar from '../components/Avatar.svelte'
   import ChoixPhoto from '../components/ChoixPhoto.svelte'
   import Changements from '../components/Changements.svelte'
@@ -266,6 +267,10 @@
       {#if (f.prenom || f.nom) && donnees.alimentation}
         <!-- 2.28 : allergies, intolérances, non aimés, plaisirs (dans carnet seulement) -->
         <Alimentation {uid} alimentation={donnees.alimentation} onchange={charger} />
+      {/if}
+      {#if (f.prenom || f.nom) && donnees.journaux}
+        <!-- 2.29 : « Pour les journaux » (Gazette, rumeurs de La Récidive) -->
+        <Journaux {uid} journaux={donnees.journaux} onchange={charger} />
       {/if}
 
       <div class="feuille bloc completude">

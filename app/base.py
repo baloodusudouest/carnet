@@ -22,8 +22,8 @@ from typing import Any, Iterator
 
 log = logging.getLogger("carnet")
 
-VERSION = 5   # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
-              # 5 : personnes, alimentation (2.28)
+VERSION = 6   # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
+              # 5 : personnes, alimentation (2.28) ; 6 : journaux (2.29)
 ENTETE_CLAIR = b"SQLite format 3\x00"
 GARDE_CLAIR = timedelta(days=14)     # copie en clair d'avant le chiffrement, pour revenir à la 2.27 : effacée ensuite
 
@@ -236,6 +236,14 @@ CREATE TABLE IF NOT EXISTS alimentation (
     non_aimes     TEXT NOT NULL DEFAULT '[]',
     plaisirs      TEXT NOT NULL DEFAULT '[]',
     le            TEXT NOT NULL
+);
+-- ---- 2.29 (schéma 6) : un ajout, la 2.28 rouvre la base sans rien perdre ----
+-- « Pour les journaux » : ce que Julien sait d'une personne, pour les rumeurs de Gazette (jamais dans iCloud)
+CREATE TABLE IF NOT EXISTS journaux (
+    personne TEXT PRIMARY KEY,
+    texte    TEXT NOT NULL,
+    le       TEXT NOT NULL,
+    par      TEXT NOT NULL           -- carnet / gazette
 );
 """
 

@@ -22,7 +22,7 @@ from .carnet import Carnet, ErreurCarnet, Occupe
 from .config import charger
 from . import millesime as millesime_
 from . import genres
-from . import alimentation, coffre, personnes
+from . import alimentation, coffre, journaux, personnes
 from . import reglages as reglages_
 from .liens import ErreurLien
 from .modele import groupes_tous, nom_affiche
@@ -325,6 +325,7 @@ def contact(uid: str, request: Request):
             "genre": genres.fiche(c, uid),     # 2.22
             "personne_id": personnes.de(c, uid),           # 2.28 : identifiant maison stable
             "alimentation": alimentation.fiche(c, uid),     # 2.28 : allergies, intolérances, non aimés, plaisirs
+            "journaux": journaux.fiche(c, uid),             # 2.29 : « Pour les journaux » (Gazette)
             "google_logo": galerie.recherche_google(f),
             # 2.15 : le chemin de vie de la personne, si la fiche est liée à Immich et que Sillage a une adresse
             "sillage": (f"{sillage}/#/chemin/{c.liaisons().get(uid, {}).get('immich')}"
@@ -756,6 +757,12 @@ def genre(uid: str, corps: dict = Body(...)):
     return genres.definir(carnet(), uid, str(corps.get("genre") or ""))
 
 
+@app.put("/api/contacts/{uid}/journaux")
+def changer_journaux(uid: str, corps: dict = Body(...)):
+    """2.29 : « Pour les journaux » depuis la fiche (reste dans carnet : permis en lecture seule)."""
+    return journaux.definir(carnet(), uid, corps)
+
+
 @app.put("/api/contacts/{uid}/alimentation")
 def changer_alimentation(uid: str, corps: dict = Body(...)):
     """2.28 : allergies, intolérances, « aucune connue », vérifiée le, aliments non aimés, plaisirs coupables.
@@ -1129,6 +1136,12 @@ def sillage_personnes():
 @app.get("/gazette/personnes")
 def gazette_personnes():
     return sorties.gazette_personnes(carnet())
+
+
+@app.put("/gazette/personnes/{personne_id}/journaux")
+def gazette_journaux(personne_id: str, corps: dict = Body(...)):
+    """2.29 : Gazette garde ici ce que Julien a écrit sur une personne pour les rumeurs de La Récidive."""
+    return journaux.ecrire(carnet(), personne_id, (corps or {}).get("texte"), "gazette")
 
 
 # ================================================================ Douze points (Bearer)

@@ -25,7 +25,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from . import alimentation, attentes, genres, maison, personnes
+from . import alimentation, attentes, genres, journaux, maison, personnes
 from .carnet import Carnet, ErreurCarnet
 from .fiches import date_lisible
 from .modele import nom_affiche
@@ -158,6 +158,8 @@ def bloc(c: Carnet, uid: str, f: dict, ident: str, cibles: dict[str, str]) -> st
             l.append(f"- **Vérifiée le** : {date_lisible(a['verifiee_le'])}")
         for k in alimentation.LISTES:
             l += _liste(alimentation.LIBELLES[k], a[k])
+    if (pj := journaux.de_personne(c, ident)):          # 2.29 : « Pour les journaux » (Gazette)
+        l += ["", "## Pour les journaux (Gazette)", *[f"> {x}" if x else ">" for x in pj.splitlines()]]
     if f.get("notes"):
         l += ["", "## Notes de la fiche (iCloud)", *[f"> {x}" if x else ">" for x in f["notes"].splitlines()]]
     lien = c.liaisons().get(uid, {})
