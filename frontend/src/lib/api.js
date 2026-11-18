@@ -31,5 +31,6 @@ export const api = {
   get: (c) => appel('GET', c),
   post: (c, corps = {}) => appel('POST', c, corps),
   put: (c, corps) => appel('PUT', c, corps),
+  effacer: (c, corps) => appel('DELETE', c, corps),   // 2.33 : pépite de la fiche complète (corps : {le})
   envoyer: (fichier) => appel('POST', `/api/import?nom=${encodeURIComponent(fichier.name)}`, fichier),
 }

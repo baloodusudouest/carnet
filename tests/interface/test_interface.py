@@ -823,3 +823,42 @@ def test_226_reglages_d_usage_puis_restaurer(page):
     bloc.get_by_label("Vérifier le certificat de Synology").check()
     enregistrer.click()
     page.wait_for_selector(".message:has-text('Réglages enregistrés')")
+
+
+def test_233_fiche_complete_pour_les_journaux(page):
+    """2.33 : rubriques repliables, suggestion → pépite, vrac rangé, jauge en nombre, sujets interdits masqués."""
+    uid = "F-06" if page.viewport_size["width"] > 500 else "F-07"      # serveur partagé : une fiche par taille
+    page.goto(page.url.split("#")[0] + f"#/contacts/{uid}")
+    fiche = page.locator("section[aria-label='Fiche complète pour les journaux']")
+    fiche.locator(".jauge").wait_for()
+    assert "0 pépite" in fiche.locator(".jauge").inner_text()
+    # toutes les familles sont là, repliées
+    for titre in ("Vie et entourage", "Goûts et passions", "Caractère et manies", "Histoires", "Pour les journaux"):
+        assert fiche.locator("details.famille > summary", has_text=titre).count() == 1
+    # une suggestion touchée remplit le champ ; « Ajouter » en fait une pépite
+    fiche.locator("details.famille > summary", has_text="Goûts et passions").click()
+    sports = fiche.locator("details.rubrique", has=page.locator("summary", has_text=re.compile(r"^\s*Sports")))
+    sports.locator("summary").click()
+    sports.get_by_role("button", name="Joue à la pétanque").click()
+    sports.locator("form.ligne").get_by_role("button", name="Ajouter").click()
+    sports.locator(".pepite", has_text="Joue à la pétanque").wait_for()
+    assert "1 pépite" in fiche.locator(".jauge").inner_text()
+    # vrac : rangé par mots-clés, la rubrique est dite et reste modifiable
+    fiche.get_by_label("Détail en vrac").fill("A peur des araignées")
+    fiche.get_by_role("button", name="Ranger").click()
+    fiche.locator(".rangee").wait_for()
+    assert "Peurs et phobies" in fiche.locator(".rangee").inner_text()
+    assert fiche.locator(".rangee select").input_value() == "peurs"
+    fiche.locator(".jauge", has_text="2 pépites").wait_for()
+    # sujets interdits : masqués par défaut, ne comptent pas dans la jauge
+    interdits = fiche.locator(".interdits")
+    assert not interdits.get_by_label("Ajouter un sujet interdit").is_visible()
+    interdits.get_by_role("button", name="Afficher").click()
+    interdits.get_by_label("Ajouter un sujet interdit").fill("Son ancien travail")
+    interdits.get_by_role("button", name="Ajouter").click()
+    interdits.locator(".pepite", has_text="Son ancien travail").wait_for()
+    assert "(1)" in interdits.locator("h3").inner_text() and "2 pépites" in fiche.locator(".jauge").inner_text()
+    interdits.get_by_role("button", name="Masquer").click()
+    assert not interdits.locator(".pepite").count()
+    # iPhone : rien ne déborde sur le côté
+    assert page.evaluate("document.documentElement.scrollWidth") <= page.viewport_size["width"]

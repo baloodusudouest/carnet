@@ -22,8 +22,9 @@ from typing import Any, Iterator
 
 log = logging.getLogger("carnet")
 
-VERSION = 8   # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
-              # 5 : personnes, alimentation (2.28) ; 6 : journaux (2.29) ; 7 : journaux_parus (2.30) ; 8 : livre_or (2.31)
+VERSION = 9   # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
+              # 5 : personnes, alimentation (2.28) ; 6 : journaux (2.29) ; 7 : journaux_parus (2.30) ; 8 : livre_or (2.31) ;
+              # 9 : journaux_pepites (2.33)
 ENTETE_CLAIR = b"SQLite format 3\x00"
 GARDE_CLAIR = timedelta(days=14)     # copie en clair d'avant le chiffrement, pour revenir à la 2.27 : effacée ensuite
 
@@ -268,6 +269,22 @@ CREATE TABLE IF NOT EXISTS livre_or (
     le       TEXT NOT NULL,          -- début du séjour (AAAA-MM-JJ)
     recu     TEXT NOT NULL
 );
+-- ---- 2.33 (schéma 9) : un ajout, la 2.32 rouvre la base sans rien perdre ----
+-- « Fiche complète » pour les journaux (Gazette, La Récidive) : une ligne par pépite (un détail court sur une
+-- personne, rangé dans une rubrique). Écrite pépite par pépite par carnet ou Gazette, avec contrôle de `le`.
+-- `interdit` = 1 : « Sujets interdits » (jamais envoyés à l'IA). Jamais dans iCloud.
+CREATE TABLE IF NOT EXISTS journaux_pepites (
+    id       TEXT PRIMARY KEY,       -- « pp- » + 12 caractères hexadécimaux
+    personne TEXT NOT NULL,          -- identifiant maison
+    rubrique TEXT NOT NULL,          -- clé de app/rubriques_journaux.json, ou « interdits »
+    texte    TEXT NOT NULL,          -- 200 caractères au plus
+    interdit INTEGER NOT NULL DEFAULT 0,
+    source   TEXT NOT NULL,          -- julien / carnet / recidive / sillage
+    parue_le TEXT,                   -- date du numéro approuvé où elle a servi (AAAA-MM-JJ), vide sinon
+    le       TEXT NOT NULL,          -- dernière modification (contrôle des écritures concurrentes)
+    par      TEXT NOT NULL           -- carnet / gazette / migration
+);
+CREATE INDEX IF NOT EXISTS idx_journaux_pepites_personne ON journaux_pepites(personne);
 """
 
 
