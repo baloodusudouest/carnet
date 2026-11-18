@@ -312,10 +312,7 @@ def test_30_forme_rangement_des_notes_228(c):
     assert b["rangees"] == 1 and not ancienne.exists()
     paul = note(c, "Paul MARTIN")
     assert "A un chien." in paul and "type: contact" in paul and "allergies: inconnu" in paul and "vieux" not in paul
-    assert (racine / "Accueil.md").exists() and "space-style" in (racine / "CONFIG.md").read_text(encoding="utf-8")
-    (racine / "Accueil.md").write_text("à moi", encoding="utf-8")
-    coffre.synchroniser(c)
-    assert (racine / "Accueil.md").read_text(encoding="utf-8") == "à moi"   # posée une seule fois
+    assert not (racine / "Accueil.md").exists() and not (racine / "CONFIG.md").exists()   # 3.0.1 : rien hors des notes
 
 
 def test_30_evenements_partages_et_index(c):

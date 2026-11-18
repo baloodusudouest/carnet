@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 3.0.1 — 18 novembre 2026 (accueil et réglages de SilverBullet hors du coffre)
+- carnet n'écrit plus `Accueil.md` ni `CONFIG.md` dans le coffre Contacts : le coffre ne contient que les notes des personnes et des événements (informations confidentielles, dans le dossier partagé chiffré). L'accueil et les réglages de SilverBullet vivent dans son dossier docker, avec ses sessions (choix de Julien du 18/11/2026).
+
 ## 3.0.0 — 18 novembre 2026 (coffre Contacts : nouvelle forme pour SilverBullet)
 - **Le coffre Contacts se lit dans SilverBullet** (décision du 18/11/2026 : SilverBullet remplace Obsidian ; coffre Contacts en lecture seule côté carnet, livraison 2). carnet écrit toujours à sens unique ; rien de ce que Julien écrit dans les notes n'est relu.
 - **Une note Contact par personne dans son dossier** : `Personnes/<Nom>/<Nom>.md` (fiche, famille et proches avec liens, alimentation en détail, notes iCloud, liens). En-tête : `type: contact`, `allergies` (`inconnu`, `aucune`, `a_connaitre`) en plus des clés de la 2.28, pour les requêtes de SilverBullet.

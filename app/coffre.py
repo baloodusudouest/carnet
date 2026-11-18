@@ -17,7 +17,8 @@ Chaque note a un bloc entre `<!-- carnet:debut … -->` et `<!-- carnet:fin -->`
 synchronisation ; tout le reste (zone « Mes notes », ce qui est écrit avant ou après le bloc) n'est jamais
 touché. L'en-tête garde les clés ajoutées à la main ; carnet ne réécrit que les siennes (`CLES_CARNET`).
 Les notes sont retrouvées par leur identifiant (`personne_id`, `index_de` + `index_type`, `evenement_id`),
-même déplacées. carnet ne supprime jamais une note. Il range une seule fois les notes de la forme 2.28
+même déplacées. carnet ne supprime jamais une note. Les pages d'accueil et de réglages de SilverBullet ne sont
+pas écrites par carnet (3.0.1) : elles vivent dans le dossier docker de SilverBullet Contacts, avec ses sessions. Il range une seule fois les notes de la forme 2.28
 (`Personnes/<Nom>.md`) dans leur dossier, et renomme le dossier d'une personne quand son nom change
 (seulement si la note est à sa place d'origine et que le nouveau nom est libre).
 
@@ -411,13 +412,6 @@ def _ranger(r: Path, ident: str, actuel: Path, base: str, inv: dict, ecrire: boo
     return actuel
 
 
-def _accueil(r: Path, ecrire: bool) -> None:
-    """Pages d'accueil et de réglages de SilverBullet, posées une seule fois (Julien peut les modifier)."""
-    for nom, texte in (("Accueil.md", ACCUEIL), ("CONFIG.md", CONFIG)):
-        if ecrire and not (r / nom).exists():
-            _ecrire(r / nom, texte)
-
-
 # ---------------------------------------------------------------- synchroniser
 
 def synchroniser(c: Carnet, ecrire: bool = True) -> dict:
@@ -431,7 +425,6 @@ def synchroniser(c: Carnet, ecrire: bool = True) -> dict:
     inv = _inventaire(r)
     bilan = {"le": iso(maintenant()), "crees": 0, "mises_a_jour": 0, "inchangees": 0, "sans_bloc": 0,
              "retirees": 0, "rangees": 0, "renommees": 0, "index": 0, "evenements": 0, "erreurs": [], "ecrit": ecrire}
-    _accueil(r, ecrire)
 
     # 1. Chemin de la note Contact de chaque personne (existante, rangée, ou à créer) ; noms pour les liens
     chemins: dict[str, Path] = {}
@@ -551,103 +544,3 @@ def sante(c: Carnet) -> dict:
     if b.get("erreurs"):
         return {"etat": "erreur", "message": b["erreurs"][0]}
     return {"etat": "ok", "message": ""}
-
-
-# ---------------------------------------------------------------- pages de SilverBullet (posées une fois)
-
-ACCUEIL = """# Coffre Contacts
-
-Vue de carnet (lecture seule côté carnet : les modifications se font dans carnet). Chaque personne a sa note dans
-`Personnes/<Nom>/`, ses notes par type à côté, et les événements partagés sont dans `Événements/`.
-Ta zone « Mes notes », en bas de chaque note, n'est jamais touchée par carnet.
-(Les tableaux ci-dessous sont des requêtes SilverBullet : en Lua, un nom de colonne accentué s'écrit `["Événement"]`.)
-
-## Anniversaires du mois
-${query[[
-  from p = index.tag "page"
-  where p.type == "contact" and p.carnet == "présente" and p.naissance
-    and string.sub(p.naissance, -5, -4) == os.date("%m")
-  order by string.sub(p.naissance, -2)
-  select {Nom = "[[" .. p.name .. "]]", Date = p.naissance}
-]]}
-
-## Allergies à connaître
-${query[[
-  from p = index.tag "page"
-  where p.type == "contact" and p.carnet == "présente" and p.allergies == "a_connaitre"
-  order by p.name
-  select {Nom = "[[" .. p.name .. "]]"}
-]]}
-
-## Derniers événements
-${query[[
-  from p = index.tag "page"
-  where p.type == "evenement"
-  order by p.date desc
-  limit 10
-  select {["Événement"] = "[[" .. p.name .. "]]", Date = p.date}
-]]}
-"""
-
-CONFIG = """# CONFIG
-
-Réglages de SilverBullet pour le coffre Contacts (posés une fois par carnet ; à modifier ici). Habillage « Répertoire
-chaud » choisi par Julien le 18/11/2026 : fond encre brune, accent terre cuite, titres en Fraunces (si la police est
-installée sur l'appareil, sinon une police à empattements), corps en Inter, liens soulignés en pointillés.
-
-```space-lua
--- Toujours sombre, quel que soit le réglage de l'appareil
-event.listen {
-  name = "editor:init",
-  run = function()
-    editor.setUiOption("darkMode", true)
-  end
-}
-```
-
-```space-style
-html, html[data-theme="light"], html[data-theme="dark"] {
-  --root-background-color: #1a1714;
-  --root-color: #ece4d8;
-  --top-background-color: #221e1a;
-  --top-color: #ece4d8;
-  --top-border-color: #3a332c;
-  --panel-background-color: #221e1a;
-  --panel-border-color: #3a332c;
-  --modal-background-color: #221e1a;
-  --modal-border-color: #3a332c;
-  --modal-color: #ece4d8;
-  --modal-selected-option-background-color: #2e2822;
-  --subtle-color: #b3a796;
-  --subtle-background-color: #221e1a;
-  --meta-color: #b3a796;
-  --meta-subtle-color: #857a6c;
-  --editor-meta-color: #b3a796;
-  --editor-heading-color: #ece4d8;
-  --editor-heading-meta-color: #857a6c;
-  --ui-accent-color: #c9714a;
-  --ui-accent-text-color: #1a1714;
-  --ui-accent-contrast-color: #1a1714;
-  --ui-surface-border-color: #3a332c;
-  --ui-surface-hover-background-color: #2e2822;
-  --link-color: #c9714a;
-  --editor-link-color: #c9714a;
-  --editor-wiki-link-page-color: #c9714a;
-  --editor-wiki-link-page-background-color: transparent;
-  --editor-code-background-color: #221e1a;
-  --editor-blockquote-border-color: #c9714a;
-  --editor-list-bullet-color: #b3a796;
-  --editor-selection-background-color: #c9714a33;
-  --editor-caret-color: #c9714a;
-  --button-background-color: #221e1a;
-  --button-border-color: #3a332c;
-  --button-color: #ece4d8;
-  --button-hover-background-color: #2e2822;
-  --text-field-background-color: #221e1a;
-  --ui-font: Inter, -apple-system, "Segoe UI", system-ui, sans-serif;
-  --editor-font: Inter, -apple-system, "Segoe UI", system-ui, sans-serif;
-}
-.sb-line-h1, .sb-line-h2, .sb-line-h3, #sb-current-page { font-family: Fraunces, Georgia, "Times New Roman", serif; }
-.sb-wiki-link-page, .sb-wiki-link { text-decoration: underline dotted; text-underline-offset: 3px; }
-```
-"""
