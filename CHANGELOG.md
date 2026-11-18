@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 2.31.6 — 18 novembre 2026 (constats moyens de l'audit)
+- **M12** : les dates de mariage et de décès partent vers Treemich une par une ; chacune est relue tout de suite, et carnet s'arrête (interrupteur coupé) dès la première que Treemich ne garde pas ; 20 dates au plus par passage, le reste attend le suivant.
+- **M13** : déposer un logo et importer un fichier (Facebook, Instagram, LinkedIn, vcf) se font dans un fil à part : le reste de l'appli continue de répondre pendant le téléchargement, le décodage de l'image ou l'écriture en base.
+- **M14** : `/status` lu sans session ni jeton de Home Assistant garde tous ses champs, mais remplace le texte des erreurs d'iCloud, de Synology et de la tâche en cours par « Erreur : le détail est dans carnet. » ; avec le jeton de Home Assistant ou une session, rien ne change. Le jeton de Home Assistant était déjà comparé en temps constant (2.31.1).
+- **M15** : une image déposée ou trouvée sur le site d'une société est refusée au-delà de 25 millions de pixels, avant d'être décodée (« Image trop grande… Réduis-la avant de la déposer. »).
+- Paquet Home Assistant : `/status` est lu avec le jeton (`carnet_ha_auth`, déjà dans secrets.yaml), pour que les notifications gardent le détail des erreurs.
+- `maison.py` du socle 0.8.2 (réglages secrets reconnus par mots, champ `ecartes` dans la sauvegarde).
+
 ## 2.31.5 — 18 novembre 2026 (gender-guesser retiré)
 - **Plus de genre proposé d'après le prénom** (décision du 18/11/2026, Q5 de l'audit) : la dépendance `gender-guesser` (GPLv3, dépôt public) est retirée avec `app/prenoms.py` ; la question « femme ou homme ? » d'À traiter reste, à répondre à la main ; le lot « Enregistrer les genres proposés » et l'action `proposer` disparaissent. Les genres déjà enregistrés ne bougent pas.
 

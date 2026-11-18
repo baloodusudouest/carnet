@@ -457,26 +457,31 @@ def appliquer(c: Carnet, d: dict | None, bilan: dict, plafond: int, fetes_aussi:
         # Jamais écraser : Treemich est relu à l'instant, et une date qui s'y trouve déjà fait
         # renoncer à l'écriture (elle deviendra un point « dates différentes » à la prochaine lecture)
         fraiches = {(x["a"], x["b"]): x["mariage"] for x in couples({"relations": tm.relations()})}
-        faisables = []
+        ecrites = 0
         for a in vers_treemich:
+            if ecrites >= plafond:                     # au plus « plafond » dates par passage, le reste attend
+                bilan["reportees"] = bilan.get("reportees", 0) + 1
+                continue
             deja = fraiches.get((a["a"], a["b"]), "") if a["sujet"] == "mariage" else tm.evenements(a["cible"])["deces"]
             if deja and deja != a["apres"]:
                 bilan["details"].append(f"{a['nom']} : Treemich porte déjà une autre date ; rien n'a été écrasé.")
-            elif not deja:
-                faisables.append(a)
-        vers_treemich = faisables
-        for a in vers_treemich:
+                continue
+            if deja:
+                continue
             if a["sujet"] == "mariage":
                 tm.maj_mariage(a["a"], a["b"], a["apres"])
             else:
                 tm.maj_deces(a["cible"], a["apres"])
             _noter(c, a)
+            ecrites += 1
             bilan["treemich"] = bilan.get("treemich", 0) + 1
-        # Relecture : la version de Treemich installée suit « latest », son interface peut changer.
-        # Si ce qui revient n'est pas ce qui a été écrit, l'interrupteur est coupé.
-        relues = {(x["a"], x["b"]): x["mariage"] for x in couples({"relations": tm.relations()})}
-        for a in vers_treemich:
-            lu = relues.get((a["a"], a["b"]), "") if a["sujet"] == "mariage" else tm.evenements(a["cible"])["deces"]
+            # Relecture de cette date tout de suite (M12, audit du 17/11/2026) : la version de Treemich
+            # installée suit « latest », son interface peut changer. Si ce qui revient n'est pas ce qui
+            # a été écrit, l'interrupteur est coupé et les dates suivantes ne partent pas.
+            if a["sujet"] == "mariage":
+                lu = {(x["a"], x["b"]): x["mariage"] for x in couples({"relations": tm.relations()})}.get((a["a"], a["b"]), "")
+            else:
+                lu = tm.evenements(a["cible"])["deces"]
             if lu != a["apres"]:
                 regler(c, "famille", False)
                 message = (f"Treemich n'a pas rendu la date écrite ({a['texte']}) : l'accord des dates de famille "

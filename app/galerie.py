@@ -41,6 +41,9 @@ from .temps import iso, maintenant
 LOT_MAX = 20                # fiches traitées au plus par envoi (le reste attend le lot suivant)
 POIDS_MAX = 3_000_000
 COTE_MIN = 48
+# M15 (audit du 17/11/2026) : un PNG de 3 Mo peut annoncer des centaines de millions de pixels et remplir la
+# mémoire au décodage. La taille annoncée est lue avant de décoder ; au-delà, l'image est refusée.
+PIXELS_MAX = 25_000_000
 
 
 def _ligne(uid: str, f: dict, **plus) -> dict:
@@ -366,9 +369,15 @@ def deposer_logo(c: Carnet, uid: str, contenu: bytes | None = None, url: str | N
     if not contenu or len(contenu) > POIDS_MAX:
         raise ErreurCarnet("Image vide ou trop lourde (3 Mo au plus).")
     try:
-        img = Image.open(io.BytesIO(contenu))
-        img.load()
+        img = Image.open(io.BytesIO(contenu))          # lit l'en-tête seulement
     except Exception:  # noqa: BLE001 — SVG, page web, fichier abîmé…
+        raise ErreurCarnet("Image illisible. Les logos au format SVG ne sont pas pris : dépose un PNG ou un JPEG.")
+    if img.size[0] * img.size[1] > PIXELS_MAX:
+        raise ErreurCarnet(f"Image trop grande ({img.size[0]} × {img.size[1]} px) : 25 millions de pixels au plus. "
+                           "Réduis-la avant de la déposer.")
+    try:
+        img.load()
+    except Exception:  # noqa: BLE001 — fichier abîmé, ou bombe de décompression refusée par Pillow
         raise ErreurCarnet("Image illisible. Les logos au format SVG ne sont pas pris : dépose un PNG ou un JPEG.")
     if min(img.size) < COTE_MIN:
         raise ErreurCarnet(f"Image trop petite ({img.size[0]} × {img.size[1]} px) : il faut au moins {COTE_MIN} px.")

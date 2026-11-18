@@ -425,8 +425,16 @@ def ha_portrait(c: Carnet, immich_id: str, cadre: str | None, asset: str | None)
 
 # ================================================================ /status (compteurs seulement)
 
-def statut(c: Carnet) -> dict:
+# M14 (audit du 17/11/2026) : sans session ni jeton de Home Assistant, /status garde ses champs (lus par le
+# paquet Home Assistant) mais ne dit plus le texte des erreurs d'iCloud, de Synology ou de la tâche en cours.
+ERREUR_REDUITE = "Erreur : le détail est dans carnet."
+
+
+def statut(c: Carnet, complet: bool = True) -> dict:
     from . import traiter
+
+    def err(texte):
+        return texte if complet or not texte else ERREUR_REDUITE
     lecture = c.base.lire("derniere_lecture") or {}
     nuit = c.base.lire("nuit") or {}
     syno = c.base.lire("synology") or {}
@@ -444,16 +452,16 @@ def statut(c: Carnet) -> dict:
         "archives_bientot": 0, "contacts_archives_bientot": 0, "prochaine_suppression": None,
         "reference": bool(c.base.lire("reference")),
         "veille": {"le": lecture.get("le"), "ok": lecture.get("ok", False) and not nuit.get("erreur_lecture"),
-                   "erreur": nuit.get("erreur_lecture"), "revision": lecture.get("revision", 0),
+                   "erreur": err(nuit.get("erreur_lecture")), "revision": lecture.get("revision", 0),
                    "nouveaux": lecture.get("nouveaux", 0), "modifies": lecture.get("modifies", 0),
                    "supprimes": lecture.get("supprimes", 0)} if lecture or nuit else None,
         "synchro": {"mode": "auto" if c.cfg.nuit_active else "arret", "le": nuit.get("le"), "ok": not nuit.get("erreur"),
                     "crees": 0, "modifies": nuit.get("ecrites", 0), "groupes": 0, "suppressions_en_attente": 0,
-                    "en_revision": compte["total"], "alerte": nuit.get("alerte"), "erreur": nuit.get("erreur")} if nuit else None,
+                    "en_revision": compte["total"], "alerte": nuit.get("alerte"), "erreur": err(nuit.get("erreur"))} if nuit else None,
         "sauvegarde": {"le": sauvegardes[0]["le"] if sauvegardes else None, "ok": not (syno.get("erreur")),
-                       "erreur": syno.get("erreur"), "contacts": total,
+                       "erreur": err(syno.get("erreur")), "contacts": total,
                        "synology": {k: syno.get(k) for k in ("crees", "modifies", "supprimes")} if syno else None},
         "dernier_envoi_kit": c.base.lire("dernier_envoi_kit"),
         "completude": __import__("app.completude", fromlist=["compteurs"]).compteurs(c),
-        "tache": {k: c.tache.get(k) for k in ("nom", "etat", "message")},
+        "tache": {k: c.tache.get(k) for k in (("nom", "etat", "message") if complet else ("nom", "etat"))},
     }

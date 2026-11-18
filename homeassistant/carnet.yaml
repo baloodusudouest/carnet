@@ -5,7 +5,8 @@
 #   carnet_personnes_url: "http://<IP_DU_NAS>:8096/ha/personnes"
 #   carnet_invite_url: "http://<IP_DU_NAS>:8096/ha/invite?nom={{ nom | urlencode }}"
 #   carnet_ha_auth: "Bearer <même valeur que CARNET_HA_TOKEN dans la stack>"
-# /status ne renvoie que des compteurs, aucune donnée personnelle : pas de jeton nécessaire.
+# /status renvoie des compteurs ; depuis carnet 2.31.6, le détail des erreurs n'y figure qu'avec le jeton
+# (sans lui : « Erreur : le détail est dans carnet. ») : le paquet l'envoie donc aussi.
 # /ha/… renvoie des noms et des dates de naissance : jeton obligatoire, et rien n'est gardé
 # dans les états de Home Assistant (réponses lues par les scripts seulement).
 
@@ -62,6 +63,8 @@ rest:
   - resource: !secret carnet_status_url
     scan_interval: 900
     timeout: 10
+    headers:
+      authorization: !secret carnet_ha_auth
     sensor:
       - name: Carnet contacts à vérifier
         unique_id: carnet_contacts_a_verifier

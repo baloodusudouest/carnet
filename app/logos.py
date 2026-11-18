@@ -20,6 +20,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 TAILLE_MIN = 64
 POIDS_MAX = 3_000_000
+PIXELS_MAX = 25_000_000            # M15 (audit du 17/11/2026) : au-delà, l'image trouvée est écartée sans être décodée
 MAX_CANDIDATS = 4
 UA = "Mozilla/5.0 (carnet ; logo de contact)"
 
@@ -84,6 +85,8 @@ def chercher(domaine: str, transport: httpx.BaseTransport | None = None, taille_
                 continue
             try:
                 img = Image.open(io.BytesIO(r.content))
+                if img.size[0] * img.size[1] > PIXELS_MAX:     # M15 : taille annoncée lue avant de décoder
+                    continue
                 img.load()
             except Exception:  # noqa: BLE001 — pas une image lisible (SVG, HTML d'erreur…)
                 continue

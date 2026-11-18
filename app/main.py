@@ -94,6 +94,13 @@ app = FastAPI(title="carnet", version=__version__, lifespan=cycle, docs_url=None
 
 # ================================================================ sécurité
 
+def _jeton_ha(request: Request) -> bool:
+    """Jeton de Home Assistant (CARNET_HA_TOKEN) comparé en temps constant, en octets ; vide : fermé."""
+    jeton = carnet().cfg.ha_token
+    attendu = f"Bearer {jeton}"
+    return bool(jeton) and hmac.compare_digest(request.headers.get("authorization", "").encode(), attendu.encode())
+
+
 @app.middleware("http")
 async def garde(request: Request, appel):
     chemin = request.url.path
@@ -102,9 +109,7 @@ async def garde(request: Request, appel):
         return maison.jeton_valide(maison.jeton_propose(request.headers), maison.jetons())
 
     if chemin.startswith("/ha/"):
-        jeton = carnet().cfg.ha_token
-        attendu = f"Bearer {jeton}"
-        if not jeton or not hmac.compare_digest(request.headers.get("authorization", "").encode(), attendu.encode()):
+        if not _jeton_ha(request):
             return JSONResponse({"detail": "Jeton Home Assistant manquant ou invalide."}, status_code=401)
     elif chemin.startswith("/sillage/"):
         # 2.15 : Sillage lit la liste des personnes liées à Immich (jeton commun)
@@ -174,8 +179,11 @@ def sante():
 
 
 @app.get("/status")
-def status():
-    return sorties.statut(carnet())
+def status(request: Request):
+    """Compteurs pour le paquet Home Assistant (lus sans jeton). Sans session ni jeton de Home Assistant :
+    mêmes champs, mais les messages d'erreur d'iCloud et de Synology sont remplacés par un texte neutre (M14)."""
+    complet = ETAT["sessions"].connecte(request.cookies) or _jeton_ha(request)
+    return sorties.statut(carnet(), complet=complet)
 
 
 # ================================================================ connexion
@@ -547,8 +555,10 @@ async def deposer_logo(uid: str, request: Request, url: str = ""):
     """Logo fourni à la main. Corps = le fichier image tel quel (glissé, collé ou choisi), ou
     paramètre « url » quand le navigateur n'a donné qu'une adresse."""
     c = carnet()
+    # M13 (audit du 17/11/2026) : téléchargement, décodage de l'image et SQLite dans un fil à part,
+    # pour que le reste de l'appli continue de répondre pendant ce temps.
     if url:
-        return galerie.deposer_logo(c, uid, url=url)
+        return await asyncio.to_thread(galerie.deposer_logo, c, uid, url=url)
     morceaux, taille = [], 0
     async for m in request.stream():
         taille += len(m)
@@ -557,8 +567,8 @@ async def deposer_logo(uid: str, request: Request, url: str = ""):
         morceaux.append(m)
     contenu = b"".join(morceaux)
     if contenu[:5] == b"data:" or contenu[:4] in (b"http", b"HTTP"):      # adresse envoyée dans le corps
-        return galerie.deposer_logo(c, uid, url=contenu.decode("utf-8", "replace"))
-    return galerie.deposer_logo(c, uid, contenu=contenu)
+        return await asyncio.to_thread(galerie.deposer_logo, c, uid, url=contenu.decode("utf-8", "replace"))
+    return await asyncio.to_thread(galerie.deposer_logo, c, uid, contenu=contenu)
 
 
 # ---------------------------------------------------------------- onglet Photos (2.8)
@@ -1044,6 +1054,11 @@ async def importer(request: Request, nom: str = "", source: str = "", apercu: bo
         morceaux.append(m)
     brut = b"".join(morceaux)
     del morceaux
+    # M13 (audit du 17/11/2026) : lecture de l'archive et écriture en base dans un fil à part
+    return await asyncio.to_thread(_importer_brut, c, brut, nom, source, apercu)
+
+
+def _importer_brut(c: Carnet, brut: bytes, nom: str, source: str, apercu: bool) -> dict:
     fichier_nom = nom.rsplit("/", 1)[-1][:120] or "fichier"
     nom = fichier_nom.lower()
     # Export Facebook ou Instagram (.zip, .json ou .html) ; l'archive n'est jamais gardée.

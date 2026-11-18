@@ -76,7 +76,7 @@ Les interrupteurs « la nuit » de chaque service (Connexion) font aussi partie 
 
 ## Home Assistant
 
-Toutes les adresses `/ha/…` demandent `Authorization: Bearer <CARNET_HA_TOKEN>`, sont en lecture seule, et rien de personnel (nom, date) n'est écrit dans les journaux. `/status` ne donne que des compteurs, sans jeton.
+Toutes les adresses `/ha/…` demandent `Authorization: Bearer <CARNET_HA_TOKEN>`, sont en lecture seule, et rien de personnel (nom, date) n'est écrit dans les journaux. `/status` ne donne que des compteurs, sans jeton ; sans session ni jeton de Home Assistant, le texte des erreurs y est remplacé par un message neutre (2.31.6).
 
 | Adresse | Contenu |
 |---|---|
