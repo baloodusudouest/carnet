@@ -174,6 +174,18 @@ async def _erreur(_: Request, exc: ErreurCarnet):
     return JSONResponse({"detail": str(exc)}, status_code=409 if isinstance(exc, Occupe) else 400)
 
 
+@app.exception_handler(journaux.Introuvable)
+async def _introuvable(_: Request, exc: journaux.Introuvable):
+    """2.33 : personne ou pépite inconnue (fiche complète)."""
+    return JSONResponse({"detail": str(exc)}, status_code=404)
+
+
+@app.exception_handler(journaux.PepiteChangee)
+async def _pepite_changee(_: Request, exc: journaux.PepiteChangee):
+    """2.33 : la pépite a changé depuis sa lecture (écritures concurrentes carnet / Gazette)."""
+    return JSONResponse({"detail": str(exc)}, status_code=409)
+
+
 @app.exception_handler(ErreurICloud)
 async def _erreur_icloud(_: Request, exc: ErreurICloud):
     return JSONResponse({"detail": str(exc)}, status_code=502)
@@ -816,6 +828,32 @@ def changer_journaux(uid: str, corps: dict = Body(...)):
     return journaux.definir(carnet(), uid, corps)
 
 
+# 2.33 : « Fiche complète » pour les journaux — pépite par pépite, avec contrôle de `le` (409 si elle a changé).
+# Reste dans carnet (jamais dans iCloud) : permis en lecture seule.
+
+@app.get("/api/contacts/{uid}/fiche-journaux")
+def fiche_journaux(uid: str):
+    return journaux.fiche_complete_uid(carnet(), uid)
+
+
+@app.post("/api/contacts/{uid}/fiche-journaux/pepites")
+def ajouter_pepite(uid: str, corps: dict = Body(...)):
+    c = carnet()
+    return journaux.ajouter(c, personnes.de(c, uid), corps, "carnet")
+
+
+@app.put("/api/contacts/{uid}/fiche-journaux/pepites/{pid}")
+def modifier_pepite(uid: str, pid: str, corps: dict = Body(...)):
+    c = carnet()
+    return journaux.modifier(c, personnes.de(c, uid), pid, corps, "carnet")
+
+
+@app.delete("/api/contacts/{uid}/fiche-journaux/pepites/{pid}")
+def effacer_pepite(uid: str, pid: str, corps: dict | None = Body(default=None), le: str | None = None):
+    c = carnet()
+    return journaux.effacer(c, personnes.de(c, uid), pid, corps, "carnet", le)
+
+
 @app.put("/api/contacts/{uid}/alimentation")
 def changer_alimentation(uid: str, corps: dict = Body(...)):
     """2.28 : allergies, intolérances, « aucune connue », vérifiée le, aliments non aimés, plaisirs coupables.
@@ -1207,6 +1245,34 @@ def gazette_journaux(personne_id: str, corps: dict = Body(...)):
 def gazette_paru(personne_id: str, cle: str, corps: dict = Body(...)):
     """2.30 : Gazette range ici un numéro de La Récidive approuvé (journaux parus de la fiche)."""
     return journaux.ecrire_paru(carnet(), personne_id, cle, corps)
+
+
+# 2.33 : fiche complète de la personne (pépites), lue et écrite par Gazette (jeton commun)
+
+@app.get("/gazette/personnes/{personne_id}/fiche")
+def gazette_fiche(personne_id: str):
+    return journaux.fiche_complete(carnet(), personne_id)
+
+
+@app.post("/gazette/personnes/{personne_id}/fiche/pepites")
+def gazette_ajouter_pepite(personne_id: str, corps: dict = Body(...)):
+    return journaux.ajouter(carnet(), personne_id, corps, "gazette")
+
+
+@app.put("/gazette/personnes/{personne_id}/fiche/pepites/{pid}")
+def gazette_modifier_pepite(personne_id: str, pid: str, corps: dict = Body(...)):
+    return journaux.modifier(carnet(), personne_id, pid, corps, "gazette")
+
+
+@app.delete("/gazette/personnes/{personne_id}/fiche/pepites/{pid}")
+def gazette_effacer_pepite(personne_id: str, pid: str, corps: dict | None = Body(default=None), le: str | None = None):
+    return journaux.effacer(carnet(), personne_id, pid, corps, "gazette", le)
+
+
+@app.post("/gazette/personnes/{personne_id}/fiche/parues")
+def gazette_pepites_parues(personne_id: str, corps: dict = Body(...)):
+    """Numéro approuvé dans Gazette : {ids, date} — les pépites tirées pour ses textes retenus reçoivent `parue_le`."""
+    return journaux.marquer_parues(carnet(), personne_id, corps)
 
 
 # ================================================================ Douze points (Bearer)

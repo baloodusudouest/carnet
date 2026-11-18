@@ -1,0 +1,201 @@
+{
+  "version": 1,
+  "familles": [
+    {
+      "cle": "vie",
+      "titre": "Vie et entourage",
+      "rubriques": [
+        {
+          "cle": "metier",
+          "titre": "Métier et travail"
+        },
+        {
+          "cle": "ville-maison",
+          "titre": "Ville, région, maison"
+        },
+        {
+          "cle": "conjoint",
+          "titre": "Conjoint"
+        },
+        {
+          "cle": "enfants",
+          "titre": "Enfants"
+        },
+        {
+          "cle": "animaux",
+          "titre": "Animaux"
+        },
+        {
+          "cle": "famille",
+          "titre": "Famille"
+        },
+        {
+          "cle": "amis",
+          "titre": "Amis et bande"
+        },
+        {
+          "cle": "voiture",
+          "titre": "Voiture et transports"
+        }
+      ]
+    },
+    {
+      "cle": "gouts",
+      "titre": "Goûts et passions",
+      "rubriques": [
+        {
+          "cle": "plats-aimes",
+          "titre": "Plats aimés"
+        },
+        {
+          "cle": "plats-detestes",
+          "titre": "Plats détestés"
+        },
+        {
+          "cle": "boissons",
+          "titre": "Boissons"
+        },
+        {
+          "cle": "musique",
+          "titre": "Musique et chanteurs"
+        },
+        {
+          "cle": "ecrans",
+          "titre": "Films, séries, émissions"
+        },
+        {
+          "cle": "livres",
+          "titre": "Livres, BD"
+        },
+        {
+          "cle": "sports",
+          "titre": "Sports"
+        },
+        {
+          "cle": "jeux",
+          "titre": "Jeux"
+        },
+        {
+          "cle": "loisirs",
+          "titre": "Collections et loisirs"
+        },
+        {
+          "cle": "voyages",
+          "titre": "Voyages et lieux fétiches"
+        },
+        {
+          "cle": "fetes",
+          "titre": "Eurovision et fêtes"
+        }
+      ]
+    },
+    {
+      "cle": "caractere",
+      "titre": "Caractère et manies",
+      "rubriques": [
+        {
+          "cle": "traits",
+          "titre": "Traits de caractère"
+        },
+        {
+          "cle": "manies",
+          "titre": "Petites manies"
+        },
+        {
+          "cle": "peurs",
+          "titre": "Peurs et phobies"
+        },
+        {
+          "cle": "agace",
+          "titre": "Ce qui l'agace"
+        },
+        {
+          "cle": "talents",
+          "titre": "Talents cachés"
+        },
+        {
+          "cle": "defauts",
+          "titre": "Défauts attachants"
+        },
+        {
+          "cle": "style",
+          "titre": "Style vestimentaire"
+        },
+        {
+          "cle": "sommeil",
+          "titre": "Sommeil et réveil"
+        },
+        {
+          "cle": "techno",
+          "titre": "Rapport à la technologie"
+        }
+      ]
+    },
+    {
+      "cle": "histoires",
+      "titre": "Histoires",
+      "rubriques": [
+        {
+          "cle": "anecdotes",
+          "titre": "Anecdotes"
+        },
+        {
+          "cle": "gaffes",
+          "titre": "Gaffes et bêtises"
+        },
+        {
+          "cle": "surnoms",
+          "titre": "Surnoms"
+        },
+        {
+          "cle": "phrases",
+          "titre": "Phrases cultes"
+        },
+        {
+          "cle": "running-gags",
+          "titre": "Running gags avec la maison"
+        },
+        {
+          "cle": "sejours",
+          "titre": "Souvenirs de séjours"
+        },
+        {
+          "cle": "projets",
+          "titre": "Rêves et projets"
+        }
+      ]
+    },
+    {
+      "cle": "journaux",
+      "titre": "Pour les journaux",
+      "rubriques": [
+        {
+          "cle": "ton",
+          "titre": "Ton souhaité (taquin, tendre, absurde)"
+        },
+        {
+          "cle": "ressemble",
+          "titre": "Ressemble à un personnage"
+        },
+        {
+          "cle": "si-c-etait",
+          "titre": "Si c'était un animal, un plat, une chanson"
+        }
+      ]
+    },
+    {
+      "cle": "autre",
+      "titre": "Autre",
+      "rubriques": [
+        {
+          "cle": "autre",
+          "titre": "À trier"
+        }
+      ]
+    }
+  ],
+  "interdits": {
+    "cle": "interdits",
+    "titre": "Sujets interdits"
+  }
+}
