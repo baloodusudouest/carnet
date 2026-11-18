@@ -16,7 +16,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from . import icloud, liaisons, photos, sorties
+from . import icloud, liaisons, maison, photos, sorties
 from .carddav import ErreurICloud
 from .carnet import Carnet, ErreurCarnet, Occupe
 from .temps import iso, maintenant, ZONE
@@ -175,6 +175,35 @@ def _ecritures_sures(c: Carnet, d: dict, bilan: dict) -> None:
 
 # ------------------------------------------------------------ ordonnanceur
 
+TACHE = "nuit"                    # nom de la tâche dans maison.TACHES (/health, 2.32)
+
+
+class NuitRatee(Exception):
+    """Nuit terminée avec une erreur notée dans son bilan : sert seulement à marquer le tour en erreur."""
+
+
+def declarer(c: Carnet) -> None:
+    """La nuit est une tâche régulière (24 h) quand elle est active ; désactivée dans Réglages, elle devient
+    « à la demande » (lancée à la main) pour ne jamais passer en retard sans raison."""
+    if c.cfg.nuit_active:
+        maison.TACHES.declarer(TACHE, periode_s=86400, type="reguliere")
+    else:
+        maison.TACHES.declarer(TACHE, type="demande")
+
+
+def passer_suivie(c: Carnet, origine: str = "nuit") -> dict:
+    """passer() sous un tour de la tâche « nuit » : une nuit dont le bilan porte une erreur compte comme
+    un tour raté. Même comportement que passer() pour l'appelant (Occupe et les erreurs repartent pareil)."""
+    bilan: dict = {}
+    try:
+        with maison.TACHES.tour(TACHE):
+            bilan = passer(c, origine)
+            if bilan.get("erreur"):
+                raise NuitRatee(bilan["erreur"])
+    except NuitRatee:
+        pass
+    return bilan
+
 def prochaine(heure: str, apres: datetime) -> datetime:
     h, _, m = heure.partition(":")
     cible = apres.replace(hour=int(h), minute=int(m or 0), second=0, microsecond=0)
@@ -187,6 +216,7 @@ def demarrer(c: Carnet) -> threading.Thread:
     def boucle():
         while True:
             c.reveil.clear()
+            declarer(c)                               # 2.32 : régulière ou à la demande selon Réglages
             if not c.cfg.nuit_active:
                 log.info("Nuit désactivée (Réglages)")
                 c.reveil.wait()                       # attend qu'une heure soit réglée
@@ -197,7 +227,7 @@ def demarrer(c: Carnet) -> threading.Thread:
             fin = time.monotonic() + REESSAI_PENDANT
             while True:
                 try:
-                    bilan = passer(c)
+                    bilan = passer_suivie(c)       # 2.32 : un essai = un tour de la tâche « nuit »
                     # 2.31.2 : une lecture d'iCloud en échec (panne passagère à 03:00) est réessayée comme « occupé »
                     if bilan.get("erreur_lecture") and time.monotonic() <= fin:
                         time.sleep(REESSAI)

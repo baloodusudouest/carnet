@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 2.32.0 — 18 novembre 2026 (santé des tâches de fond)
+- **Tâches suivies dans `/health`** (module commun `maison.py` du socle 0.9.1) : `/health` garde `ok` et `version`, et ajoute `version_socle`, `taches` et `copie_base`. Les messages d'erreur des tâches n'y paraissent qu'avec le jeton commun `MAISON_JETON` ou une session.
+  - `nuit` : tâche régulière de 24 h (86400 s) ; chaque essai de la nuit (y compris les nouveaux essais toutes les 10 minutes) est un tour ; une nuit dont le bilan porte une erreur compte comme ratée. Nuit désactivée dans Réglages : la tâche devient « à la demande » (pas d'alerte sans raison). La nuit lancée à la main compte aussi.
+  - À la demande (jamais d'orange dans l'Anneau) : `analyse`, `liens`, `photos`, `synchro`, `relecture`, `synology` (opérations lancées depuis l'écran) et `import` (fichier Facebook, Instagram, LinkedIn, vcf).
+- **Copie cohérente de la base chaque nuit à 01:00, heure de Paris** (`copie-des-bases`, 24 h) : `carnet2.db` copiée par l'API de sauvegarde de SQLite et vérifiée vers `/state/copies/carnet2-derniere.db` (écrasée chaque nuit ; Hyper Backup tient l'historique). Une base chiffrée par `CARNET_DB_KEY` (SQLCipher) est copiée avec la même clé (socle 0.9.1, ouverture passée par carnet) : la copie reste chiffrée et ne s'ouvre qu'avec `base.connecter(chemin, cle)`.
+- Rien d'autre ne change : les erreurs sont traitées comme avant.
+
 ## 2.31.6 — 18 novembre 2026 (constats moyens de l'audit)
 - **M12** : les dates de mariage et de décès partent vers Treemich une par une ; chacune est relue tout de suite, et carnet s'arrête (interrupteur coupé) dès la première que Treemich ne garde pas ; 20 dates au plus par passage, le reste attend le suivant.
 - **M13** : déposer un logo et importer un fichier (Facebook, Instagram, LinkedIn, vcf) se font dans un fil à part : le reste de l'appli continue de répondre pendant le téléchargement, le décodage de l'image ou l'écriture en base.

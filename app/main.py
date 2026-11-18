@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hmac
 import json
 import logging
@@ -13,6 +14,7 @@ from pathlib import Path
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 
+from .base import connecter
 from .temps import maintenant
 from . import maison
 from . import (__version__, actions, attentes, completude, connexion, famille, galerie, groupes as groupes_, icloud, liaisons, linkedin, nuit, photos, reseaux, sorties,
@@ -77,6 +79,29 @@ def demarrage(c: Carnet) -> None:
         c.base.noter("veille", f"Démarrage : {exc}")
 
 
+# 2.32 (socle 0.9.0) : tâches suivies dans /health (maison.TACHES). « nuit » est déclarée par nuit.declarer ;
+# les opérations lancées à la main sont des tâches « à la demande » (jamais d'orange dans l'Anneau).
+TACHES_DEMANDE = ("analyse", "liens", "photos", "synchro", "relecture", "synology", "import")
+
+
+def declarer_taches(c: Carnet) -> None:
+    nuit.declarer(c)
+    for nom in TACHES_DEMANDE:
+        maison.TACHES.declarer(nom, type="demande")
+
+
+def lancer_copie(c: Carnet) -> asyncio.Task | None:
+    """Copie cohérente de carnet2.db chaque nuit (maison.HEURES_COPIE, heure de Paris) vers <state>/copies.
+    Base chiffrée (CARNET_DB_KEY) : la copie s'ouvre avec la même clé (socle 0.9.1, `ouvrir`) et reste chiffrée."""
+    cle = c.cfg.db_key if c.base.chiffree else ""
+
+    def ouvrir(chemin, lecture_seule=False):
+        return connecter(Path(chemin), cle, timeout=30)
+
+    return asyncio.create_task(maison.planifier_copie("carnet", [c.cfg.db_path], c.cfg.state / "copies",
+                                                      maison.HEURES_COPIE["carnet"], ouvrir=ouvrir))
+
+
 @asynccontextmanager
 async def cycle(app: FastAPI):
     if "carnet" not in ETAT:
@@ -85,8 +110,16 @@ async def cycle(app: FastAPI):
         threading.Thread(target=demarrage, args=(c,), daemon=True).start()
         nuit.demarrer(c)
     c = carnet()
+    declarer_taches(c)
     ETAT["sessions"] = Sessions(c.cfg.password, c.base.lire("session_generation", 0))
-    yield
+    copie = lancer_copie(c)
+    try:
+        yield
+    finally:
+        if copie is not None:            # arrêt propre de la boucle de copie
+            copie.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await copie
 
 
 app = FastAPI(title="carnet", version=__version__, lifespan=cycle, docs_url=None, redoc_url=None)
@@ -160,7 +193,11 @@ def _fond(nom: str, travail, *args) -> dict:
 
     def lancer():
         try:
-            res = travail(*args)
+            if nom == nuit.TACHE:        # la nuit lancée à la main se suit elle-même (nuit.passer_suivie)
+                res = travail(*args)
+            else:
+                with maison.TACHES.tour(nom):    # 2.32 : tâche à la demande suivie dans /health
+                    res = travail(*args)
             if c.tache.get("nom") == nom and c.tache.get("etat") == "en_cours":
                 c.tache = {"nom": nom, "etat": "termine", "message": (res or {}).get("message", "Terminé.")
                            if isinstance(res, dict) else "Terminé."}
@@ -174,8 +211,13 @@ def _fond(nom: str, travail, *args) -> dict:
 # ================================================================ public
 
 @app.get("/health")
-def sante():
-    return {"ok": True, "version": __version__}
+def sante(request: Request):
+    # 2.32 : + version_socle, taches, copie_base (socle 0.9.0) ; messages d'erreur des tâches seulement avec
+    # le jeton commun MAISON_JETON ou une session
+    sessions = ETAT.get("sessions")
+    return {"ok": True, "version": __version__,
+            **maison.sante(request, jeton_commun=maison.jetons(),
+                           session_ok=bool(sessions and sessions.connecte(request.cookies)))}
 
 
 @app.get("/status")
@@ -962,7 +1004,7 @@ def relire(corps: dict = Body(default={})):
 @app.post("/api/nuit")
 def nuit_maintenant():
     c = carnet()
-    return _fond("nuit", lambda: nuit.passer(c, "manuel") and {"message": c.tache.get("message")})
+    return _fond("nuit", lambda: nuit.passer_suivie(c, "manuel") and {"message": c.tache.get("message")})
 
 
 @app.get("/api/sauvegardes/{nom}")
@@ -1055,7 +1097,8 @@ async def importer(request: Request, nom: str = "", source: str = "", apercu: bo
     brut = b"".join(morceaux)
     del morceaux
     # M13 (audit du 17/11/2026) : lecture de l'archive et écriture en base dans un fil à part
-    return await asyncio.to_thread(_importer_brut, c, brut, nom, source, apercu)
+    async with maison.TACHES.tour_async("import"):     # 2.32 : tâche à la demande suivie dans /health
+        return await asyncio.to_thread(_importer_brut, c, brut, nom, source, apercu)
 
 
 def _importer_brut(c: Carnet, brut: bytes, nom: str, source: str, apercu: bool) -> dict:

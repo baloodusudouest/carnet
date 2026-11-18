@@ -164,7 +164,9 @@ def test_externe_sauvegarde(tmp_path, monkeypatch):
         d = client.get("/externe/sauvegarde", headers=h).json()
         assert not {"synology_url", "icloud_password", "lecture_seule"} & set(d["reglages"])
         assert set(reglages.EXCLUS) >= {"synology_url", "lecture_seule"}
-        assert client.get("/health").json() == {"ok": True, "version": main.__version__}
+        sante = client.get("/health").json()      # 2.32 : + version_socle, taches, copie_base (socle 0.9.0)
+        assert {k: sante[k] for k in ("ok", "version")} == {"ok": True, "version": main.__version__}
+        assert set(sante) == {"ok", "version", "version_socle", "taches", "copie_base"}
 
 
 def faux_anneau(sauvegardes: dict, appels: list | None = None):
