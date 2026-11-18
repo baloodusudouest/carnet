@@ -15,6 +15,7 @@ Fichier à lire en premier dans une nouvelle session, et à mettre à jour à ch
 
 ## État (17/11/2026)
 
+- **2.31.5** (18/11/2026) : `gender-guesser` et `app/prenoms.py` retirés (licence GPLv3 dans un dépôt public, décision Q5) ; point `genre` sans `propose`, plus d'action ni de lot `proposer` ; `genres.definir_lot` gardé (sert à Treemich et aux tests).
 - **2.28.0** (17/11/2026) : identifiant maison, alimentation, coffre Obsidian « Contacts », base chiffrée. Décisions de Julien du 17/11 (conseil sur le coffre Contacts, puis arbitrages) : carnet maître de toutes les informations contact, synchronisé à sens unique vers le coffre ; allergies dans carnet ; ce que Julien ne veut pas confier à carnet reste dans la zone libre des notes. **Jamais essayé sur la vraie installation.**
   - `app/personnes.py` : table `personnes` (schéma 5) ; `ids(c)` crée l'identifiant des fiches nouvelles (memo `personnes`) ; `detacher` (suppression confirmée, dans `actions.supprimer` et `iphone_supprimee`/confirmer), `rattacher_ancien` (dans `icloud.annuler`), `fusionner` (dans `actions.fusionner`), `rattacher` (API). `uid_de` suit `remplacee_par`.
   - `app/alimentation.py` : table `alimentation` par identifiant ; `definir` (texte « a, b ; c » ou liste ; « aucune » incompatible avec allergie/intolérance ; `verifiee: true` = aujourd'hui ; tout vide = ligne retirée) ; `indicateur` pour HA. Permis en lecture seule (rien ne sort de carnet).

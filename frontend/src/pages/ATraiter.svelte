@@ -24,7 +24,6 @@
     immich: [{ action: 'ignorer', libelle: 'Tout ignorer' }],
     imports: [{ action: 'ignorer', libelle: 'Tout ignorer' }],
     liens: [{ action: 'appliquer', libelle: 'Corriger tous les liens' }],   // 2.22
-    genre: [{ action: 'proposer', libelle: 'Enregistrer les genres proposés' }],   // 2.22.3
   }
   const AIDES = {
     icloud: 'Fiches modifiées, créées ou supprimées sur l\'iPhone, et conflits d\'écriture.',
@@ -40,7 +39,7 @@
   }
   const ouverte = $derived(tuiles.find((t) => t.cle === tuile))
   // 2.22 : une question « femme ou homme ? » demande une réponse, elle ne part jamais dans un lot « appliquer »
-  const pourLot = (action) => visibles.filter((p) => action === 'proposer' ? p.donnees?.propose : !(action === 'appliquer' && p.motif === 'genre'))
+  const pourLot = (action) => visibles.filter((p) => !(action === 'appliquer' && p.motif === 'genre'))
   // 2.22.3 : une tuile peut porter des centaines de points : ils s'affichent par tranches
   const TRANCHE = 30
   let limite = $state(TRANCHE)
@@ -56,7 +55,6 @@
   }
   function annonce(a) {
     const n = a.points
-    if (a.action === 'proposer') return `Le genre proposé d'après le prénom sera enregistré pour ${n} personne(s). Rien n'est écrit dans iCloud ; Treemich reçoit tout de suite ceux qu'il ne connaît pas (sans rien écraser).`
     if (!a.ecrit) return `${n} point(s) seront écartés et ne seront plus proposés. Rien n'est écrit dans iCloud.`
     if (a.lecture_seule) return `Mode lecture seule : ces ${n} écriture(s) dans iCloud seront refusées.`
     return `${a.a_ecrire} fiche(s) seront modifiées dans iCloud`

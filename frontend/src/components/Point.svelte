@@ -151,11 +151,6 @@
         <p>Noté « {[...new Set(d.notes.map((n) => n.type))].join(' », « ')} » sur {d.notes.length > 1 ? 'les fiches' : 'la fiche'} de
           {d.notes.map((n) => n.fiche).join(', ')}.</p>
       {/if}
-      {#if d.propose}
-        <p class="discret">D'après le prénom : <span class={'propose genre-' + d.propose}>{d.propose}</span>.</p>
-      {:else}
-        <p class="discret">Prénom mixte ou inconnu de carnet : pas de proposition.</p>
-      {/if}
     {:else if point.motif === 'genre_treemich'}
       <p>carnet dit <span class={'propose genre-' + d.carnet}>{d.carnet}</span>, Treemich dit
         <span class={'propose genre-' + d.treemich}>{d.treemich}</span>. Lequel garder ?</p>

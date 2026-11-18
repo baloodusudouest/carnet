@@ -1,5 +1,8 @@
 # Journal des versions
 
+## 2.31.5 — 18 novembre 2026 (gender-guesser retiré)
+- **Plus de genre proposé d'après le prénom** (décision du 18/11/2026, Q5 de l'audit) : la dépendance `gender-guesser` (GPLv3, dépôt public) est retirée avec `app/prenoms.py` ; la question « femme ou homme ? » d'À traiter reste, à répondre à la main ; le lot « Enregistrer les genres proposés » et l'action `proposer` disparaissent. Les genres déjà enregistrés ne bougent pas.
+
 ## 2.31.4 — 18 novembre 2026 (cookies Secure)
 - **Cookies `Secure` en https** (audit du 17/11/2026, même correctif dans toutes les applis maison) : ouverte en https (directement, derrière Tailscale Serve qui le dit par `X-Forwarded-Proto`, ou d'après l'origine de la page), l'appli pose ses cookies de session avec l'attribut `Secure` : ils ne partent jamais en clair. En http (adresse locale), rien ne change.
 - `entrypoint.sh` refuse de lancer l'appli en root quand `/data` appartient à root (dossier créé par Docker) et dit le remède ; dépannage seulement : `MAISON_ROOT_ACCEPTE=oui`.

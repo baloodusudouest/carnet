@@ -166,13 +166,12 @@ def _points(c: Carnet) -> list[dict]:
             if connu.get("origine") == "main" and g_arbre and g_arbre != connu.get("genre"):
                 res.append({"motif": "genre_treemich", "uid": uid, "cle": f"{uid}|{connu['genre']}|{g_arbre}",
                             "donnees": {"carnet": connu["genre"], "treemich": g_arbre}})
-    from . import prenoms
+    # 2.31.5 : plus de genre proposé d'après le prénom (gender-guesser, GPLv3, retiré) : Julien choisit à la main
     for uid, f in fiches.items():
         if uid in connus or not (f.get("prenom") or f.get("nom")):
             continue
         res.append({"motif": "genre", "uid": uid, "cle": uid,
-                    "donnees": {"notes": sorted(a_preciser.get(uid, []), key=lambda x: x["fiche"].casefold()),
-                                "propose": prenoms.genre(f.get("prenom") or "")}})
+                    "donnees": {"notes": sorted(a_preciser.get(uid, []), key=lambda x: x["fiche"].casefold())}})
     return res
 
 

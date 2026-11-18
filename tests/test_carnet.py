@@ -2751,15 +2751,6 @@ def test_222_genre_par_l_api_et_a_la_suppression(c, services):
 
 # ================================================================ 2.22.3 : le genre pour tous les contacts
 
-def test_2223_prenoms_sans_ambiguite_seulement():
-    from app import prenoms
-    assert prenoms.genre("Christelle") == "femme" and prenoms.genre("Julien") == "homme"
-    assert prenoms.genre("Élodie") == "femme" and prenoms.genre("jean-pierre") == "homme"      # accents, composés, casse
-    assert prenoms.genre("Marie") == "femme" and prenoms.genre("CLAIRE") == "femme"
-    for mixte in ("Camille", "Dominique", "Claude", "Stéphane", "Xyzzy", "", None):
-        assert prenoms.genre(mixte) == "", mixte
-
-
 def test_2223_question_de_genre_pour_toute_personne_hors_compteur(c, services):
     """Chaque fiche avec un prénom ou un nom et sans genre a sa question ; une entreprise seule n'en a pas.
     La tuile ne compte pas dans le chiffre de l'onglet."""
@@ -2770,7 +2761,7 @@ def test_2223_question_de_genre_pour_toute_personne_hors_compteur(c, services):
     assert personnes and entreprises                                    # le jeu de test a les deux
     q = {p["uid"]: p for p in points(c, "genre")}
     assert set(q) == personnes
-    assert q["AAAA-1111"]["donnees"] == {"notes": [], "propose": "femme"} and q["DDDD-4444"]["donnees"]["propose"] == "homme"
+    assert q["AAAA-1111"]["donnees"] == {"notes": []} and "propose" not in q["DDDD-4444"]["donnees"]   # 2.31.5 : plus de proposition
     t = {x["cle"]: x for x in traiter.tuiles(c)}
     assert t["genre"]["nombre"] == len(personnes) and t["genre"]["compte"] is False
     avant = traiter.compte(c)
@@ -2782,20 +2773,12 @@ def test_2223_question_de_genre_pour_toute_personne_hors_compteur(c, services):
     with TestClient(main.app) as client:
         client.post("/api/connexion", json={"mot_de_passe": "secret"})
         assert not any(p["motif"] == "genre" for p in client.get("/api/contacts/AAAA-1111").json()["a_traiter"])
-        # Lot : seules les propositions sont enregistrées, en une fois, sans rien écrire ailleurs
+        # 2.31.5 : le lot « proposer » (genre d'après le prénom) n'existe plus
         ids = [p["id"] for p in q.values()]
-        ap = client.post("/api/a-traiter-lot/apercu", json={"ids": ids, "action": "proposer"}).json()
-        assert ap["ecrit"] is False
-        n_icloud, n_tm = len(services["icloud"].ecritures), len(services["treemich"].ecrits)
-        r = client.post("/api/a-traiter-lot", json={"ids": ids, "action": "proposer"}).json()
+        assert client.post("/api/a-traiter-lot/apercu", json={"ids": ids, "action": "proposer"}).status_code == 400
     main.ETAT.clear()
-    proposes = {u for u, p in q.items() if p["donnees"]["propose"]}
-    assert r["faits"] == len(proposes) and not r["erreurs"]
-    assert len(services["icloud"].ecritures) == n_icloud and len(services["treemich"].ecrits) == n_tm
-    assert genres.tous(c)["AAAA-1111"] == {"genre": "femme", "origine": "main"}
-    assert {p["uid"] for p in points(c, "genre")} == personnes - proposes
     assert traiter.compte(c)["total"] == avant["total"]                 # le chiffre de l'onglet n'a pas bougé
-    # Un point sans proposition refuse « proposer » ; « Ignorer » ne repose plus la question
+    # « proposer » est refusé ; « Ignorer » ne repose plus la question
     reste = points(c, "genre")
     if reste:
         with pytest.raises(ErreurCarnet):
