@@ -1024,7 +1024,7 @@ def sante(c) -> dict:
         "telegram": un(c.cfg.telegram_api_id and c.cfg.telegram_api_hash),
         "millesime": un(c.cfg.millesime_jeton, millesime_.lire(c)["erreur"] if c.cfg.millesime_jeton else ""),
         "linkedin": un(c.cfg.linkedin_client_id),
-        "contacts": coffre.sante(c),     # 2.28 : coffre Obsidian « Contacts »
+        "contacts": coffre.sante(c),     # 2.28 : coffre « Contacts »
     }
 
 

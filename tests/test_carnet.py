@@ -607,8 +607,8 @@ def test_home_assistant_adresses(c):
             assert next(x for x in gz if x["carnet_id"] == "DDDD-4444")["journaux"] == "fan de pétanque"
             from app import journaux as J
             assert J.fiche(c, "DDDD-4444")["par"] == "gazette"
-            assert "## Pour les journaux (Gazette)" in __import__("app.coffre", fromlist=["bloc"]).bloc(
-                c, "DDDD-4444", c.fiche("DDDD-4444"), paul["personne_id"], {})
+            assert __import__("app.coffre", fromlist=["bloc"])._contenu_index(          # 3.0 : note d'index
+                c, "journaux", paul["personne_id"], "Paul MARTIN", []) is not None
             # 2.30 : un numéro de La Récidive approuvé dans Gazette, rangé sur la fiche, relu par Gazette, recopié au coffre
             corps = {"journal": "recidive", "numero": 2, "le": "2026-11-19", "titre": "Paul récidive !",
                      "evenement": "soirée Eurovision", "indices": "fan de pétanque",
@@ -623,8 +623,11 @@ def test_home_assistant_adresses(c):
             pp = next(x for x in gz if x["carnet_id"] == "DDDD-4444")["parus"]
             assert len(pp) == 1 and pp[0]["evenement"] == "soirée Eurovision 2026" and pp[0]["numero"] == 2
             assert J.fiche(c, "DDDD-4444")["parus"][0]["cle"] == "recidive-2026-11-19"
-            bloc = __import__("app.coffre", fromlist=["bloc"]).bloc(c, "DDDD-4444", c.fiche("DDDD-4444"), paul["personne_id"], {})
-            assert "## Journaux parus (Gazette)" in bloc and "19/11/2026 — La Récidive N° 2" in bloc and "Photo : Paul en tigre" in bloc
+            from app import coffre as CO, personnes as PE                                  # 3.0 : note d'événement partagée
+            e = CO.evenements(c, PE.ids(c))["paru-recidive-2026-11-19"]
+            texte = CO._bloc_evenement(e, {paul["personne_id"]: "Paul MARTIN"})
+            assert "# La Récidive N° 2" in texte and "19/11/2026" in texte and "Photo : Paul en tigre" in texte
+            assert "[[Paul MARTIN]]" in texte and CO._stem_evenement(e) == "2026-11-19 — La Récidive N° 2"
             # 2.31 : le livre d'or envoyé par Home Assistant, rattaché à chaque signataire reconnu
             ha = {"authorization": "Bearer " + c.cfg.ha_token}
             mot = {"invites": "Paul MARTIN & Inconnu TOTAL", "message": "Merci pour tout,\nà très vite !", "chambre": "Chambre d'Ami", "le": "2026-08-16"}
@@ -640,8 +643,10 @@ def test_home_assistant_adresses(c):
             assert client.put(f"/api/livre-or/{fj['orphelins'][0]['id']}/rattacher", json={"uid": "CCCC-3333"}).status_code in (200, 401)
             J.rattacher_livre(c, fj["orphelins"][0]["id"], "CCCC-3333")
             assert J.orphelins(c) == [] and J.livre_or(c, J.fiche(c, "CCCC-3333")["personne_id"])[0]["nom"] == "Inconnu TOTAL"
-            bloc = __import__("app.coffre", fromlist=["bloc"]).bloc(c, "DDDD-4444", c.fiche("DDDD-4444"), paul["personne_id"], {})
-            assert "## Livre d'or" in bloc and "> à très vite !" in bloc
+            evts = CO.evenements(c, PE.ids(c))                                            # 3.0 : un événement par séjour
+            e = next(x for x in evts.values() if x["nature"] == "livre_or")
+            assert paul["personne_id"] in e["personnes"] and "  > à très vite !" in e["lignes"][paul["personne_id"]]
+            assert e["titre"] == "Livre d'or (Chambre d'Ami)"
             J.definir(c, "DDDD-4444", {"texte": ""})
             # 2.22.1 : la liste pour Douze points (prénom et nom, rien d'autre)
             dp = client.get("/douze-points/personnes", headers=commun).json()["personnes"]

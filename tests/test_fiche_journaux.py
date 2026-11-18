@@ -213,8 +213,9 @@ def test_export_coffre_fiche_complete(c):  # noqa: F811
     J.ajouter(c, ident, {"rubrique": "sports", "texte": "Champion de pétanque"}, "carnet")
     J.ajouter(c, ident, {"rubrique": "animaux", "texte": "Un chat nommé Pompon", "source": "sillage"}, "gazette")
     J.ajouter(c, ident, {"rubrique": "interdits", "texte": "son ancien patron"}, "carnet")
-    bloc = coffre.bloc(c, PAUL, c.fiche(PAUL), ident, {})
-    assert "## Pour les journaux (Gazette)" in bloc
+    bloc = coffre._contenu_index(c, "journaux", ident, "Paul MARTIN", [])   # 3.0 : note d'index « Pour les journaux »
+    assert bloc.startswith("# Paul MARTIN — Pour les journaux") and "[[Paul MARTIN]]" in bloc
+    assert "Pour les journaux" not in coffre.bloc(c, PAUL, c.fiche(PAUL), ident, {})   # plus dans la note Contact
     assert "### Goûts et passions" in bloc and "- **Sports**" in bloc and "  - Champion de pétanque" in bloc
     assert "Un chat nommé Pompon (sillage)" in bloc
     assert "### Sujets interdits\n- son ancien patron" in bloc
@@ -223,7 +224,7 @@ def test_export_coffre_fiche_complete(c):  # noqa: F811
 
 
 def test_export_coffre_sans_pepite_pas_de_section(c):  # noqa: F811
-    assert "Pour les journaux" not in coffre.bloc(c, PAUL, c.fiche(PAUL), _ident(c), {})
+    assert coffre._contenu_index(c, "journaux", _ident(c), "Paul MARTIN", []) is None
 
 
 # ================================================================ schéma 9 sur une base chiffrée existante

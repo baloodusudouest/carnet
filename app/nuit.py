@@ -105,7 +105,7 @@ def _suite_de_nuit(c: Carnet, lecture: dict, bilan: dict) -> None:
                 sorties.envoyer_kit(c)
         except ErreurCarnet as exc:
             bilan["details"].append(f"Kit : {exc}")
-    # 2.28 : notes du coffre Obsidian « Contacts » (rien si le dossier chiffré n'est pas monté)
+    # 2.28 : notes du coffre « Contacts » (rien si le dossier chiffré n'est pas monté)
     if c.cfg.contacts and connexion.nuit_active(c, "contacts") and c.fiches():
         c.tache.update(message="Coffre Contacts…", progression=0.95)
         from . import coffre

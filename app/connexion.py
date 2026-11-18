@@ -27,7 +27,7 @@ SERVICES = {
     "ha": ("Home Assistant", None),
     "kit": ("Kit d'urgence", "Envoyer les contacts d'urgence"),
     "millesime": ("Millésime", None),
-    "contacts": ("Coffre Contacts", "Écrire les notes du coffre Obsidian"),    # 2.28
+    "contacts": ("Coffre Contacts", "Écrire les notes du coffre Contacts (SilverBullet)"),    # 2.28
 }
 _ANCIENS = {"icloud": "fetes", "treemich": "famille"}       # interrupteurs de la 2.8, gardés tels quels
 

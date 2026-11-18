@@ -28,7 +28,12 @@ def c(tmp_path, services):  # noqa: F811
 
 
 def note(c, nom):
-    return (c.cfg.contacts / "Personnes" / f"{nom}.md").read_text(encoding="utf-8")
+    """3.0 : la note Contact est dans Personnes/<Nom>/<Nom>.md."""
+    return (c.cfg.contacts / "Personnes" / nom / f"{nom}.md").read_text(encoding="utf-8")
+
+
+def contacts(c):
+    return sorted(p for p in (c.cfg.contacts / "Personnes").rglob("*.md") if "type: contact" in p.read_text(encoding="utf-8"))
 
 
 # ================================================================ identifiant maison
@@ -217,7 +222,7 @@ def test_coffre_garde_fou_dossier_non_monte(c, tmp_path):
 def test_coffre_cree_les_notes_des_personnes_seulement(c):
     alimentation.definir(c, "DDDD-4444", {"allergies": ["arachide"], "plaisirs": ["chocolat"], "verifiee_le": "2026-11-03"})
     b = coffre.synchroniser(c)
-    noms = sorted(p.stem for p in (c.cfg.contacts / "Personnes").glob("*.md"))
+    noms = sorted(p.stem for p in contacts(c))
     assert "Plomberie Garonne" not in noms and b["crees"] == len(noms) == 3
     paul = note(c, "Paul MARTIN")
     assert paul.startswith("---\npersonne_id: p-") and "carnet: présente" in paul
@@ -232,7 +237,7 @@ def test_coffre_cree_les_notes_des_personnes_seulement(c):
 
 def test_coffre_zone_libre_et_entete_a_la_main_gardees(c):
     coffre.synchroniser(c)
-    chemin = c.cfg.contacts / "Personnes" / "Paul MARTIN.md"
+    chemin = c.cfg.contacts / "Personnes" / "Paul MARTIN" / "Paul MARTIN.md"
     texte = chemin.read_text(encoding="utf-8")
     texte = texte.replace("---\n" + coffre.DEBUT, "tags:\n  - cousin\n---\nAvant le bloc, à moi.\n" + coffre.DEBUT, 1)
     texte += "Il préfère le thé. Secret de famille.\n"
@@ -250,8 +255,8 @@ def test_coffre_note_deplacee_retrouvee_note_sans_bloc_respectee(c):
     coffre.synchroniser(c)
     racine = c.cfg.contacts
     (racine / "Famille").mkdir()
-    os.replace(racine / "Personnes" / "Paul MARTIN.md", racine / "Famille" / "Paulo.md")
-    claire = racine / "Personnes" / "Claire MARTIN.md"
+    os.replace(racine / "Personnes" / "Paul MARTIN" / "Paul MARTIN.md", racine / "Famille" / "Paulo.md")
+    claire = racine / "Personnes" / "Claire MARTIN" / "Claire MARTIN.md"
     t = claire.read_text(encoding="utf-8")
     debut, fin = t.index(coffre.DEBUT), t.index(coffre.FIN) + len(coffre.FIN)
     claire.write_text(t[:debut] + "Tout réécrit à la main." + t[fin:], encoding="utf-8")
@@ -260,7 +265,7 @@ def test_coffre_note_deplacee_retrouvee_note_sans_bloc_respectee(c):
     b = coffre.synchroniser(c)
     assert b["crees"] == 0 and b["sans_bloc"] == 1 and b["mises_a_jour"] == 1
     assert "Aucune allergie ni intolérance connue" in (racine / "Famille" / "Paulo.md").read_text(encoding="utf-8")
-    assert not (racine / "Personnes" / "Paul MARTIN.md").exists()
+    assert not (racine / "Personnes" / "Paul MARTIN" / "Paul MARTIN.md").exists()
     assert "Tout réécrit à la main." in claire.read_text(encoding="utf-8")
 
 
@@ -278,7 +283,7 @@ def test_coffre_lecture_seule_et_connexion(c):
     c.cfg = replace(c.cfg, lecture_seule=True)
     with pytest.raises(ErreurCarnet):
         coffre.synchroniser(c)
-    assert not list((c.cfg.contacts / "Personnes").glob("*.md"))
+    assert not contacts(c)
     c.cfg = replace(c.cfg, lecture_seule=False)
     res = connexion.synchroniser(c, "contacts")
     assert "3 note(s) créée(s)" in res["message"]
@@ -288,8 +293,71 @@ def test_coffre_lecture_seule_et_connexion(c):
 
 def test_nuit_ecrit_le_coffre_et_interrupteur(c, services):
     nuit.passer(c, "test")
-    assert len(list((c.cfg.contacts / "Personnes").glob("*.md"))) == 3
+    assert len(contacts(c)) == 3
     connexion.regler_nuit(c, "contacts", False)
     alimentation.definir(c, "DDDD-4444", {"allergies": ["moutarde"]})
     nuit.passer(c, "test")
     assert "moutarde" not in note(c, "Paul MARTIN")
+
+
+# ================================================================ 3.0 : nouvelle forme (SilverBullet)
+
+def test_30_forme_rangement_des_notes_228(c):
+    racine = c.cfg.contacts
+    ident = personnes.de(c, "DDDD-4444")
+    ancienne = racine / "Personnes" / "Paul MARTIN.md"                  # note de la forme 2.28, avec des notes de Julien
+    ancienne.write_text(f"---\npersonne_id: {ident}\nnom: Paul MARTIN\n---\n{coffre.DEBUT}\nvieux\n{coffre.FIN}\n\n"
+                        "## Mes notes\n\nA un chien.\n", encoding="utf-8")
+    b = coffre.synchroniser(c)
+    assert b["rangees"] == 1 and not ancienne.exists()
+    paul = note(c, "Paul MARTIN")
+    assert "A un chien." in paul and "type: contact" in paul and "allergies: inconnu" in paul and "vieux" not in paul
+    assert (racine / "Accueil.md").exists() and "space-style" in (racine / "CONFIG.md").read_text(encoding="utf-8")
+    (racine / "Accueil.md").write_text("à moi", encoding="utf-8")
+    coffre.synchroniser(c)
+    assert (racine / "Accueil.md").read_text(encoding="utf-8") == "à moi"   # posée une seule fois
+
+
+def test_30_evenements_partages_et_index(c):
+    from app import journaux as J
+    paul, claire = personnes.de(c, "DDDD-4444"), personnes.de(c, "AAAA-1111")
+    corps = {"journal": "recidive", "numero": 3, "le": "2026-11-19", "titre": "Ils récidivent", "evenement": "Eurovision",
+             "descriptions": ["Paul en tigre"], "textes": ["Selon nos sources…"]}
+    J.ecrire_paru(c, paul, "recidive-2026-11-19", corps)
+    J.ecrire_paru(c, claire, "recidive-2026-11-19", {**corps, "descriptions": ["Claire en panthère"]})
+    J.recevoir_livre(c, {"invites": "Paul MARTIN & Inconnu TOTAL", "message": "Merci !", "chambre": "Chambre d'Ami",
+                         "le": "2026-08-16"})
+    b = coffre.synchroniser(c)
+    assert b["evenements"] == 2 and b["index"] >= 3
+    racine = c.cfg.contacts
+    evt = racine / "Événements" / "La Récidive" / "2026-11-19 — La Récidive N° 3.md"
+    texte = evt.read_text(encoding="utf-8")
+    assert "evenement_id: paru-recidive-2026-11-19" in texte and "[[Paul MARTIN]]" in texte and "[[Claire MARTIN]]" in texte
+    assert "Claire en panthère" in texte and "Paul en tigre" in texte
+    livre = next((racine / "Événements" / "Livre d'or").glob("*.md")).read_text(encoding="utf-8")
+    assert "Merci !" in livre and "Inconnu TOTAL" in livre and "pas encore rattaché" in livre
+    idx = (racine / "Personnes" / "Paul MARTIN" / "Paul MARTIN — Journaux parus.md").read_text(encoding="utf-8")
+    assert "index_de: " + paul in idx and "[[2026-11-19 — La Récidive N° 3]]" in idx and "[[Paul MARTIN]]" in idx
+    assert "[[Paul MARTIN — Livre d'or|Livre d'or]]" in note(c, "Paul MARTIN")
+    assert "[[Paul MARTIN — Journaux parus|Journaux parus]]" in note(c, "Paul MARTIN")
+    assert not (racine / "Personnes" / "Claire MARTIN" / "Claire MARTIN — Livre d'or.md").exists()   # rien : pas de note
+    # zone libre d'un événement gardée, et rien de réécrit au deuxième passage
+    evt.write_text(evt.read_text(encoding="utf-8") + "Soirée mémorable.\n", encoding="utf-8")
+    b = coffre.synchroniser(c)
+    assert b["crees"] == b["mises_a_jour"] == b["evenements"] == b["index"] == 0
+    assert "Soirée mémorable." in evt.read_text(encoding="utf-8")
+    assert not [p for p in racine.rglob("*.md") if "." in p.stem]       # aucun point dans un nom (SilverBullet)
+
+
+def test_30_nom_change_dossier_renomme_et_point_retire(c, services):
+    coffre.synchroniser(c)
+    racine = c.cfg.contacts
+    paul = racine / "Personnes" / "Paul MARTIN" / "Paul MARTIN.md"
+    paul.write_text(paul.read_text(encoding="utf-8") + "Mon secret.\n", encoding="utf-8")
+    f = c.fiche("DDDD-4444")
+    c.fiches = (lambda orig: (lambda: {**orig(), "DDDD-4444": {**f, "prenom": "P.", "nom": "Martin-Durand"}}))(c.fiches)
+    b = coffre.synchroniser(c)
+    nouveau = [p for p in contacts(c) if "Martin-Durand" in p.stem]
+    assert b["renommees"] == 1 and len(nouveau) == 1 and "." not in nouveau[0].stem
+    assert nouveau[0].parent.name == nouveau[0].stem and not paul.parent.exists()
+    assert "Mon secret." in nouveau[0].read_text(encoding="utf-8")

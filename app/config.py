@@ -49,7 +49,7 @@ class Config:
     millesime_jeton: str = ""                      # 2.26 : MAISON_JETON ; vide : Millésime non lu
     lecture_seule: bool = False      # CARNET_LECTURE_SEULE : aucune écriture hors de carnet
     db_key: str = field(default="", repr=False)   # 2.28 : CARNET_DB_KEY, chiffrement SQLCipher de carnet2.db ; vide : en clair
-    contacts: Path | None = None     # 2.28 : coffre Obsidian « Contacts » (volume) ; notes dans Personnes/
+    contacts: Path | None = None     # 2.28 : coffre « Contacts » (volume) ; notes dans Personnes/
 
     @property
     def db_path(self) -> Path:

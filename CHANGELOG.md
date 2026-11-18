@@ -1,5 +1,15 @@
 # Journal des versions
 
+## 3.0.0 — 18 novembre 2026 (coffre Contacts : nouvelle forme pour SilverBullet)
+- **Le coffre Contacts se lit dans SilverBullet** (décision du 18/11/2026 : SilverBullet remplace Obsidian ; coffre Contacts en lecture seule côté carnet, livraison 2). carnet écrit toujours à sens unique ; rien de ce que Julien écrit dans les notes n'est relu.
+- **Une note Contact par personne dans son dossier** : `Personnes/<Nom>/<Nom>.md` (fiche, famille et proches avec liens, alimentation en détail, notes iCloud, liens). En-tête : `type: contact`, `allergies` (`inconnu`, `aucune`, `a_connaitre`) en plus des clés de la 2.28, pour les requêtes de SilverBullet.
+- **Notes d'index par type**, à côté de la note Contact, seulement s'il y a quelque chose : « Pour les journaux » (la fiche complète : rubriques, pépites, sujets interdits), « Journaux parus », « Livre d'or ». La note Contact y renvoie (« Dans le coffre »).
+- **Notes d'événement partagées** dans `Événements/<type>/<date> — <titre>.md` : un numéro de La Récidive ou de La Gazette (toutes les personnes du numéro, photos et textes imprimés de chacune), les mots d'un séjour dans le livre d'or (par chambre ; signataires non rattachés nommés à part). Retrouvées par `evenement_id`, même déplacées.
+- **Rangement unique des notes 2.28** : `Personnes/<Nom>.md` est déplacée dans `Personnes/<Nom>/<Nom>.md`, zone « Mes notes » gardée. **Changement de nom** : le dossier et ses notes sont renommés (seulement à leur place d'origine et si le nouveau nom est libre). Une note rangée ailleurs par Julien n'est jamais déplacée.
+- **Jamais de point dans un nom de fichier** (SilverBullet n'ouvre pas une note dont le nom contient un point) : « J. Dupont » → « J Dupont » ; le vrai nom reste dans `nom`.
+- **Pages de SilverBullet posées une seule fois** à la racine du coffre (jamais réécrites) : `Accueil.md` (anniversaires du mois, allergies à connaître, derniers événements, par requêtes) et `CONFIG.md` (habillage « Répertoire chaud », mode sombre forcé). Elles contiennent du code exécuté par SilverBullet dans le navigateur (blocs `space-lua`, `space-style`, requêtes).
+- Le bilan de synchronisation compte aussi les notes rangées, renommées, les index et les événements créés.
+
 ## 2.33.0 — 18 novembre 2026 (fiche complète pour les journaux)
 - **« Fiche complète » d'une personne pour la Gazette et La Récidive** : le texte libre « Pour les journaux » devient une liste de **pépites** (un détail court, 200 caractères au plus) rangées dans des rubriques (vie et entourage, goûts et passions, caractère et manies, histoires, pour les journaux, à trier) et une section à part **« Sujets interdits »**. Les rubriques sont dans `app/rubriques_journaux.json`, recopié à l'identique dans Gazette.
 - Base : schéma 9, table `journaux_pepites` (id, personne, rubrique, texte, interdit, source, parue_le, le, par) ; une base existante, chiffrée ou non, est complétée sans rien perdre.
