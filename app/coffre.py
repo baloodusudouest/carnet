@@ -84,9 +84,15 @@ APPLIS = {"gazette": "Gazette", "douze-points": "Douze points", "home-assistant"
 MOTIF_DEBUT = re.compile(r"<!-- carnet:debut\b.*?-->")
 # 3.2 : étiquette de chaque sorte de note (Graphview colore le graphe par étiquette)
 TAG_CONTACT, TAG_FICHE, TAG_EVENEMENT = "contact", "fiche", "evenement"
-# Thème sombre en tête du bloc (forme « config » : la directive %%{init}%% n'est pas lue par mermaid.init(), qu'utilise
+# Couleurs du coffre en tête du bloc, lisibles sur fond sombre comme sur fond clair (le fond du cadre suit le mode
+# de l'appareil) ; forme « config » : la directive %%{init}%% n'est pas lue par mermaid.init(), qu'utilise
 # le plug Mermaid de SilverBullet — essayé avec Mermaid 11.10.1, la version que charge le plug)
-MERMAID_THEME = "---\nconfig:\n  theme: dark\n---"
+_MM_VARIABLES = {"primaryColor": "#2e2822", "primaryTextColor": "#ece4d8", "primaryBorderColor": "#857a6c",
+                 "lineColor": "#b3a796",
+                 **{f"cScale{k}": c for k, c in enumerate(("#3a2e26", "#2e2822", "#4a3428") * 4)},
+                 **{f"cScaleLabel{k}": "#ece4d8" for k in range(12)}}
+MERMAID_THEME = "\n".join(["---", "config:", "  theme: base", "  themeVariables:"]
+                          + [f'    {k}: "{v}"' for k, v in _MM_VARIABLES.items()] + ["---"])
 FRISE_PAR_ANNEE = 8          # au-delà, « et N autres » sur l'année
 INCONNU = object()          # contenu d'une fiche liée qu'on ne peut pas calculer maintenant : la note n'est pas touchée
 DUREE_SILLAGE = timedelta(hours=24)
