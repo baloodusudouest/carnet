@@ -549,7 +549,25 @@ def fiche_complete(c: Carnet, ident: str) -> dict:
     uid = personnes.uid_de(c, ident)
     liste = pepites(c, ident)
     return {"personne_id": ident, "rubriques": RUBRIQUES, "pepites": liste, "jauge": jauge(liste),
-            "connu": connu(c, uid), "suggestions": suggestions(c, uid, ident, liste)}
+            "connu": connu(c, uid), "suggestions": suggestions(c, uid, ident, liste),
+            "eurovision": eurovision(c, ident)}
+
+
+def eurovision(c: Carnet, ident: str, soirees: int = 3) -> list[dict]:
+    """3.1 : les remarques laissées par la personne aux dernières soirées de Douze points (envoyées par Douze points à
+    l'adresse commune), pour les brèves de la Gazette : [{soiree, date, remarques: [{pays, points (12 à 0), note,
+    commentaire}]}], les soirées sans remarque écartées."""
+    from . import evenements
+    res = []
+    for e in evenements.de_personne(c, ident):
+        if e["type"] != "douze_points":
+            continue
+        remarques = [r for r in (e["donnees"].get("remarques") or []) if isinstance(r, dict) and r.get("commentaire")]
+        if remarques:
+            res.append({"soiree": e["titre"], "date": e["date"], "remarques": remarques[:5]})
+        if len(res) >= soirees:
+            break
+    return res
 
 
 def fiche_complete_uid(c: Carnet, uid: str) -> dict:

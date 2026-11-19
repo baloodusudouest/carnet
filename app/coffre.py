@@ -246,6 +246,11 @@ def _ligne_personne(nature: str, role: str, donnees: dict) -> list[str]:
             l.append(f"  - Classement : {donnees['classement']}")
         if donnees.get("top3"):
             l.append(f"  - Son podium : {', '.join(str(x) for x in donnees['top3'][:3])}")
+        for r in (donnees.get("remarques") or [])[:5]:
+            if isinstance(r, dict) and r.get("commentaire"):
+                pts = r.get("points")
+                l.append(f"  - {r.get('pays', '?')}" + (f" ({pts} point{'s' if pts not in (0, 1) else ''})" if pts is not None else "")
+                         + f" : « {r['commentaire']} »")
     else:
         for k, v in donnees.items():
             if isinstance(v, (str, int, float)) and str(v).strip():

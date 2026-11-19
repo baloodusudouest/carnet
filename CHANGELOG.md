@@ -10,6 +10,7 @@
 - **Rangement unique des notes de la 3.0** : « Pour les journaux » → « Pépites », « Journaux parus » → « Récidives », `Événements/La Récidive` et `La Gazette` → `Récidives` et `Gazette` ; zones « Mes notes » gardées.
 - Sillage lu au plus une fois par jour et par personne (`/externe/personnes/{immich_id}/etapes`, jeton commun, adresse par l'annuaire de l'Anneau) ; injoignable : la fiche liée n'est pas touchée. Arbre : sans relations de Treemich en mémoire, pas touchée non plus.
 - **Copie des notes du coffre avant l'écriture de nuit** (`<state>/copies-coffre/AAAA-MM-JJ.tar.gz`, 7 jours gardés) ; chaque note est relue juste avant d'être écrite.
+- **Remarques des soirées Eurovision** : la fiche complète lue par Gazette (`/gazette/personnes/{id}/fiche`) porte `eurovision` (3 dernières soirées de Douze points avec remarques : pays, points de 12 à 0, note, commentaire), pour les brèves de La Récidive ; la note de la soirée dans le coffre les cite.
 - **Fiche en tuiles** (maquette A choisie par Julien) : en-tête comme la fiche de l'iPhone (photo ronde avec l'anneau de complétude, nom, badges allergie et intolérance), boutons Appeler, Message, Courriel, puis six grosses tuiles — Alimentation, Pépites, Livre d'or, Gazette (photos scandale, numéros parus, séjours et soirées), Famille, Photos — dont le contenu s'affiche dessous. Toucher la photo ouvre la tuile Photos (choix de la photo du contact et de l'affiche).
 
 ## 3.0.1 — 18 novembre 2026 (accueil et réglages de SilverBullet hors du coffre)

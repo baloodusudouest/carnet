@@ -105,7 +105,8 @@ def test_31_coffre_sejours_douze_points_gazette(c):  # noqa: F811
     E.recevoir(c, "gazette", "sejour-12", _sejour(paul))
     E.recevoir(c, "douze-points", "soiree-3", {"type": "douze_points", "date": "2026-05-16", "titre": "Soirée Eurovision 2026",
                                                 "lien": "https://douze.exemple/#/soiree/3",
-                                                "personnes": [{"personne_id": paul, "donnees": {"moyenne": 7.5, "classement": 2}}]})
+                                                "personnes": [{"personne_id": paul, "donnees": {"moyenne": 7.5, "classement": 2,
+                                                    "remarques": [{"pays": "Suède", "points": 0, "note": 2, "commentaire": "Une casserole"}]}}]})
     E.recevoir_compteur(c, "gazette", "photos_scandale", {"personnes": [{"personne_id": paul, "valeur": 7}]})
     b = coffre.synchroniser(c)
     racine = c.cfg.contacts
@@ -113,7 +114,10 @@ def test_31_coffre_sejours_douze_points_gazette(c):  # noqa: F811
     assert "[Ouvrir dans Gazette](https://gazette.exemple/#/livret/12)" in sejour and "Trois nuits" in sejour
     assert "[[Paul MARTIN]]" in sejour and "[[Claire MARTIN]]" in sejour and "Inconnu" not in sejour
     soiree = (racine / "Événements" / "Douze points" / "2026-05-16 — Soirée Eurovision 2026.md").read_text(encoding="utf-8")
-    assert "Note moyenne : 7.5" in soiree and "Classement : 2" in soiree
+    assert "Note moyenne : 7.5" in soiree and "Classement : 2" in soiree and "Suède (0 point) : « Une casserole »" in soiree
+    from app import journaux as J
+    assert J.fiche_complete(c, paul)["eurovision"] == [{"soiree": "Soirée Eurovision 2026", "date": "2026-05-16",
+        "remarques": [{"pays": "Suède", "points": 0, "note": 2, "commentaire": "Une casserole"}]}]
     dossier = racine / "Personnes" / "Paul MARTIN"
     idx = (dossier / "Paul MARTIN — Douze points.md").read_text(encoding="utf-8")
     assert "[[2026-05-16 — Soirée Eurovision 2026]] — note 7.5, classement 2" in idx
