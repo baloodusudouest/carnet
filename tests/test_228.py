@@ -226,13 +226,15 @@ def test_coffre_cree_les_notes_des_personnes_seulement(c):
     assert "Plomberie Garonne" not in noms and b["crees"] == len(noms) == 3
     paul = note(c, "Paul MARTIN")
     assert paul.startswith("---\npersonne_id: p-") and "carnet: présente" in paul
-    assert "Allergies ou intolérances à connaître" in paul and "**Allergies** : arachide" in paul
-    assert "**Vérifiée le** : 03/11/2026" in paul and "**Plaisirs coupables** : chocolat" in paul
+    assert "Allergies ou intolérances à connaître" in paul and "[[Paul MARTIN — Allergies|détail]]" in paul
+    allergies = (c.cfg.contacts / "Personnes" / "Paul MARTIN" / "Paul MARTIN — Allergies.md").read_text(encoding="utf-8")
+    assert "**Allergies** : arachide" in allergies and "arachide" not in paul.split("Allergies et intolérances")[0]
+    assert "**Vérifiée le** : 03/11/2026" in allergies and "**Plaisirs coupables** : chocolat" in allergies
     assert coffre.DEBUT in paul and coffre.FIN in paul and paul.rstrip().endswith("## Mes notes")
     claire = note(c, "Claire MARTIN")
     assert "[[Paul MARTIN|Paul Martin]]" in claire                     # lien vers la note du proche
     assert "Inconnu : à demander" in claire
-    assert coffre.synchroniser(c)["inchangees"] == 3                   # rien de changé : rien de réécrit
+    assert coffre.synchroniser(c)["inchangees"] == 4                   # rien de changé : rien de réécrit (3 contacts, 1 fiche liée)
 
 
 def test_coffre_zone_libre_et_entete_a_la_main_gardees(c):
@@ -246,7 +248,7 @@ def test_coffre_zone_libre_et_entete_a_la_main_gardees(c):
     b = coffre.synchroniser(c)
     assert b["mises_a_jour"] == 1
     nouveau = chemin.read_text(encoding="utf-8")
-    assert "**Intolérances** : gluten" in nouveau
+    assert "**Intolérances** : gluten" in (chemin.parent / "Paul MARTIN — Allergies.md").read_text(encoding="utf-8")
     assert "Il préfère le thé. Secret de famille." in nouveau and "Avant le bloc, à moi." in nouveau
     assert "tags:\n  - cousin" in nouveau and nouveau.count("personne_id:") == 1
 
@@ -327,16 +329,16 @@ def test_30_evenements_partages_et_index(c):
     b = coffre.synchroniser(c)
     assert b["evenements"] == 2 and b["index"] >= 3
     racine = c.cfg.contacts
-    evt = racine / "Événements" / "La Récidive" / "2026-11-19 — La Récidive N° 3.md"
+    evt = racine / "Événements" / "Récidives" / "2026-11-19 — La Récidive N° 3.md"
     texte = evt.read_text(encoding="utf-8")
     assert "evenement_id: paru-recidive-2026-11-19" in texte and "[[Paul MARTIN]]" in texte and "[[Claire MARTIN]]" in texte
     assert "Claire en panthère" in texte and "Paul en tigre" in texte
     livre = next((racine / "Événements" / "Livre d'or").glob("*.md")).read_text(encoding="utf-8")
     assert "Merci !" in livre and "Inconnu TOTAL" in livre and "pas encore rattaché" in livre
-    idx = (racine / "Personnes" / "Paul MARTIN" / "Paul MARTIN — Journaux parus.md").read_text(encoding="utf-8")
+    idx = (racine / "Personnes" / "Paul MARTIN" / "Paul MARTIN — Récidives.md").read_text(encoding="utf-8")
     assert "index_de: " + paul in idx and "[[2026-11-19 — La Récidive N° 3]]" in idx and "[[Paul MARTIN]]" in idx
     assert "[[Paul MARTIN — Livre d'or|Livre d'or]]" in note(c, "Paul MARTIN")
-    assert "[[Paul MARTIN — Journaux parus|Journaux parus]]" in note(c, "Paul MARTIN")
+    assert "[[Paul MARTIN — Récidives|Récidives]]" in note(c, "Paul MARTIN")
     assert not (racine / "Personnes" / "Claire MARTIN" / "Claire MARTIN — Livre d'or.md").exists()   # rien : pas de note
     # zone libre d'un événement gardée, et rien de réécrit au deuxième passage
     evt.write_text(evt.read_text(encoding="utf-8") + "Soirée mémorable.\n", encoding="utf-8")

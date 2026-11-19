@@ -145,6 +145,8 @@ def ecrire_paru(c: Carnet, ident: str, cle: str, corps: dict) -> dict:
         raise ErreurCarnet("Numéro invalide.")
     for k, maxi in LIMITES.items():
         d[k] = _texte(corps.get(k), maxi)
+    from .evenements import _lien
+    d["lien"] = _lien(corps.get("lien"))      # 3.1 : page du numéro dans Gazette (vide si l'ancienne Gazette)
     for k, (n, maxi) in LISTES.items():
         v = corps.get(k) or []
         if not isinstance(v, list):

@@ -213,9 +213,9 @@ def test_export_coffre_fiche_complete(c):  # noqa: F811
     J.ajouter(c, ident, {"rubrique": "sports", "texte": "Champion de pétanque"}, "carnet")
     J.ajouter(c, ident, {"rubrique": "animaux", "texte": "Un chat nommé Pompon", "source": "sillage"}, "gazette")
     J.ajouter(c, ident, {"rubrique": "interdits", "texte": "son ancien patron"}, "carnet")
-    bloc = coffre._contenu_index(c, "journaux", ident, "Paul MARTIN", [])   # 3.0 : note d'index « Pour les journaux »
-    assert bloc.startswith("# Paul MARTIN — Pour les journaux") and "[[Paul MARTIN]]" in bloc
-    assert "Pour les journaux" not in coffre.bloc(c, PAUL, c.fiche(PAUL), ident, {})   # plus dans la note Contact
+    bloc = coffre._contenu_index(c, "pepites", ident, "Paul MARTIN", [])   # 3.1 : fiche liée « Pépites »
+    assert bloc.startswith("# Paul MARTIN — Pépites") and "[[Paul MARTIN]]" in bloc
+    assert "Pépites" not in coffre.bloc(c, PAUL, c.fiche(PAUL), ident, {})   # plus dans la note Contact
     assert "### Goûts et passions" in bloc and "- **Sports**" in bloc and "  - Champion de pétanque" in bloc
     assert "Un chat nommé Pompon (sillage)" in bloc
     assert "### Sujets interdits\n- son ancien patron" in bloc
@@ -224,7 +224,7 @@ def test_export_coffre_fiche_complete(c):  # noqa: F811
 
 
 def test_export_coffre_sans_pepite_pas_de_section(c):  # noqa: F811
-    assert coffre._contenu_index(c, "journaux", _ident(c), "Paul MARTIN", []) is None
+    assert coffre._contenu_index(c, "pepites", _ident(c), "Paul MARTIN", []) is None
 
 
 # ================================================================ schéma 9 sur une base chiffrée existante
@@ -237,7 +237,7 @@ def test_schema_9_ajoute_sans_rien_perdre_sur_base_chiffree(tmp_path):
     b.executer("INSERT INTO journaux(personne, texte, le, par) VALUES ('p-0123456789', 'aime le jazz', 'x', 'carnet')")
     b.fermer()
     b = Base(chemin, "clé d'essai")
-    assert b.un("PRAGMA user_version")[0] == base_.VERSION == 9
+    assert b.un("PRAGMA user_version")[0] == base_.VERSION == 10
     assert b.un("SELECT texte FROM journaux")["texte"] == "aime le jazz"
     colonnes = [l[1] for l in b.tous("PRAGMA table_info(journaux_pepites)")]
     assert colonnes == ["id", "personne", "rubrique", "texte", "interdit", "source", "parue_le", "le", "par"]

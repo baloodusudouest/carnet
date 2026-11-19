@@ -224,8 +224,11 @@ def ha_contacts(c: Carnet) -> dict:
 
 
 def ha_personnes(c: Carnet) -> dict:
-    """1.3 : fiches liées à Immich et proches (liste de la carte de réservation)."""
-    return {"personnes": [{"nom": p["nom"], "immich": bool(p["immich_id"])} for p in contacts_ha(c)
+    """1.3 : fiches liées à Immich et proches (liste de la carte de réservation).
+    3.1 : `personne_id` (identifiant maison) et `immich_id` (vide si non liée) : la carte les écrit dans la
+    description de l'événement du calendrier, pour que Gazette et carnet relient le séjour sans passer par le nom."""
+    return {"personnes": [{"nom": p["nom"], "immich": bool(p["immich_id"]), "personne_id": p["personne_id"],
+                           "immich_id": p["immich_id"] or ""} for p in contacts_ha(c)
                           if p["immich_id"] or p["proche"]]}
 
 

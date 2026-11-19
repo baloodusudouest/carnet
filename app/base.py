@@ -22,9 +22,9 @@ from typing import Any, Iterator
 
 log = logging.getLogger("carnet")
 
-VERSION = 9   # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
+VERSION = 10  # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
               # 5 : personnes, alimentation (2.28) ; 6 : journaux (2.29) ; 7 : journaux_parus (2.30) ; 8 : livre_or (2.31) ;
-              # 9 : journaux_pepites (2.33)
+              # 9 : journaux_pepites (2.33) ; 10 : evenements, evenements_personnes, compteurs (3.1)
 ENTETE_CLAIR = b"SQLite format 3\x00"
 GARDE_CLAIR = timedelta(days=14)     # copie en clair d'avant le chiffrement, pour revenir à la 2.27 : effacée ensuite
 
@@ -285,6 +285,39 @@ CREATE TABLE IF NOT EXISTS journaux_pepites (
     par      TEXT NOT NULL           -- carnet / gazette / migration
 );
 CREATE INDEX IF NOT EXISTS idx_journaux_pepites_personne ON journaux_pepites(personne);
+-- ---- 3.1 (schéma 10) : événements envoyés par les applis (adresse commune), voir app/evenements.py ----
+CREATE TABLE IF NOT EXISTS evenements (
+    appli   TEXT NOT NULL,
+    cle     TEXT NOT NULL,
+    type    TEXT NOT NULL,           -- sejour, gazette, recidive, douze_points, livre_or, autre
+    date    TEXT NOT NULL,           -- AAAA-MM-JJ
+    titre   TEXT NOT NULL DEFAULT '',
+    resume  TEXT NOT NULL DEFAULT '',
+    lien    TEXT NOT NULL DEFAULT '',   -- page de l'événement dans l'appli
+    maj     TEXT NOT NULL,
+    PRIMARY KEY (appli, cle)
+);
+CREATE TABLE IF NOT EXISTS evenements_personnes (
+    id       INTEGER PRIMARY KEY,
+    appli    TEXT NOT NULL,
+    cle      TEXT NOT NULL,
+    personne TEXT NOT NULL DEFAULT '',  -- identifiant maison ; vide : pas reconnue (À traiter)
+    nom      TEXT NOT NULL DEFAULT '',
+    immich   TEXT NOT NULL DEFAULT '',
+    role     TEXT NOT NULL DEFAULT '',
+    donnees  TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_evt_personnes_personne ON evenements_personnes(personne);
+CREATE INDEX IF NOT EXISTS idx_evt_personnes_evt ON evenements_personnes(appli, cle);
+-- compteurs par personne envoyés par une appli (ex. Gazette : photos_scandale)
+CREATE TABLE IF NOT EXISTS compteurs (
+    personne TEXT NOT NULL,
+    appli    TEXT NOT NULL,
+    nom      TEXT NOT NULL,
+    valeur   INTEGER NOT NULL,
+    maj      TEXT NOT NULL,
+    PRIMARY KEY (personne, appli, nom)
+);
 """
 
 

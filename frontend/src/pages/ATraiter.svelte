@@ -12,6 +12,25 @@
   let manques = $state(null)
   // 2.21 : personnes des scans de Millésime sans date de naissance (hors compteur, comme « incomplet »)
   let sansAnniversaire = $state(null)
+  // 3.1 : personnes envoyées par une appli (Gazette, Douze points…) que carnet n'a pas reconnues
+  let aRattacher = $state(null)
+  let choixFiche = $state({})      // ligne → texte cherché
+  async function chargerARattacher() {
+    try { aRattacher = (await api.get('/api/evenements/a-rattacher')).personnes } catch (e) { erreur(e) }
+  }
+  const proposees = (q) => {
+    const t = (q || '').trim().toLowerCase()
+    return t.length < 2 ? [] : (etat.contacts || []).filter((c) => c.nom.toLowerCase().includes(t)).slice(0, 5)
+  }
+  async function rattacherEvt(p, uid) {
+    try { await api.put(`/api/evenements/personnes/${p.id}/rattacher`, { uid }); dire('Rattaché à la fiche.'); await chargerARattacher(); await charger(); rafraichirAccueil() }
+    catch (e) { erreur(e) }
+  }
+  async function ecarterEvt(p) {
+    try { await api.effacer(`/api/evenements/personnes/${p.id}`); dire('Écarté : pas quelqu\'un de carnet.'); await chargerARattacher(); await charger(); rafraichirAccueil() }
+    catch (e) { erreur(e) }
+  }
+  const NOMS_TYPES = { sejour: 'Séjour', douze_points: 'Douze points', gazette: 'La Gazette', recidive: 'La Récidive', livre_or: 'Livre d\'or', autre: 'Événement' }
   function ouvrirManque(cle) { etat.manque = cle; aller('contacts') }
 
   // 2.9 : une tuile par type de chose à traiter ; toucher une tuile ouvre sa liste
@@ -30,12 +49,14 @@
     immich: 'Liaisons proposées, noms et dates de naissance qui diffèrent d\'Immich.',
     treemich: 'Mariages, décès, noms, naissances et liens familiaux qui diffèrent de l\'arbre.',
     liens: 'Liens à accorder au genre de la personne (frère, sœur, père, mère).',
+    evenements: 'Personnes envoyées par Gazette, Douze points ou une autre appli que carnet n\'a pas reconnues sans doute possible. Rattache-les à leur fiche, ou écarte un invité de passage.',
     genre: 'Personnes dont carnet ne connaît pas le genre. Il reste dans carnet et rejoint Treemich s\'il y manque. Cette tuile ne compte pas dans le chiffre de l\'onglet.',
   }
   function ouvrir(t) {
     if (t.cle === 'sans_groupe') { etat.manque = 'sans_groupe'; aller('contacts'); return }
     tuile = t.cle; aConfirmer = null; choisi = null; limite = TRANCHE
     if (t.cle === 'sans_anniversaire') chargerSansAnniversaire()
+    if (t.cle === 'evenements') chargerARattacher()
   }
   const ouverte = $derived(tuiles.find((t) => t.cle === tuile))
   // 2.22 : une question « femme ou homme ? » demande une réponse, elle ne part jamais dans un lot « appliquer »
@@ -140,6 +161,30 @@
             </li>
           {/each}
         </ul>
+      </div>
+    {:else if tuile === 'evenements'}
+      <div class="manques feuille">
+        {#if aRattacher === null}
+          <p class="discret">Chargement…</p>
+        {:else if !aRattacher.length}
+          <p class="discret">Plus personne à rattacher.</p>
+        {:else}
+          <ul aria-label="Personnes à rattacher">
+            {#each aRattacher as p (p.id)}
+              <li class="rattacher">
+                <p><strong>{p.nom || p.immich}</strong> <span class="discret">— {NOMS_TYPES[p.type] ?? p.type}{p.titre ? ` « ${p.titre} »` : ''}, {p.date.slice(8, 10)}/{p.date.slice(5, 7)}/{p.date.slice(0, 4)} ({p.appli})</span></p>
+                <input type="search" placeholder="Nom de sa fiche dans carnet" aria-label={'Fiche de ' + (p.nom || p.immich)}
+                       bind:value={choixFiche[p.id]} />
+                <span class="boutons-rattacher">
+                  {#each proposees(choixFiche[p.id]) as c (c.uid)}
+                    <button class="bouton" onclick={() => rattacherEvt(p, c.uid)}>{c.nom}</button>
+                  {/each}
+                  <button class="bouton" onclick={() => ecarterEvt(p)}>Pas dans carnet</button>
+                </span>
+              </li>
+            {/each}
+          </ul>
+        {/if}
       </div>
     {:else if tuile === 'sans_anniversaire'}
       <div class="manques feuille">
@@ -250,4 +295,6 @@
   .lot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
   .vide { padding: 3rem 0; }
   .vide .titre { font-size: 1.3rem; font-weight: 500; margin-bottom: 0.3rem; }
+  .rattacher { display: grid; gap: 0.4rem; padding: 0.6rem 0; border-bottom: 1px solid var(--color-couture); }
+  .boutons-rattacher { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 </style>

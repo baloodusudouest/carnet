@@ -829,6 +829,7 @@ def test_233_fiche_complete_pour_les_journaux(page):
     """2.33 : rubriques repliables, suggestion → pépite, vrac rangé, jauge en nombre, sujets interdits masqués."""
     uid = "F-06" if page.viewport_size["width"] > 500 else "F-07"      # serveur partagé : une fiche par taille
     page.goto(page.url.split("#")[0] + f"#/contacts/{uid}")
+    page.get_by_role("tab", name=re.compile("Pépites")).click()          # 3.1 : dans la tuile Pépites du dossier
     fiche = page.locator("section[aria-label='Fiche complète pour les journaux']")
     fiche.locator(".jauge").wait_for()
     assert "0 pépite" in fiche.locator(".jauge").inner_text()
@@ -861,4 +862,23 @@ def test_233_fiche_complete_pour_les_journaux(page):
     interdits.get_by_role("button", name="Masquer").click()
     assert not interdits.locator(".pepite").count()
     # iPhone : rien ne déborde sur le côté
+    assert page.evaluate("document.documentElement.scrollWidth") <= page.viewport_size["width"]
+
+
+def test_31_fiche_tuiles_et_photo(page):
+    """3.1 (maquette A) : en-tête comme l'iPhone, six tuiles, la tuile choisie s'affiche dessous, la photo ouvre Photos."""
+    uid = "F-06" if page.viewport_size["width"] > 500 else "F-07"
+    page.goto(page.url.split("#")[0] + f"#/contacts/{uid}")
+    onglets = page.get_by_role("tablist", name="Dossier de la personne")
+    onglets.wait_for()
+    noms = [t.inner_text() for t in onglets.get_by_role("tab").all()]
+    for titre in ("Alimentation", "Pépites", "Livre d'or", "Gazette", "Famille", "Photos"):
+        assert any(titre in n for n in noms), titre
+    assert onglets.get_by_role("tab", name=re.compile("Alimentation")).get_attribute("aria-selected") == "true"
+    onglets.get_by_role("tab", name=re.compile("Gazette")).click()
+    page.locator("#dossier-panneau", has_text="photos scandale").wait_for()
+    assert page.locator("#dossier-panneau").get_by_role("heading", name="Séjours et soirées").count() == 1
+    page.get_by_role("button", name=re.compile("Photos : choisir la photo")).click()
+    page.locator("#dossier-panneau").get_by_role("button", name="Choisir la photo et l'affiche").wait_for()
+    assert onglets.get_by_role("tab", name=re.compile("Photos")).get_attribute("aria-selected") == "true"
     assert page.evaluate("document.documentElement.scrollWidth") <= page.viewport_size["width"]

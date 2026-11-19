@@ -34,6 +34,7 @@ export const ICONES_SERVICES = {
 }
 // Icônes des tuiles d'« À traiter »
 export const ICONES_TUILES = {
+  evenements: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9.5h16M8.5 3v4M15.5 3v4"/><circle cx="12" cy="14.5" r="2"/>',
   icloud: '<rect x="7.5" y="3.5" width="9" height="17" rx="2"/><path d="M11 17.5h2"/>',
   sans_groupe: '<circle cx="12" cy="9" r="3.2"/><path d="M5.5 19c.8-3.4 3.3-5 6.5-5"/><path d="M16 15.5v5M13.5 18h5"/>',
   immich: ICONES_SERVICES.immich,

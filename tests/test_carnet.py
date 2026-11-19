@@ -549,7 +549,9 @@ def test_home_assistant_adresses(c):
         assert [(a["jour"], a["mois"], a["annee"]) for a in ann][:2] == [(9, 1, 1983), (14, 3, 1985)]
         assert any(a["annee"] is None for a in ann)          # sans année : null
         liaisons.lier(c, "DDDD-4444", "immich", "im-paul")
-        assert client.get("/ha/personnes", headers=h).json()["personnes"] == [{"nom": "Paul MARTIN", "immich": True}]
+        pers = client.get("/ha/personnes", headers=h).json()["personnes"]          # 3.1 : identifiants pour la carte
+        assert [{k: x[k] for k in ("nom", "immich", "immich_id")} for x in pers] == [{"nom": "Paul MARTIN", "immich": True, "immich_id": "im-paul"}]
+        assert pers[0]["personne_id"].startswith("p-")
         # 2.26 : Sillage, Gazette et Douze points passent par le jeton commun MAISON_JETON seul
         import os
         from app import maison
@@ -608,7 +610,7 @@ def test_home_assistant_adresses(c):
             from app import journaux as J
             assert J.fiche(c, "DDDD-4444")["par"] == "gazette"
             assert __import__("app.coffre", fromlist=["bloc"])._contenu_index(          # 3.0 : note d'index
-                c, "journaux", paul["personne_id"], "Paul MARTIN", []) is not None
+                c, "pepites", paul["personne_id"], "Paul MARTIN", []) is not None
             # 2.30 : un numéro de La Récidive approuvé dans Gazette, rangé sur la fiche, relu par Gazette, recopié au coffre
             corps = {"journal": "recidive", "numero": 2, "le": "2026-11-19", "titre": "Paul récidive !",
                      "evenement": "soirée Eurovision", "indices": "fan de pétanque",

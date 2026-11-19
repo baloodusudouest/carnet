@@ -49,6 +49,7 @@ TUILES = [
     ("imports", "Imports", {"import", "linkedin"}),
     ("incomplet", "Contact incomplet", set()),
     ("sans_anniversaire", "Sans anniversaire", set()),   # 2.21 : personnes des scans de Millésime sans date de naissance
+    ("evenements", "Événements à rattacher", set()),     # 3.1 : personnes envoyées par une appli et non reconnues
 ]
 
 
@@ -77,6 +78,8 @@ def tuiles(c) -> list[dict]:
     par["incomplet"] = attentes.total(c)["incompletes"]
     from . import millesime
     par["sans_anniversaire"] = len(millesime.sans_anniversaire(c))
+    from . import evenements
+    par["evenements"] = len(evenements.a_rattacher(c))
     return [{"cle": cle, "nom": nom, "nombre": par.get(cle, 0), "compte": cle not in HORS_COMPTEUR}
             for cle, nom, _ in TUILES]
 
@@ -184,7 +187,10 @@ def compte(c) -> dict:
     # 2.9 : une fiche sans groupe est une décision à prendre ; elle compte dans le chiffre de l'onglet
     # 2.22.3 : le genre à préciser (une question par personne) ne compte pas : il gonflerait le chiffre de plusieurs centaines
     points = sum(1 for p in tous if p["tuile"] not in HORS_COMPTEUR)
-    return {"total": points + sans_groupe, "points": points, "sans_groupe": sans_groupe, "par_motif": par}
+    from . import evenements
+    a_rattacher = len(evenements.a_rattacher(c))    # 3.1 : une décision à prendre, compte dans le chiffre
+    return {"total": points + sans_groupe + a_rattacher, "points": points, "sans_groupe": sans_groupe,
+            "evenements": a_rattacher, "par_motif": par}
 
 
 def trouver(c, ident: str) -> dict:

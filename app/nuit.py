@@ -110,6 +110,11 @@ def _suite_de_nuit(c: Carnet, lecture: dict, bilan: dict) -> None:
         c.tache.update(message="Coffre Contacts…", progression=0.95)
         from . import coffre
         try:
+            if not c.cfg.lecture_seule:
+                try:
+                    coffre.copier_avant_nuit(c)      # 3.1 : copie des notes avant l'écriture (7 jours gardés)
+                except OSError as exc:
+                    bilan["details"].append(f"Coffre Contacts : copie de sécurité impossible ({exc.strerror or exc})")
             b = coffre.synchroniser(c)
             if b["erreurs"]:
                 bilan["details"].append(f"Coffre Contacts : {b['erreurs'][0]}")

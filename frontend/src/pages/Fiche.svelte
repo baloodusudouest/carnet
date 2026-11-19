@@ -2,8 +2,7 @@
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
   import { aller, apresEcriture, erreur, dire, etat, rafraichirContacts } from '../lib/etat.svelte.js'
-  import Alimentation from '../components/Alimentation.svelte'
-  import Journaux from '../components/Journaux.svelte'
+  import Dossier from '../components/Dossier.svelte'
   import Avatar from '../components/Avatar.svelte'
   import ChoixPhoto from '../components/ChoixPhoto.svelte'
   import Changements from '../components/Changements.svelte'
@@ -18,6 +17,13 @@
   let donnees = $state(null)
   let brouillon = $state(null)    // fiche en cours de modification
   let choixPhoto = $state(false)  // 2.10 : fenêtre des propositions de photo et d'affiche
+  let section = $state('alimentation')   // 3.1 : tuile ouverte du dossier
+  let dossier = $state(null)
+  // 3.1 : toucher la photo ouvre la tuile Photos (choix de la photo du contact et de l'affiche)
+  function ouvrirPhotos() {
+    section = 'photos'
+    requestAnimationFrame(() => dossier?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
   let apercu = $state(null)       // { fiche, champs } avant d'écrire
   let attente = $state(false)
   let proches = $state(null)
@@ -122,6 +128,10 @@
   const comp = $derived(donnees?.completude || {})
   const liees = $derived(comp.plateformes || [])
   const decede = $derived(!!donnees?.deces?.decede)
+  const anneau = $derived(comp.total ? Math.round((comp.score / comp.total) * 100) : null)
+  const alim = $derived(donnees?.alimentation)
+  const tel = $derived(f?.telephones?.[0]?.valeur || '')
+  const courriel = $derived(f?.courriels?.[0]?.valeur || '')
   const prononciation = $derived([f?.prononciation_prenom, f?.prononciation_nom].filter(Boolean).join(' '))
   const ORIGINE_FETE = { calendrier: 'd\'après le calendrier, pas encore écrite dans iCloud', main: 'saisie à la main', carte: '' }
   async function excepter(info, oui) {
@@ -158,7 +168,7 @@
   {#if !donnees}
     <p class="discret">Chargement…</p>
   {:else}
-    <header class="entete">
+    <header class="entete" class:lecture-seule={!brouillon}>
       {#if brouillon}
         <!-- 2.10 : en modification, toucher la photo ouvre les propositions de photo et d'affiche -->
         <button class="changer-photo" onclick={() => (choixPhoto = true)} aria-label="Changer la photo ou l'affiche" title="Changer la photo ou l'affiche">
@@ -166,13 +176,37 @@
           <span class="pastille-photo" aria-hidden="true">✎</span>
         </button>
       {:else}
-        <Avatar {uid} nom={donnees.nom} photo={f.a_photo} taille={84} />
+        <!-- 3.1 (maquette A) : photo ronde avec l'anneau de complétude ; la toucher ouvre la tuile Photos -->
+        <button class="photo-anneau" onclick={ouvrirPhotos} aria-label="Photos : choisir la photo du contact et l'affiche"
+                title={anneau !== null ? `Fiche complète à ${anneau} %` : 'Photos'}>
+          <svg class="anneau" viewBox="0 0 132 132" aria-hidden="true">
+            <circle cx="66" cy="66" r="62" fill="none" stroke="var(--color-couture)" stroke-width="4" />
+            {#if anneau !== null}
+              <circle cx="66" cy="66" r="62" fill="none" stroke="var(--color-onglet)" stroke-width="4" stroke-linecap="round"
+                      stroke-dasharray="389.6" stroke-dashoffset={389.6 * (1 - anneau / 100)} transform="rotate(-90 66 66)" />
+            {/if}
+          </svg>
+          <span class="photo-dedans"><Avatar {uid} nom={donnees.nom} photo={f.a_photo} taille={112} /></span>
+          <span class="pastille-appareil" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          </span>
+        </button>
       {/if}
-      <div>
+      <div class="identite">
         <h1 class="titre">{#if decede}<span class="croix" title="Décédé(e)" aria-label="Décédé(e)">†</span>{' '}{/if}{donnees.nom}</h1>
         {#if prononciation}<p class="discret prononciation">{prononciation}</p>{/if}
         {#if f.societe || f.fonction || f.service}<p class="discret">{[f.fonction, f.service, f.societe].filter(Boolean).join(', ')}</p>{/if}
+        {#if !brouillon && anneau !== null}<p class="discret petit">Fiche complète à {anneau} %</p>{/if}
         {#if f.groupes.length}<p class="groupes">{#each f.groupes as g}<span class="pastille">{g}</span>{/each}</p>{/if}
+        {#if !brouillon && alim}
+          <p class="badges">
+            {#if alim.allergies?.length}<span class="badge-allergie">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3l10 18H2z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg>
+              Allergie : {alim.allergies.join(', ')}</span>{/if}
+            {#if alim.intolerances?.length}<span class="pastille">Intolérance : {alim.intolerances.join(', ')}</span>{/if}
+            {#if !alim.allergies?.length && !alim.intolerances?.length}<span class="pastille">{alim.aucune ? 'Aucune allergie connue' : 'Allergies : à demander'}</span>{/if}
+          </p>
+        {/if}
       </div>
       {#if !brouillon}
         <!-- Stylo : modifier les informations de la fiche -->
@@ -184,6 +218,18 @@
         </button>
       {/if}
     </header>
+
+    {#if !brouillon && (tel || courriel)}
+      <!-- 3.1 : actions comme sur l'iPhone -->
+      <div class="actions">
+        {#if tel}<a class="action" href={'tel:' + tel}>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/></svg>Appeler</a>
+        <a class="action" href={'sms:' + tel}>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg>Message</a>{/if}
+        {#if courriel}<a class="action" href={'mailto:' + courriel}>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>Courriel</a>{/if}
+      </div>
+    {/if}
 
     {#if donnees.a_traiter.length}
       <div class="points">
@@ -264,13 +310,11 @@
         {/if}
       </div>
 
-      {#if (f.prenom || f.nom) && donnees.alimentation}
-        <!-- 2.28 : allergies, intolérances, non aimés, plaisirs (dans carnet seulement) -->
-        <Alimentation {uid} alimentation={donnees.alimentation} onchange={charger} />
-      {/if}
-      {#if (f.prenom || f.nom) && donnees.journaux}
-        <!-- 2.29 : « Pour les journaux » (Gazette, rumeurs de La Récidive) -->
-        <Journaux {uid} journaux={donnees.journaux} onchange={charger} />
+      {#if f.prenom || f.nom}
+        <!-- 3.1 : dossier de la personne en grosses tuiles (Alimentation, Pépites, Livre d'or, Gazette, Famille, Photos) -->
+        <div class="dossier" bind:this={dossier}>
+          <Dossier {uid} {donnees} bind:section onchange={charger} onpropositions={() => (choixPhoto = true)} />
+        </div>
       {/if}
 
       <div class="feuille bloc completude">
@@ -392,11 +436,13 @@
         {#if donnees.linkedin}<p class="discret">LinkedIn : {[donnees.linkedin.fonction, donnees.linkedin.societe].filter(Boolean).join(', ') || donnees.linkedin.url}</p>{/if}
       </div>
 
-      <div class="feuille bloc">
-        <h2 class="titre">Photo et affiche</h2>
-        <PhotosFiche {uid} nom={donnees.nom} lieImmich={!!donnees.liaisons.immich} portraits={donnees.portraits}
-                     affiche={donnees.affiche} societe={f.societe} google={donnees.google_logo} onchange={charger} />
-      </div>
+      {#if !(f.prenom || f.nom)}
+        <div class="feuille bloc">
+          <h2 class="titre">Photo et affiche</h2>
+          <PhotosFiche {uid} nom={donnees.nom} lieImmich={!!donnees.liaisons.immich} portraits={donnees.portraits}
+                       affiche={donnees.affiche} societe={f.societe} google={donnees.google_logo} onchange={charger} />
+        </div>
+      {/if}
 
       <div class="feuille bloc">
         <h2 class="titre">Réunir avec une autre fiche</h2>
@@ -419,6 +465,26 @@
   .pastille-photo { position: absolute; right: -2px; bottom: -2px; width: 1.7rem; height: 1.7rem; display: grid; place-items: center;
                     border-radius: 50%; background: var(--color-onglet); color: var(--color-reliure); font-size: 0.85rem; border: 2px solid var(--color-reliure); }
   .entete > div { flex: 1; min-width: 0; }
+  /* 3.1 (maquette A) : en lecture, en-tête centré comme la fiche de l'iPhone */
+  .entete.lecture-seule { flex-direction: column; text-align: center; position: relative; gap: 0.6rem; }
+  .entete.lecture-seule .stylo { position: absolute; top: 0; right: 0; }
+  .entete.lecture-seule .groupes, .entete.lecture-seule .badges { justify-content: center; }
+  .photo-anneau { position: relative; width: 132px; height: 132px; padding: 0; border: 0; background: none; border-radius: 50%; cursor: pointer; flex: none; }
+  .photo-anneau:focus-visible { outline: 2px solid var(--color-onglet); outline-offset: 3px; }
+  .anneau { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .photo-dedans { position: absolute; inset: 10px; display: grid; place-items: center; }
+  .pastille-appareil { position: absolute; right: 4px; bottom: 4px; width: 2.1rem; height: 2.1rem; display: grid; place-items: center;
+                       border-radius: 50%; background: var(--color-onglet); color: var(--color-sur-onglet); border: 2px solid var(--color-cuir); }
+  .identite h1 { font-weight: 300; }
+  .badges { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.5rem; }
+  .badge-allergie { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 1.9rem; padding: 0 0.75rem; border-radius: 9999px;
+                    font-size: 0.85rem; font-weight: 600; color: var(--color-alerte);
+                    background: color-mix(in srgb, var(--color-alerte) 14%, transparent); border: 1px solid color-mix(in srgb, var(--color-alerte) 45%, transparent); }
+  .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 0.5rem; }
+  .action { display: flex; flex-direction: column; align-items: center; gap: 0.3rem; padding: 0.7rem 0.4rem; min-height: 2.75rem;
+            border-radius: 14px; background: var(--color-reliure); color: var(--color-onglet); text-decoration: none; font-size: 0.82rem; }
+  .action:hover { background: color-mix(in srgb, var(--color-onglet) 10%, var(--color-reliure)); }
+  .dossier { scroll-margin-top: 1rem; display: grid; gap: 0.75rem; }
   .stylo {
     flex: none; align-self: flex-start; display: grid; place-items: center; width: 2.75rem; height: 2.75rem;
     border-radius: 50%; border: 1px solid var(--color-tranche); color: var(--color-onglet);

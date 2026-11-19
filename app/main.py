@@ -25,7 +25,7 @@ from .carnet import Carnet, ErreurCarnet, Occupe
 from .config import charger
 from . import millesime as millesime_
 from . import genres
-from . import alimentation, coffre, journaux, personnes
+from . import alimentation, coffre, evenements, journaux, personnes
 from . import reglages as reglages_
 from .liens import ErreurLien
 from .modele import groupes_tous, nom_affiche
@@ -156,6 +156,10 @@ async def garde(request: Request, appel):
         # 2.22.1 : Douze points lit prénoms et noms, rien d'autre (jeton commun)
         if not ouvert():
             return JSONResponse({"detail": "Jeton de Douze points manquant ou invalide."}, status_code=401)
+    elif chemin.startswith(("/evenements/", "/compteurs/")):
+        # 3.1 : adresse commune des événements envoyés par les applis (jeton commun)
+        if not ouvert():
+            return JSONResponse({"detail": "Jeton commun manquant ou invalide."}, status_code=401)
     # /externe/… (2.26 : sauvegarde pour l'Anneau) : pas de session, la route vérifie le jeton commun.
     # Sans session : seulement l'envoi du mot de passe et la question « suis-je connecté ? ».
     # La lecture de /api/connexion (l'état des services, 2.9) exige une session comme le reste.
@@ -164,7 +168,7 @@ async def garde(request: Request, appel):
         if not ETAT["sessions"].connecte(request.cookies):
             return JSONResponse({"detail": "Connexion nécessaire."}, status_code=401)
     reponse = await appel(request)
-    if chemin.startswith(("/api/", "/ha/", "/sillage/", "/gazette/", "/douze-points/", "/externe/")):
+    if chemin.startswith(("/api/", "/ha/", "/sillage/", "/gazette/", "/douze-points/", "/externe/", "/evenements/", "/compteurs/")):
         reponse.headers["Cache-Control"] = "no-store"
     return reponse
 
@@ -389,6 +393,10 @@ def contact(uid: str, request: Request):
             "personne_id": personnes.de(c, uid),           # 2.28 : identifiant maison stable
             "alimentation": alimentation.fiche(c, uid),     # 2.28 : allergies, intolérances, non aimés, plaisirs
             "journaux": journaux.fiche(c, uid),             # 2.29 : « Pour les journaux » (Gazette)
+            # 3.1 : événements envoyés par les applis (séjours, Gazette, Douze points…) et photos scandale de Gazette
+            "evenements": evenements.de_personne(c, personnes.de(c, uid)),
+            "photos_scandale": evenements.compteur(c, personnes.de(c, uid), "gazette", "photos_scandale"),
+            "pepites": len(journaux.pepites(c, personnes.de(c, uid))),
             "google_logo": galerie.recherche_google(f),
             # 2.15 : le chemin de vie de la personne, si la fiche est liée à Immich et que Sillage a une adresse
             "sillage": (f"{sillage}/#/chemin/{c.liaisons().get(uid, {}).get('immich')}"
@@ -1273,6 +1281,38 @@ def gazette_effacer_pepite(personne_id: str, pid: str, corps: dict | None = Body
 def gazette_pepites_parues(personne_id: str, corps: dict = Body(...)):
     """Numéro approuvé dans Gazette : {ids, date} — les pépites tirées pour ses textes retenus reçoivent `parue_le`."""
     return journaux.marquer_parues(carnet(), personne_id, corps)
+
+
+# ================================================================ Événements des applis (3.1, jeton commun)
+
+@app.put("/evenements/{appli}/{cle}")
+def evenement_recu(appli: str, cle: str, corps: dict = Body(...)):
+    return evenements.recevoir(carnet(), appli, cle, corps)
+
+
+@app.delete("/evenements/{appli}/{cle}")
+def evenement_retire(appli: str, cle: str):
+    return evenements.retirer(carnet(), appli, cle)
+
+
+@app.put("/compteurs/{appli}/{nom}")
+def compteur_recu(appli: str, nom: str, corps: dict = Body(...)):
+    return evenements.recevoir_compteur(carnet(), appli, nom, corps)
+
+
+@app.get("/api/evenements/a-rattacher")
+def evenements_a_rattacher():
+    return {"personnes": evenements.a_rattacher(carnet())}
+
+
+@app.put("/api/evenements/personnes/{ligne_id}/rattacher")
+def evenement_rattacher(ligne_id: int, corps: dict = Body(...)):
+    return evenements.rattacher(carnet(), ligne_id, str((corps or {}).get("uid") or ""))
+
+
+@app.delete("/api/evenements/personnes/{ligne_id}")
+def evenement_ecarter(ligne_id: int):
+    return evenements.ecarter(carnet(), ligne_id)
 
 
 # ================================================================ Douze points (Bearer)
