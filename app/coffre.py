@@ -28,6 +28,12 @@ Sillage (étapes du chemin de vie) est lu au plus une fois par jour et par perso
 liée n'est pas touchée (jamais vidée). L'Arbre vient des relations de Treemich gardées en mémoire par carnet ; sans
 elles (Treemich pas encore lu depuis le démarrage), la fiche liée n'est pas touchée non plus.
 
+3.2 (choix de Julien du 19/11/2026, visualisations du coffre Contacts) : chaque note porte une étiquette dans son
+en-tête (`tags` : `contact`, `fiche` ou `evenement`, en plus de celles ajoutées à la main) pour que Graphview colore le
+graphe par sorte de note ; la fiche liée « Arbre » commence par un schéma Mermaid (la personne, ses parents, sa fratrie,
+son conjoint, ses enfants) et la note Contact a une « Frise » Mermaid de ses séjours, soirées et journaux, année par
+année. Ce sont de simples blocs de code ```mermaid : SilverBullet les dessine avec le plug officiel Mermaid.
+
 Garde-fou : le coffre doit être monté et contenir un dossier `Personnes/` créé par Julien. Si le dossier
 partagé chiffré n'est pas monté, rien n'est écrit (pas de copie en clair dans un dossier vide).
 """
@@ -52,7 +58,7 @@ EVENEMENTS = "Événements"
 DEBUT = "<!-- carnet:debut — partie écrite par carnet, réécrite à chaque synchronisation : ne pas modifier ici -->"
 FIN = "<!-- carnet:fin -->"
 ZONE_LIBRE = "## Mes notes\n\n"
-CLES_CARNET = ("personne_id", "type", "nom", "aliases", "groupes", "naissance", "allergies", "carnet", "maj_carnet",
+CLES_CARNET = ("personne_id", "type", "tags", "nom", "aliases", "groupes", "naissance", "allergies", "carnet", "maj_carnet",
                "index_de", "index_type", "evenement_id", "evenement", "date", "personnes")
 ID = re.compile(r"^personne_id:\s*[\"']?(p-[0-9a-f]{10})[\"']?\s*$", re.M)
 INDEX_DE = re.compile(r"^index_de:\s*[\"']?(p-[0-9a-f]{10})[\"']?\s*$", re.M)
@@ -76,6 +82,12 @@ NATURE = {"recidive": "recidives", "gazette": "gazette", "livre_or": "livre_or",
 JOURNAUX = {"recidive": ("La Récidive", "recidives"), "gazette": ("La Gazette", "gazette")}
 APPLIS = {"gazette": "Gazette", "douze-points": "Douze points", "home-assistant": "Home Assistant"}
 MOTIF_DEBUT = re.compile(r"<!-- carnet:debut\b.*?-->")
+# 3.2 : étiquette de chaque sorte de note (Graphview colore le graphe par étiquette)
+TAG_CONTACT, TAG_FICHE, TAG_EVENEMENT = "contact", "fiche", "evenement"
+# Thème sombre en tête du bloc (forme « config » : la directive %%{init}%% n'est pas lue par mermaid.init(), qu'utilise
+# le plug Mermaid de SilverBullet — essayé avec Mermaid 11.10.1, la version que charge le plug)
+MERMAID_THEME = "---\nconfig:\n  theme: dark\n---"
+FRISE_PAR_ANNEE = 8          # au-delà, « et N autres » sur l'année
 INCONNU = object()          # contenu d'une fiche liée qu'on ne peut pas calculer maintenant : la note n'est pas touchée
 DUREE_SILLAGE = timedelta(hours=24)
 _ANNUAIRE: maison.Annuaire | None = None
@@ -158,7 +170,7 @@ def _yaml(v: str) -> str:
 def _entete_carnet(c: Carnet, f: dict, ident: str, statut: str, le: str) -> list[str]:
     nom = nom_affiche(f)
     alias = [nom] + ([f["surnom"]] if f.get("surnom") and f["surnom"] != nom else [])
-    lignes = [f"personne_id: {ident}", "type: contact", f"nom: {_yaml(nom)}", "aliases:"] + [f"  - {_yaml(a)}" for a in alias]
+    lignes = [f"personne_id: {ident}", "type: contact", "tags:", f"  - {TAG_CONTACT}", f"nom: {_yaml(nom)}", "aliases:"] + [f"  - {_yaml(a)}" for a in alias]
     groupes = sorted(f.get("groupes") or [])
     lignes += ["groupes:"] + [f"  - {_yaml(g)}" for g in groupes] if groupes else ["groupes: []"]
     if f.get("anniversaire"):
@@ -187,8 +199,82 @@ def _date(v: str) -> str:
     return f"{v[8:10]}/{v[5:7]}/{v[:4]}" if len(v) >= 10 else v
 
 
-def bloc(c: Carnet, uid: str, f: dict, ident: str, cibles: dict[str, str], index: dict[str, str] | None = None) -> str:
-    """Partie écrite par carnet dans la note Contact (sans les marqueurs). `index` : type → nom de la fiche liée."""
+# ---------------------------------------------------------------- 3.2 : schémas Mermaid (arbre, frise)
+
+def _mm_libelle(t: str) -> str:
+    """Texte sûr dans un libellé Mermaid entre guillemets."""
+    t = re.sub(r"\s+", " ", str(t or "")).strip()
+    return t.replace("&", "et").replace('"', "#quot;").replace("<", "‹").replace(">", "›")
+
+
+def _mm_frise(t: str) -> str:
+    """Texte sûr dans une frise Mermaid (« : » sépare les événements, « # » et « ; » coupent la ligne)."""
+    t = re.sub(r"\s+", " ", str(t or "")).strip()
+    return re.sub(r"\s*[:;#]\s*", " – ", t).replace("%%", "%").strip(" –")
+
+
+PARENTS = ("père", "mère", "parent")
+FRATRIE = ("frère", "sœur", "frère ou sœur")
+
+
+def arbre_mermaid(nom: str, lignes: list[tuple[str, str]]) -> str:
+    """Bloc ```mermaid de la fiche « Arbre » : parents au-dessus, la personne avec sa fratrie et son conjoint, enfants
+    en dessous. Relations directes seulement (celles de Treemich gardées par carnet)."""
+    l = ["```mermaid", MERMAID_THEME, "flowchart TD", f'  moi["{_mm_libelle(nom)}"]']
+    parents = [(t, n) for t, n in lignes if t in PARENTS]
+    fratrie = [(t, n) for t, n in lignes if t in FRATRIE]
+    conjoints = [(t, n) for t, n in lignes if t == "conjoint"]
+    enfants = [(t, n) for t, n in lignes if t == "enfant"]
+    autres = [(t, n) for t, n in lignes if (t, n) not in parents + fratrie + conjoints + enfants]
+    k = 0
+
+    def noeud(t: str, n: str) -> str:
+        nonlocal k
+        k += 1
+        l.append(f'  n{k}["{_mm_libelle(n)}<br/><small>{_mm_libelle(t)}</small>"]')
+        return f"n{k}"
+    ids_parents = [noeud(t, n) for t, n in parents]
+    for i in ids_parents:
+        l.append(f"  {i} --> moi")
+    for t, n in fratrie:
+        i = noeud(t, n)
+        if ids_parents:
+            l.append(f"  {ids_parents[0]} --> {i}")
+        else:
+            l.append(f"  moi --- {i}")
+    for t, n in conjoints:
+        l.append(f"  moi === {noeud(t, n)}")
+    for t, n in enfants:
+        l.append(f"  moi --> {noeud(t, n)}")
+    for t, n in autres:
+        l.append(f"  moi -.- {noeud(t, n)}")
+    l += ["  classDef moi fill:#c9714a,stroke:#c9714a,color:#1a1714", "  class moi moi", "```"]
+    return "\n".join(l)
+
+
+def frise_mermaid(evts: list[tuple[str, str]]) -> str | None:
+    """Bloc ```mermaid « timeline » d'une personne : [(date AAAA-MM-JJ, titre)] → une colonne par année. None si vide."""
+    par_annee: dict[str, list[str]] = {}
+    for date, titre in sorted(evts):
+        annee = (date or "")[:4]
+        if len(annee) == 4 and annee.isdigit() and _mm_frise(titre):
+            par_annee.setdefault(annee, []).append(_mm_frise(titre))
+    if not par_annee:
+        return None
+    l = ["```mermaid", MERMAID_THEME, "timeline"]
+    for annee, titres in sorted(par_annee.items()):
+        vus = titres[:FRISE_PAR_ANNEE]
+        if len(titres) > FRISE_PAR_ANNEE:
+            vus.append(f"et {len(titres) - FRISE_PAR_ANNEE} autres")
+        l.append(f"  {annee} : " + " : ".join(vus))
+    l.append("```")
+    return "\n".join(l)
+
+
+def bloc(c: Carnet, uid: str, f: dict, ident: str, cibles: dict[str, str], index: dict[str, str] | None = None,
+         frise: list[tuple[str, str]] | None = None) -> str:
+    """Partie écrite par carnet dans la note Contact (sans les marqueurs). `index` : type → nom de la fiche liée ;
+    `frise` (3.2) : [(date, titre)] des événements de la personne."""
     index = index or {}
     nom = nom_affiche(f)
     l = [f"# {nom}", "", "## Fiche"]
@@ -215,6 +301,8 @@ def bloc(c: Carnet, uid: str, f: dict, ident: str, cibles: dict[str, str], index
         l += ["", "## Famille et proches"] + [f"- {t} : {_lien_note(v, cibles)}" for t, v in proches]
     if index:
         l += ["", "## Ses fiches"] + [f"- {_lien(index[t], TYPES[t])}" for t in TYPES if t in index]
+    if frise and (schema := frise_mermaid(frise)):
+        l += ["", "## Frise", "", schema]
     if f.get("notes"):
         l += ["", "## Notes de la fiche (iCloud)", *[f"> {x}" if x else ">" for x in f["notes"].splitlines()]]
     lien = c.liaisons().get(uid, {})
@@ -319,7 +407,7 @@ def _stem_evenement(e: dict) -> str:
 
 
 def _entete_evenement(eid: str, e: dict, le: str) -> list[str]:
-    return [f"evenement_id: {eid}", "type: evenement", f"evenement: {e['nature']}", f"date: {_yaml(e['date'])}",
+    return [f"evenement_id: {eid}", "type: evenement", "tags:", f"  - {TAG_EVENEMENT}", f"evenement: {e['nature']}", f"date: {_yaml(e['date'])}",
             "personnes:"] + [f"  - {i}" for i in e["personnes"]] + ["carnet: présente", f"maj_carnet: {le}"]
 
 
@@ -458,7 +546,7 @@ def _contenu_index(c: Carnet, typ: str, ident: str, nom_contact: str, liens_evts
         if not extra:
             return None
         lignes, cibles, lien = extra
-        l = tete + [""] + [f"- {t} : {_lien_note(n, cibles)}" for t, n in lignes]
+        l = tete + ["", arbre_mermaid(nom_contact, lignes), ""] + [f"- {t} : {_lien_note(n, cibles)}" for t, n in lignes]
         if lien:
             l += ["", f"[Arbre dans Treemich]({lien})"]
         return "\n".join(l)
@@ -468,7 +556,7 @@ def _contenu_index(c: Carnet, typ: str, ident: str, nom_contact: str, liens_evts
 
 
 def _entete_index(ident: str, typ: str, le: str) -> list[str]:
-    return [f"index_de: {ident}", "type: index", f"index_type: {typ}", "carnet: présente", f"maj_carnet: {le}"]
+    return [f"index_de: {ident}", "type: index", "tags:", f"  - {TAG_FICHE}", f"index_type: {typ}", "carnet: présente", f"maj_carnet: {le}"]
 
 
 def _ligne_index(nature: str, stem: str, e: dict, ident: str) -> str:
@@ -508,12 +596,47 @@ def _entete_gardee(lignes: list[str]) -> list[str]:
     return garde
 
 
+def _tags(lignes: list[str]) -> list[str]:
+    """Étiquettes de l'en-tête existant (`tags: a`, `tags: [a, b]`, `tags: a, b` ou liste en tirets)."""
+    res, dedans = [], False
+    for ligne in lignes:
+        m = re.match(r"^tags:\s*(.*)$", ligne)
+        if m:
+            dedans = True
+            v = m.group(1).strip()
+            if v.startswith("[") and v.endswith("]"):
+                v = v[1:-1]
+            res += [x for x in (t.strip().strip("'\"").lstrip("#") for t in v.split(",")) if x]
+            continue
+        if dedans:
+            m = re.match(r"^\s+-\s*(.+)$", ligne)
+            if m:
+                res.append(m.group(1).strip().strip("'\"").lstrip("#"))
+                continue
+            if ligne.strip():
+                dedans = False
+    return res
+
+
+def _fusionner_tags(entete: list[str], anciennes: list[str]) -> list[str]:
+    """3.2 : l'étiquette de carnet d'abord, puis celles ajoutées à la main (gardées, sans doublon)."""
+    if "tags:" not in entete:
+        return entete
+    i = entete.index("tags:")
+    j = i + 1
+    while j < len(entete) and entete[j].startswith("  - "):
+        j += 1
+    tags = [t[4:] for t in entete[i + 1:j]]
+    tags += [t for t in _tags(anciennes) if t not in tags]
+    return entete[:i + 1] + [f"  - {_yaml(t)}" for t in tags] + entete[j:]
+
+
 def assembler(existant: str | None, entete: list[str], contenu: str) -> str | None:
     """Nouveau texte de la note, ou None si l'existant n'a plus de bloc carnet (rien n'est réécrit)."""
-    tete = "---\n" + "\n".join(entete) + "\n"
     if existant is None:
-        return f"{tete}---\n{DEBUT}\n{contenu}\n{FIN}\n\n{ZONE_LIBRE}"
+        return "---\n" + "\n".join(entete) + f"\n---\n{DEBUT}\n{contenu}\n{FIN}\n\n{ZONE_LIBRE}"
     lignes, corps = _separer(existant)
+    tete = "---\n" + "\n".join(_fusionner_tags(entete, lignes)) + "\n"
     m, fin = MOTIF_DEBUT.search(corps), corps.find(FIN)
     if not m or fin == -1 or fin < m.end():
         return None
@@ -692,6 +815,7 @@ def synchroniser(c: Carnet, ecrire: bool = True) -> dict:
     # 2. Notes d'événement (partagées)
     evts = evenements(c, ids)
     par_personne: dict[tuple[str, str], list[str]] = {}
+    frises: dict[str, list[tuple[str, str]]] = {}
     for eid, e in sorted(evts.items(), key=lambda x: (x[1]["date"], x[0]), reverse=True):
         e["personnes"] = [i for i in e["personnes"] if i in noms]
         existant = inv["evenements"].get(eid)
@@ -705,6 +829,7 @@ def synchroniser(c: Carnet, ecrire: bool = True) -> dict:
             chemin = chemin.with_name(f"{_stem_evenement(e)} ({eid}).md")
         for i in e["personnes"]:
             par_personne.setdefault((i, e["nature"]), []).append(_ligne_index(e["nature"], chemin.stem, e, i))
+            frises.setdefault(i, []).append((e["date"], e["titre"]))
         try:
             avant = bilan["crees"]
             _poser(chemin, existant is not None, _entete_evenement(eid, e, le), _bloc_evenement(e, noms), ecrire, bilan, "crees")
@@ -763,7 +888,7 @@ def synchroniser(c: Carnet, ecrire: bool = True) -> dict:
                 bilan["erreurs"].append(f"{p_idx.name} : {exc.strerror or exc}")
         try:
             _poser(chemin, ident in inv["contacts"], _entete_carnet(c, f, ident, "présente", le),
-                   bloc(c, uid, f, ident, cibles, index), ecrire, bilan, "crees")
+                   bloc(c, uid, f, ident, cibles, index, frises.get(ident)), ecrire, bilan, "crees")
         except OSError as exc:
             bilan["erreurs"].append(f"{chemin.name} : {exc.strerror or exc}")
 

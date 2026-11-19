@@ -250,7 +250,7 @@ def test_coffre_zone_libre_et_entete_a_la_main_gardees(c):
     nouveau = chemin.read_text(encoding="utf-8")
     assert "**Intolérances** : gluten" in (chemin.parent / "Paul MARTIN — Allergies.md").read_text(encoding="utf-8")
     assert "Il préfère le thé. Secret de famille." in nouveau and "Avant le bloc, à moi." in nouveau
-    assert "tags:\n  - cousin" in nouveau and nouveau.count("personne_id:") == 1
+    assert "tags:\n  - contact\n  - cousin" in nouveau and nouveau.count("personne_id:") == 1   # 3.2 : étiquette de carnet + celle à la main
 
 
 def test_coffre_note_deplacee_retrouvee_note_sans_bloc_respectee(c):
