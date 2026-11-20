@@ -300,4 +300,77 @@ def _naissances_vers(c: Carnet, d: dict, service: str, bilan: dict) -> None:
             break
 
 
-__all__ = ["SERVICES", "etat", "verifier", "synchroniser", "nuit_active", "regler_nuit"]
+# ----------------------------------------------------------------- essais légers des fiches « Connexion » (3.3)
+# Contrat 3 (socle 0.11.0) : une seule lecture courte, rien d'écrit, rien de payant. Ce n'est pas « Vérifier »
+# de l'écran de travail (qui relit tout et compare) : seulement « le service répond-il ? ».
+
+def essai_carddav(dav) -> tuple[bool, str]:
+    """iCloud ou Synology Contacts : le carnet d'adresses est retrouvé (découverte gardée 1 h) puis interrogé
+    une fois (PROPFIND de profondeur 0, sans lire aucune carte)."""
+    try:
+        adresse = dav.decouvrir()
+        dav._propfind(adresse, "<d:resourcetype/>", 0)
+    finally:
+        dav.fermer()
+    return True, "Carnet d'adresses joint."
+
+
+def essai_immich(c: Carnet) -> tuple[bool, str]:
+    """Immich : une personne demandée (clé d'API essayée), rien d'écrit."""
+    im = c.immich()
+    try:
+        r = im._get("/people", page=1, size=1)
+        if r.status_code >= 400:
+            return False, f"Immich a répondu {r.status_code}."
+        version = ""
+        try:
+            v = im._get("/server/version")
+            if v.status_code < 400:
+                d = v.json()
+                version = f" Version {d.get('major')}.{d.get('minor')}.{d.get('patch')}." if d.get("major") is not None else ""
+        except Exception:                                 # noqa: BLE001 — la version n'est qu'un plus
+            version = ""
+        return True, "Clé d'API acceptée." + version
+    finally:
+        im.fermer()
+
+
+def essai_treemich(c: Carnet) -> tuple[bool, str]:
+    """Treemich : un GET court sur son adresse, SANS connexion (Treemich limite fortement le nombre de
+    connexions ; la connexion et la lecture de l'arbre restent à « Vérifier » de l'écran de travail)."""
+    with c.http("treemich") as client:
+        r = client.get(c.cfg.treemich_url.rstrip("/") + "/health", timeout=5)
+    if r.status_code >= 500:
+        return False, f"Treemich a répondu {r.status_code}."
+    return True, "Treemich répond (connexion non essayée, pour ménager les connexions permises)."
+
+
+def essai_kit(c: Carnet) -> tuple[bool, str]:
+    """Kit d'urgence : le dossier du kit est monté, et le kit répond à /health (rien n'est régénéré)."""
+    if not (c.cfg.kit_config and c.cfg.kit_config.is_dir()):
+        return False, "Dossier du kit introuvable : vérifie le volume du dossier config du kit dans la stack."
+    with c.http("kit") as client:
+        r = client.get(f"{c.cfg.kit_url}/health", timeout=5)
+    if r.status_code >= 400:
+        return False, f"Le kit a répondu {r.status_code}."
+    try:
+        v = r.json().get("version")
+    except (ValueError, AttributeError):
+        v = None
+    return True, f"Dossier du kit monté. Version {v}." if v else "Dossier du kit monté, le kit répond."
+
+
+def essai_millesime(c: Carnet) -> tuple[bool, str]:
+    """Millésime : son état relu tout de suite (GET /api/etat, jeton commun), comme toutes les 10 minutes."""
+    lu = millesime.lire(c, forcer=True)
+    return (True, "État lu.") if lu["ok"] else (False, lu["erreur"] or "Millésime n'a pas répondu.")
+
+
+def essai_coffre(c: Carnet) -> tuple[bool, str]:
+    """Coffre Contacts : le dossier est monté et porte le dossier des notes (garde-fou), rien n'est écrit."""
+    coffre.racine(c)
+    return True, f"Coffre monté, dossier « {coffre.DOSSIER} » présent."
+
+
+__all__ = ["SERVICES", "etat", "verifier", "synchroniser", "nuit_active", "regler_nuit", "essai_carddav",
+           "essai_immich", "essai_treemich", "essai_kit", "essai_millesime", "essai_coffre"]

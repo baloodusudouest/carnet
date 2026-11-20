@@ -2,12 +2,14 @@
   import { onMount } from 'svelte'
   import { api } from './lib/api.js'
   import { etat, aller, annuler, rafraichirAccueil, rafraichirContacts } from './lib/etat.svelte.js'
+  import { tache } from './lib/suivi.svelte.js'
   import Connexion from './pages/Connexion.svelte'
   import ATraiter from './pages/ATraiter.svelte'
   import Contacts from './pages/Contacts.svelte'
   import Fiche from './pages/Fiche.svelte'
   import Fusion from './pages/Fusion.svelte'
-  import Services from './pages/Services.svelte'
+  import Services from '$lib/services/Services.svelte'   // 3.3 : écran commun des fiches « Connexion » (contrat 3, socle 0.11.0)
+  import Outils from './pages/Outils.svelte'              // 3.3 : l'ancien écran Connexion, sous les fiches
   import Groupes from './pages/Groupes.svelte'
   import Photos from './pages/Photos.svelte'
   import Reglages from './pages/Reglages.svelte'
@@ -27,6 +29,21 @@
   const compte = $derived(etat.accueil?.a_traiter?.total ?? 0)
   const enCours = $derived(etat.accueil?.tache?.etat === 'en_cours')
   const alerte = $derived(etat.accueil?.nuit?.erreur || etat.accueil?.tache?.etat === 'erreur')
+
+  // 3.3 : geste d'une fiche commune → route existante POST /api/connexion/{clé}/synchroniser (opération de fond
+  // suivie par /api/accueil), puis l'écran de travail relit son état. La phrase rendue s'affiche sous la fiche.
+  const CLES = { icloud: 'icloud', immich: 'immich', treemich: 'treemich', 'synology-contacts': 'synology',
+                 'kit-urgence': 'kit', 'coffre-contacts': 'contacts' }
+  let outils = $state(null)
+  async function geste(service) {
+    const cle = CLES[service.id]
+    if (!cle) throw new Error('Ce service n\'a pas de geste dans carnet.')
+    const fini = await tache('synchro', `/api/connexion/${cle}/synchroniser`, {}, 'synchro')
+    const t = etat.accueil?.tache
+    await Promise.all([rafraichirContacts(), rafraichirAccueil(), outils?.charger()])
+    if (!fini || t?.etat === 'erreur') throw new Error(t?.message || 'L\'opération a échoué.')
+    return t?.nom === 'synchro' && t.message ? t.message : 'Fait.'
+  }
 
   async function demarrer() {
     const s = await api.get('/api/session')
@@ -94,7 +111,10 @@
       {:else if etat.route.page === 'groupes'}
         <Groupes />
       {:else if etat.route.page === 'connexion' || etat.route.page === 'etat'}
-        <Services />
+        <div class="services-communs">
+          <Services lectureSeule={!!etat.accueil?.lecture_seule} ongeste={geste} ondeconnecte={() => (etat.connecte = false)} />
+        </div>
+        <div class="outils"><Outils bind:this={outils} /></div>
       {:else}
         <ATraiter />
       {/if}
@@ -113,6 +133,8 @@
 
 <style>
   .cadre { min-height: 100dvh; }
+  .services-communs { max-width: 60rem; }
+  .outils { margin-top: 2.25rem; padding-top: 1.25rem; border-top: 1px solid var(--color-couture); }
   .contenu {
     padding: calc(0.75rem + env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) calc(5.5rem + env(safe-area-inset-bottom))
              max(1rem, env(safe-area-inset-left));

@@ -25,6 +25,19 @@
   --color-alerte: #ef7b72;
   --color-ombre: rgb(0 0 0 / 0.5);
 
+  /* 3.3 : jetons attendus par les fichiers communs du socle (frontend/src/lib/services/, fiches « Connexion »),
+     alias vers les couleurs de carnet. Ne pas retoucher les fichiers communs : ajuster ici. */
+  --color-background: var(--color-cuir);
+  --color-foreground: var(--color-papier);
+  --color-card: var(--color-reliure);
+  --color-card-foreground: var(--color-papier);
+  --color-border: var(--color-couture);
+  --color-input: var(--color-champ);
+  --color-muted-foreground: var(--color-mine);
+  --color-primary: var(--color-onglet);
+  --color-primary-foreground: var(--color-sur-onglet);
+  --color-destructive: var(--color-alerte);
+
   --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-livre: var(--font-sans);   /* les titres ne sont plus en caractères à empattements */
 }
@@ -44,6 +57,9 @@
   input[type="checkbox"], input[type="radio"] { width: auto; }
   input:focus, select:focus, textarea:focus { border-color: var(--color-onglet); outline: none; }
   button { cursor: pointer; }
+  /* 3.3 : « border » sans couleur dans les fichiers communs = le filet de carnet (comme shadcn dans le socle) */
+  .services-communs *, .services-communs ::before, .services-communs ::after { border-color: var(--color-border); }
+  .services-communs h1.titre { font-size: 1.9rem; line-height: 1.15; }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { transition: none !important; animation: none !important; }
   }
@@ -85,6 +101,7 @@
   h1.titre { font-weight: 300; letter-spacing: -0.035em; }
   .feuille { background: transparent; border: 1px solid var(--color-couture); border-radius: 12px; }
   .discret { color: var(--color-mine); }
+  .etiquette { font-size: 0.72rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--color-mine); }
   .avant { color: var(--color-mine); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--color-alerte) 70%, transparent); }
   .apres { color: var(--color-papier); background: color-mix(in srgb, var(--color-onglet) 22%, transparent); border-radius: 4px; padding: 0 0.25rem; }
   /* Écran tactile ou petit écran : 16 px dans les champs (Safari ne zoome plus) et aucune

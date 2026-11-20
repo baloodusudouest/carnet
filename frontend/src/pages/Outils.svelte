@@ -1,6 +1,9 @@
 <script>
-  // Connexion (2.9) : une icône par service. Chaque service se vérifie (relire et comparer, sans
-  // rien écrire) et se synchronise (écrire ce qui est sûr, envoyer les différences dans À traiter).
+  // Outils de Connexion (3.3 ; écran Connexion de la 2.9) : sous les fiches communes (contrat 3), une icône par
+  // service pour le travail de carnet : « Comparer » (relire et comparer, sans rien écrire ; « Vérifier » jusqu'à
+  // la 3.2), interrupteurs de nuit, différences, état de Millésime, « Relire quand même », « Forcer la copie »,
+  // et Sauvegardes, Import, réseaux, Attentes. Synchroniser, Copier maintenant et Envoyer au kit sont le geste de
+  // la fiche commune du service (au-dessus).
   import { onMount, tick } from 'svelte'
   import { api } from '../lib/api.js'
   import { dire, erreur, etat as global, rafraichirAccueil, rafraichirContacts } from '../lib/etat.svelte.js'
@@ -29,7 +32,8 @@
   const date = (iso) => iso ? new Date(iso).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : 'jamais'
   const court = (iso) => iso ? new Date(iso).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ''
 
-  async function charger() {
+  // Appelée aussi par l'écran Connexion après le geste d'une fiche commune (bind:this)
+  export async function charger() {
     try { cx = await api.get('/api/connexion') } catch (err) { erreur(err) }
   }
   async function ouvrir(cle) {
@@ -46,11 +50,10 @@
       await Promise.all([charger(), rafraichirAccueil()])
     } catch (err) { erreur(err) } finally { attente = '' }
   }
-  async function synchroniser(forcer = false) {
+  async function forcerCopie() {
     attente = 'synchroniser'
     try {
-      if (choisi === 'synology' && forcer) await tache('synchro', '/api/synology', { forcer: true }, 'synology')
-      else await tache('synchro', `/api/connexion/${choisi}/synchroniser`, {}, 'synchro')
+      await tache('synchro', '/api/synology', { forcer: true }, 'synology')
       const t = global.accueil?.tache
       if (t?.etat === 'erreur') erreur(new Error(t.message)); else dire(t?.message || 'Synchronisé.')
       rapport = null
@@ -80,6 +83,9 @@
   const cartesVisibles = $derived((sauvegarde?.cartes || []).filter((c) =>
     c.etat !== 'identique' && (!filtreSauvegarde || c.nom.toLowerCase().includes(filtreSauvegarde.toLowerCase()))))
   const voyant = (s) => attente && choisi === s.cle ? 'en_cours' : s.voyant
+  // Le geste qui écrit est sur la fiche commune du service (3.3)
+  const FICHES = { synology: 'Synology Contacts', contacts: 'Coffre Contacts', kit: "Kit d'urgence" }
+  const GESTES = { synology: 'Copier maintenant', kit: 'Envoyer au kit' }
   const EXPLICATIONS = {
     icloud: 'iCloud est la source : carnet le relit, signale ce qui a changé sur l\'iPhone et n\'y écrit que ce que tu as validé — plus les fêtes, si tu le veux.',
     immich: 'Vérifier compare le nom, la date de naissance et la photo de chaque fiche reliée. Synchroniser fait les liaisons sûres, complète les naissances d\'un côté ou de l\'autre et pose les portraits manquants.',
@@ -93,12 +99,12 @@
   onMount(charger)
 </script>
 
-<section class="page">
-  <h1 class="titre">Connexion</h1>
+<section class="page" aria-labelledby="titre-outils">
+  <h2 class="titre" id="titre-outils">Outils</h2>
   {#if !cx}
     <p class="discret">Chargement…</p>
   {:else}
-    <nav class="tuiles" aria-label="Services">
+    <nav class="tuiles" aria-label="Outils">
       {#each cx.services as s (s.cle)}
         <button class="tuile" aria-pressed={choisi === s.cle} onclick={() => ouvrir(s.cle)}>
           <span class="voyant-tuile"><Voyant etat={voyant(s)} /></span>
@@ -122,33 +128,32 @@
 
     <div id="detail-service"></div>
     {#if !choisi}
-      <p class="discret">Touche un service pour le vérifier ou le synchroniser. Le chiffre en couleur est le nombre de différences qui t'attendent dans « À traiter ».</p>
+      <p class="discret">Touche un service pour le comparer en détail ou régler sa nuit, ou un outil (Sauvegardes, Import, réseaux, Attentes). Le chiffre en couleur est le nombre de différences qui t'attendent dans « À traiter ».</p>
     {:else if choisi === 'attentes'}
       <Attentes />
     {:else if service}
       <div class="feuille bloc" aria-label={service.nom}>
         <div class="entete-service">
-          <h2 class="titre">{service.nom}</h2>
+          <h3 class="titre">{service.nom}</h3>
           <span class="discret">{service.voyant === 'off' ? 'non configuré' : service.le ? `vu le ${court(service.le)}` : ''}</span>
         </div>
         {#if service.voyant === 'erreur'}<p class="alerte" role="alert">{service.message}</p>{/if}
         {#if EXPLICATIONS[choisi]}<p class="discret">{EXPLICATIONS[choisi]}</p>{/if}
-        {#if cx.lecture_seule && service.synchronisable}<p class="discret" role="status">Mode lecture seule : Synchroniser sera refusé.</p>{/if}
+        {#if service.synchronisable}
+          <p class="discret petit">{GESTES[choisi] || 'Synchroniser'} : bouton de la fiche {FICHES[choisi] || service.nom}, en haut de l'écran{cx.lecture_seule ? ' (refusé en mode lecture seule)' : ''}.</p>
+        {/if}
 
-        {#if service.verifiable || service.synchronisable}
+        {#if service.verifiable || service.differences || (choisi === 'synology' && service.voyant === 'erreur')}
           <div class="boutons">
             {#if service.verifiable}
-              <button class="bouton" disabled={bloque || service.voyant === 'off'} onclick={verifier}>{attente === 'verifier' ? 'Vérification…' : 'Vérifier'}</button>
-            {/if}
-            {#if service.synchronisable}
-              <button class="bouton bouton-principal" disabled={bloque || service.voyant === 'off' || cx.lecture_seule} onclick={() => synchroniser()}>
-                {attente === 'synchroniser' ? 'Synchronisation…' : choisi === 'synology' ? 'Copier maintenant' : choisi === 'kit' ? 'Envoyer au kit' : 'Synchroniser'}</button>
+              <button class="bouton" disabled={bloque || service.voyant === 'off'} onclick={verifier}>{attente === 'verifier' ? 'Comparaison…' : 'Comparer'}</button>
             {/if}
             {#if choisi === 'synology' && service.voyant === 'erreur'}
-              <button class="bouton bouton-danger" disabled={bloque} onclick={() => synchroniser(true)}>Forcer la copie</button>
+              <button class="bouton bouton-danger" disabled={bloque} onclick={forcerCopie}>Forcer la copie</button>
             {/if}
             {#if service.differences}<a class="bouton" href="#/a-traiter">{service.differences} différence(s) dans À traiter</a>{/if}
           </div>
+          {#if service.verifiable}<p class="discret petit">Comparer relit {service.nom} et compare fiche par fiche, sans rien écrire (plus long que « Vérifier » de la fiche, qui regarde seulement si le service répond).</p>{/if}
         {/if}
 
         {#if choisi === 'millesime' && service.millesime}
@@ -281,8 +286,8 @@
 
 <style>
   .page { max-width: 60rem; display: grid; gap: 1rem; }
-  h1 { font-size: 1.9rem; }
-  h2 { font-size: 1.25rem; }
+  h2 { font-size: 1.4rem; }
+  h3 { font-size: 1.25rem; }
   #detail-service { scroll-margin-top: 0.75rem; }
   .tuiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
   .tuile { position: relative; display: grid; gap: 0.3rem; justify-items: start; text-align: left; padding: 0.85rem 0.95rem; border-radius: 12px;

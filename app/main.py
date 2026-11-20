@@ -736,12 +736,101 @@ def connexion_verifier(service: str):
 @app.post("/api/connexion/{service}/synchroniser")
 def connexion_synchroniser(service: str):
     c = carnet()
-    return _fond("synchro", lambda: connexion.synchroniser(c, service))
+
+    def travail():
+        # 3.3 : un geste réussi sert d'essai à la fiche « Connexion » du service (contrat 3). Un échec n'est pas
+        # noté : il peut venir de carnet lui-même (lecture seule, groupe Urgence vide…) ; son message s'affiche.
+        fiche = FICHE_DE_CLE.get(service)
+        res = connexion.synchroniser(c, service)
+        if fiche:
+            SERVICES.noter(fiche, True, (res or {}).get("message") if isinstance(res, dict) else None)
+        return res
+    return _fond("synchro", travail)
 
 
 @app.post("/api/connexion/{service}/nuit")
 def connexion_nuit(service: str, corps: dict = Body(...)):
     return connexion.regler_nuit(carnet(), service, bool(corps.get("actif")))
+
+
+# ================================================================ fiches « Connexion » (3.3, contrat 3, socle 0.11.0)
+# Une fiche par service extérieur (écran commun du socle et fiche « État » de l'Anneau) : ce que carnet y lit, ce qu'il
+# y écrit, la variable qui le relie, un essai LÉGER (une lecture courte : rien d'écrit, rien de réveillé) et au plus un
+# geste qui écrit, porté par la route existante POST /api/connexion/{clé}/synchroniser. « Vérifier » de l'écran de
+# travail (relire et comparer), les interrupteurs de nuit, Sauvegardes, Import, réseaux et Attentes restent dans
+# l'écran Connexion, sous les fiches. Le dossier de données (/state, /data) n'est pas un service.
+
+def _derniere(cle: str, sans_erreur: bool = False):
+    """Date ISO gardée par carnet après sa dernière écriture chez un service (None si jamais)."""
+    d = carnet().base.lire(cle) or {}
+    if sans_erreur and d.get("erreur"):
+        return None
+    return d.get("le") if isinstance(d, dict) else None
+
+
+SYNCHRONISER = {"id": "synchroniser", "nom": "Synchroniser"}
+SERVICES = maison.Services(reglages_.ID_APPLI)
+SERVICES.ajouter(
+    "icloud", "iCloud",
+    lit="iCloud est la source : carnet le relit et signale ce qui a changé sur l'iPhone.",
+    ecrit="carnet n'y écrit que ce que tu as validé — plus les fêtes, si tu le veux.",
+    regle=lambda: bool(carnet().cfg.icloud_user), reglage="CARNET_ICLOUD_USER et CARNET_ICLOUD_PASSWORD",
+    essai=lambda: connexion.essai_carddav(carnet().icloud()), geste=SYNCHRONISER,
+).ajouter(
+    "immich", "Immich",
+    lit="Le nom, la date de naissance et la photo de chaque fiche reliée à une personne d'Immich.",
+    ecrit="Synchroniser fait les liaisons sûres, complète les naissances d'un côté ou de l'autre et pose les "
+          "portraits manquants.",
+    regle=lambda: bool(carnet().cfg.immich_cle), reglage="CARNET_IMMICH_CLE",
+    essai=lambda: connexion.essai_immich(carnet()), geste=SYNCHRONISER,
+).ajouter(
+    "treemich", "Treemich",
+    lit="Le nom, la naissance, le mariage, le décès et les liens familiaux de chaque fiche reliée à l'arbre.",
+    ecrit="Synchroniser remplit le côté vide, sans jamais écraser.",
+    regle=lambda: bool(carnet().cfg.treemich_email), reglage="CARNET_TREEMICH_EMAIL et CARNET_TREEMICH_PASSWORD",
+    essai=lambda: connexion.essai_treemich(carnet()), geste=SYNCHRONISER,
+).ajouter(
+    "synology-contacts", "Synology Contacts",
+    lit="Les cartes déjà copiées, pour les comparer à iCloud (Vérifier, sans rien écrire).",
+    ecrit="Copie à l'identique d'iCloud vers Synology Contacts.",
+    regle=lambda: bool(carnet().cfg.synology_url), reglage="CARNET_SYNOLOGY_URL",
+    essai=lambda: connexion.essai_carddav(carnet().synology()), geste={"id": "copier", "nom": "Copier maintenant"},
+    derniere_ecriture=lambda: _derniere("synology", sans_erreur=True),
+).ajouter(
+    "home-assistant", "Home Assistant",
+    lit="Home Assistant vient lire carnet : contacts, anniversaires et mariages (/ha/anniversaires), "
+        "fêtes (/ha/fetes), invités, portraits.",
+    ecrit="carnet n'écrit rien dans Home Assistant.",
+    regle=lambda: bool(carnet().cfg.ha_token), reglage="CARNET_HA_TOKEN",
+).ajouter(
+    "kit-urgence", "Kit d'urgence", genre="maison", cible="kit-urgence",
+    lit="Rien.",
+    ecrit="Les contacts du groupe Urgence sont envoyés au kit d'urgence.",
+    regle=lambda: bool(carnet().cfg.kit_config and carnet().cfg.kit_config.is_dir()),
+    reglage="CARNET_KIT_CONFIG (volume ${KIT_DATA_DIR}/config)",
+    essai=lambda: connexion.essai_kit(carnet()), geste={"id": "envoyer", "nom": "Envoyer au kit"},
+    derniere_ecriture=lambda: _derniere("dernier_envoi_kit"),
+).ajouter(
+    "millesime", "Millésime", genre="maison", cible="millesime",
+    lit="Millésime date les scans de photos papier d'Immich par l'âge des visages. carnet vient lire son état "
+        "toutes les 10 minutes au plus (jeton commun MAISON_JETON). Les personnes des scans sans date de naissance "
+        "sont dans À traiter › Sans anniversaire.",
+    ecrit="carnet n'y écrit rien.",
+    regle=lambda: bool(carnet().cfg.millesime_jeton), reglage="MAISON_JETON",
+    essai=lambda: connexion.essai_millesime(carnet()),
+).ajouter(
+    "coffre-contacts", "Coffre Contacts",
+    lit="Les notes déjà là : leur en-tête et ce que tu y as écrit hors du bloc de carnet, gardé tel quel.",
+    ecrit="Écrire les notes du coffre Contacts (SilverBullet).",
+    regle=lambda: bool(carnet().cfg.contacts), reglage="CARNET_CONTACTS (volume /contacts)",
+    essai=lambda: connexion.essai_coffre(carnet()), geste=SYNCHRONISER,
+    derniere_ecriture=lambda: _derniere("coffre_contacts"),
+)
+# Fiche commune ↔ clé de l'écran de travail (routes /api/connexion/{clé}/…)
+FICHE_DE_CLE = {"icloud": "icloud", "immich": "immich", "treemich": "treemich", "synology": "synology-contacts",
+                "kit": "kit-urgence", "contacts": "coffre-contacts"}
+# Monté APRÈS la garde : le dernier middleware ajouté passe en premier (la garde ne voit pas ces deux routes).
+maison.monter_services(app, SERVICES, lambda r: "sessions" in ETAT and ETAT["sessions"].connecte(r.cookies))
 
 
 @app.get("/api/a-traiter-tuiles")

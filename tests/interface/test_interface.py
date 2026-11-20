@@ -78,11 +78,11 @@ def ouvrir_tuile(page, nom):
 
 
 def ouvrir_service(page, nom):
-    """2.9 : Connexion, une icône par service."""
+    """2.9 : Connexion, une icône par service ; 3.3 : ces icônes sont les « Outils », sous les fiches communes."""
     page.click("nav.onglets a[aria-label='Connexion']")
-    page.wait_for_selector("nav[aria-label='Services'] .tuile")
+    page.wait_for_selector("nav[aria-label='Outils'] .tuile")
     # par le nom de la tuile, pas par son résumé (« Import » cite Instagram et Facebook)
-    page.locator("nav[aria-label='Services'] .tuile", has=page.locator(".nom-tuile", has_text=nom)).first.click()
+    page.locator("nav[aria-label='Outils'] .tuile", has=page.locator(".nom-tuile", has_text=nom)).first.click()
 
 
 def test_trois_onglets_et_badge(page):
@@ -169,7 +169,7 @@ def test_etat_et_deconnexion(page):
     ouvrir_service(page, "Sauvegardes")
     page.wait_for_selector("text=Exporter tout le carnet")
     page.locator("nav.tuiles .tuile", has_text="Home Assistant").click()
-    page.wait_for_selector("h2:has-text('Home Assistant')")
+    page.wait_for_selector("h3:has-text('Home Assistant')")
     assert page.locator("text=Exporter tout le carnet").count() == 0             # un service à la fois
     page.click("nav.onglets a[aria-label='Réglages']")
     page.wait_for_selector("h2:has-text('Journal')")
@@ -245,7 +245,7 @@ def test_a_traiter_famille_reseaux(page):
 
 def test_etat_reseaux_et_remise_a_zero_confirmee(page):
     ouvrir_service(page, "Telegram")                                # 2.9 : un réseau par icône, dans Connexion
-    page.wait_for_selector("h3:has-text('Telegram')")
+    page.wait_for_selector("h3#reseau-telegram")                    # 3.3 : le titre du panneau est aussi un h3
     assert page.locator("text=CARNET_TELEGRAM_API_ID").count() == 1          # non configuré dans la démo
     assert page.locator("h3:has-text('Facebook')").count() == 0              # un seul réseau affiché
     page.click("nav.onglets a[aria-label='Réglages']")              # 2.9 : l'analyse globale est dans Réglages
@@ -313,7 +313,7 @@ def test_glisser_deposer_un_export_instagram(page):
 
 def test_reseaux_aller_a_la_partie_et_rattacher_un_importe(page):
     ouvrir_service(page, "Telegram")
-    page.wait_for_selector("h3:has-text('Telegram')")
+    page.wait_for_selector("h3#reseau-telegram")      # 3.3 : le titre du panneau est aussi un h3 ; on attend la partie
     assert page.locator("#reseau-telegram").is_visible()
     liste = page.locator(".non-lies", has_text="Importés de Telegram sans fiche")
     liste.get_by_role("button", name=re.compile("Importés de Telegram")).click()
@@ -369,7 +369,7 @@ def test_28_reglages_une_case_annonce_puis_change_les_manques(page):
     assert case.is_checked() != avant
     # 2.9 : les interrupteurs « la nuit » sont par service ; celui de Treemich (écritures toutes seules) reste éteint
     page.locator("nav.tuiles .tuile", has_text="Treemich").click()
-    page.wait_for_selector("h2:has-text('Treemich')")
+    page.wait_for_selector("h3:has-text('Treemich')")
     bascule = page.get_by_role("switch")
     assert bascule.count() == 1 and not bascule.is_checked()
     page.click("nav.onglets a[aria-label='Réglages']")
@@ -483,13 +483,13 @@ def test_29_groupes_creer_ajouter_retirer_supprimer(page):
 
 def test_29_connexion_verifier_puis_interrupteur_de_nuit(page):
     page.click("nav.onglets a[aria-label='Connexion']")
-    page.wait_for_selector("nav[aria-label='Services'] .tuile")
+    page.wait_for_selector("nav[aria-label='Outils'] .tuile")
     noms = " ".join(page.locator("nav.tuiles .tuile .nom-tuile").all_inner_texts())
     for attendu in ("iCloud", "Immich", "Treemich", "Sauvegardes", "Import", "LinkedIn", "Home Assistant", "Attentes"):
         assert attendu in noms
     page.locator("nav.tuiles .tuile", has_text="Immich").click()
-    page.wait_for_selector("h2:has-text('Immich')")
-    page.get_by_role("button", name="Vérifier", exact=True).click()
+    page.wait_for_selector("h3:has-text('Immich')")
+    page.get_by_role("button", name="Comparer", exact=True).click()    # 3.3 : « Vérifier » de l'écran de travail
     page.wait_for_selector(".rapport")
     texte = page.locator(".rapport").inner_text()
     assert "reliée(s) à une personne d'Immich" in texte
@@ -882,3 +882,32 @@ def test_31_fiche_tuiles_et_photo(page):
     page.locator("#dossier-panneau").get_by_role("button", name="Choisir la photo et l'affiche").wait_for()
     assert onglets.get_by_role("tab", name=re.compile("Photos")).get_attribute("aria-selected") == "true"
     assert page.evaluate("document.documentElement.scrollWidth") <= page.viewport_size["width"]
+
+
+# ------------------------------------------------------------------ 3.3 : fiches « Connexion » communes (contrat 3)
+
+def test_33_fiches_connexion_communes(page):
+    """Huit services : des tuiles à voyant ; la fiche s'ouvre au toucher (Ce qui est lu, Ce qui est écrit, Vérifier en
+    contour, Synchroniser plein) ; un service non réglé montre sa variable ; les Outils restent dessous."""
+    page.click("nav.onglets a[aria-label='Connexion']")
+    tuiles = page.locator("ul[aria-label='Services'] button[aria-expanded]")
+    tuiles.first.wait_for()
+    assert tuiles.count() == 8
+    assert page.locator("h1.titre", has_text="Connexion").count() == 1
+    icloud = page.locator("#tuile-icloud")
+    icloud.click()
+    assert icloud.get_attribute("aria-expanded") == "true"
+    fiche = page.locator("#fiche-ouverte")
+    fiche.wait_for()
+    texte = fiche.inner_text()
+    assert "Ce qui est lu" in texte and "iCloud est la source" in texte and "Ce qui est écrit" in texte
+    assert fiche.get_by_role("button", name="Synchroniser", exact=True).count() == 1
+    fiche.get_by_role("button", name="Vérifier", exact=True).click()
+    fiche.get_by_text("Vérifié", exact=False).wait_for()
+    page.keyboard.press("Escape")
+    page.locator("#fiche-ouverte").wait_for(state="detached")
+    page.locator("#tuile-coffre-contacts").click()
+    assert "CARNET_CONTACTS" in page.locator("#fiche-ouverte").inner_text()     # pas relié : la variable, sans bouton
+    assert page.locator("#fiche-ouverte button").count() == 0
+    assert page.locator("nav[aria-label='Outils'] .tuile").count() >= 10
+
