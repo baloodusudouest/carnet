@@ -1,5 +1,9 @@
 # Journal des versions
 
+## 3.3.1 — 20 novembre 2026 (socle 0.11.1)
+- Copies communes du socle 0.11.1 : sur une fiche « Connexion », le titre devient « Pour le relier » quand le réglage se fait dans Réglages de l'appli (et non dans la stack).
+- **Jamais essayé sur la vraie installation.**
+
 ## 3.3.0 — 20 novembre 2026 (fiches « Connexion » communes, contrat 3)
 - **Fiches communes** (socle 0.11.0, contrat 3 ; décision de Julien du 20/11/2026, dossier « fiches Connexion ») : `app/maison.py`, `frontend/src/lib/services/FicheService.svelte` et `Services.svelte` recopiés du socle tels quels (empreintes contrôlées par les tests). Nouvelles routes `GET /api/maison/services` et `POST /api/maison/services/{id}/verifier` (session de carnet, ou `ANNEAU_CLE` pour la fiche « État » de l'Anneau ; `MAISON_JETON` ne les ouvre pas).
 - **Huit fiches**, en tuiles à voyant (plus de 3 services) en tête de l'écran Connexion : iCloud, Immich, Treemich, Synology Contacts, Home Assistant, Kit d'urgence, Millésime, Coffre Contacts. Chacune dit ce que carnet y lit et y écrit (textes repris de l'écran d'avant), la variable qui la relie quand elle ne l'est pas, et l'âge du dernier essai.

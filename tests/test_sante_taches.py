@@ -27,7 +27,7 @@ def test_health_porte_taches_et_copie(c, registre, monkeypatch):
         with TestClient(main.app) as client:
             d = client.get("/health").json()
             assert d["ok"] is True and d["version"] == main.__version__
-            assert d["version_socle"] == maison.VERSION_SOCLE == "0.11.0"
+            assert d["version_socle"] == maison.VERSION_SOCLE == "0.11.1"
             noms = {t["nom"]: t for t in d["taches"]}
             assert {"nuit", "copie-des-bases", *main.TACHES_DEMANDE} <= set(noms)
             assert noms["nuit"]["type"] == "reguliere" and noms["nuit"]["periode_s"] == 86400
