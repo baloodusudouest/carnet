@@ -1,5 +1,11 @@
 # Journal des versions
 
+## 3.4.0 — 22 novembre 2026 (arbre du coffre : points d'union)
+- **Arbre d'une personne dans le coffre Contacts** (demande de Julien : « les enfants des 2 parents liés ensemble ») : un **point d'union** relie les deux parents, d'où partent la personne et ses frères et sœurs ; un autre relie la personne à son conjoint, d'où partent les enfants du couple (un point par conjoint).
+- **Demi-frères, demi-sœurs, enfants d'une autre union** : carnet lit dans Treemich les parents de chaque enfant et de chaque frère ou sœur. Enfant des deux : depuis le point d'union ; d'un seul : depuis ce parent seul ; parents inconnus dans Treemich : sous le couple, comme avant.
+- La liste des relations sous le schéma ne change pas. Les notes « Arbre » sont réécrites à la synchronisation suivante (nuit, ou Connexion › Coffre Contacts › Synchroniser).
+- Choix de Julien : point d'union, en haut aussi, d'après Treemich, sans Conseil. Tests : 296 (rendu vérifié avec Mermaid 11 sur une famille inventée). **Jamais essayé sur la vraie installation.**
+
 ## 3.3.2 — 22 novembre 2026 (barre d'onglets collée en bas, index des lettres)
 - **iPhone : barre d'onglets collée au bord bas**, sur toute la largeur, au lieu de la pilule flottante (demande de Julien, 22/11/2026, pour toutes les applis maison ; socle 0.12.1). Le rail des PC ne change pas.
 - **Index des lettres** : il commençait trop haut et passait sur les filtres « Sans téléphone… ». Il commence maintenant sous l'en-tête et sous le haut de la liste, recalculé au défilement, et s'arrête au-dessus de la barre du bas. Les lettres se resserrent sur un petit écran.

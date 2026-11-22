@@ -223,38 +223,81 @@ PARENTS = ("père", "mère", "parent")
 FRATRIE = ("frère", "sœur", "frère ou sœur")
 
 
-def arbre_mermaid(nom: str, lignes: list[tuple[str, str]]) -> str:
+Relation = tuple  # (type, nom) ou (type, nom, frozenset des noms de SES parents, d'après Treemich)
+
+
+def arbre_mermaid(nom: str, lignes: list[Relation]) -> str:
     """Bloc ```mermaid de la fiche « Arbre » : parents au-dessus, la personne avec sa fratrie et son conjoint, enfants
-    en dessous. Relations directes seulement (celles de Treemich gardées par carnet)."""
+    en dessous. Relations directes seulement (celles de Treemich gardées par carnet).
+    3.4 : un point d'union relie deux parents (en haut) et la personne à chaque conjoint (en bas) ; les enfants d'un
+    couple partent de son point d'union, la fratrie partagée part du point d'union des parents. Avec les parents de
+    chacun (3e élément, lu dans Treemich), un demi-frère, une demi-sœur ou un enfant d'une autre union part du seul
+    parent commun ; sans cette information, comme avant : sous le couple."""
     l = ["```mermaid", MERMAID_THEME, "flowchart TD", f'  moi["{_mm_libelle(nom)}"]']
-    parents = [(t, n) for t, n in lignes if t in PARENTS]
-    fratrie = [(t, n) for t, n in lignes if t in FRATRIE]
-    conjoints = [(t, n) for t, n in lignes if t == "conjoint"]
-    enfants = [(t, n) for t, n in lignes if t == "enfant"]
-    autres = [(t, n) for t, n in lignes if (t, n) not in parents + fratrie + conjoints + enfants]
+    rel = [(x[0], x[1], frozenset(x[2]) if len(x) > 2 and x[2] else frozenset()) for x in lignes]
+    parents = [r for r in rel if r[0] in PARENTS]
+    fratrie = [r for r in rel if r[0] in FRATRIE]
+    conjoints = [r for r in rel if r[0] == "conjoint"]
+    enfants = [r for r in rel if r[0] == "enfant"]
+    autres = [r for r in rel if r not in parents + fratrie + conjoints + enfants]
     k = 0
+    u = 0
 
     def noeud(t: str, n: str) -> str:
         nonlocal k
         k += 1
         l.append(f'  n{k}["{_mm_libelle(n)}<br/><small>{_mm_libelle(t)}</small>"]')
         return f"n{k}"
-    ids_parents = [noeud(t, n) for t, n in parents]
-    for i in ids_parents:
-        l.append(f"  {i} --> moi")
-    for t, n in fratrie:
+
+    def union(*sources: str) -> str:
+        """Point d'union : les sources au-dessus (traits sans flèche), les enfants partent de lui."""
+        nonlocal u
+        u += 1
+        l.append(f'  u{u}((" "))')
+        for x in sources:
+            l.append(f"  {x} --- u{u}")
+        return f"u{u}"
+
+    # En haut : les parents, et leur point d'union quand ils sont deux
+    ids_parents = {n: noeud(t, n) for t, n, _ in parents}
+    haut = union(*ids_parents.values()) if len(ids_parents) >= 2 else None
+    if haut:
+        l.append(f"  {haut} --> moi")
+    else:
+        for i in ids_parents.values():
+            l.append(f"  {i} --> moi")
+
+    def source_fratrie(ses_parents: frozenset) -> str | None:
+        communs = [ids_parents[n] for n in ids_parents if n in ses_parents]
+        if ses_parents and len(communs) == 1 and len(ids_parents) >= 2:
+            return communs[0]                                   # demi-frère, demi-sœur : le parent commun seul
+        if haut:
+            return haut
+        return next(iter(ids_parents.values()), None)
+    for t, n, sp in fratrie:
         i = noeud(t, n)
-        if ids_parents:
-            l.append(f"  {ids_parents[0]} --> {i}")
+        src = source_fratrie(sp)
+        l.append(f"  {src} --> {i}" if src else f"  moi --- {i}")
+
+    # En bas : un point d'union par conjoint ; chaque enfant part du couple dont il est l'enfant
+    unions = {}
+    for t, n, _ in conjoints:
+        unions[n] = union("moi", noeud(t, n))
+    for t, n, sp in enfants:
+        i = noeud(t, n)
+        if sp:
+            avec = [c for c in unions if c in sp]
+            src = unions[avec[0]] if avec else "moi"            # enfant d'une autre union : de la personne seule
         else:
-            l.append(f"  moi --- {i}")
-    for t, n in conjoints:
-        l.append(f"  moi === {noeud(t, n)}")
-    for t, n in enfants:
-        l.append(f"  moi --> {noeud(t, n)}")
-    for t, n in autres:
+            src = next(iter(unions.values())) if len(unions) == 1 else "moi"
+        l.append(f"  {src} --> {i}")
+    for t, n, _ in autres:
         l.append(f"  moi -.- {noeud(t, n)}")
-    l += ["  classDef moi fill:#c9714a,stroke:#c9714a,color:#1a1714", "  class moi moi", "```"]
+    l += ["  classDef moi fill:#c9714a,stroke:#c9714a,color:#1a1714", "  class moi moi"]
+    if u:
+        l += ["  classDef union fill:#c9a96e,stroke:#c9a96e,color:#c9a96e",
+              "  class " + ",".join(f"u{i}" for i in range(1, u + 1)) + " union"]
+    l.append("```")
     return "\n".join(l)
 
 
@@ -482,7 +525,7 @@ def sillage(c: Carnet, immich_ids: list[str]) -> dict[str, list[dict]]:
     return {imm: cache[imm]["etapes"] for imm in immich_ids if imm in cache}
 
 
-def arbre(c: Carnet) -> dict[str, list[tuple[str, str]]] | None:
+def arbre(c: Carnet) -> dict[str, list[tuple]] | None:
     """uid → [(type, nom de l'autre personne)] d'après les relations de Treemich gardées en mémoire ;
     None si Treemich n'a pas encore été lu depuis le démarrage."""
     from . import liaisons
@@ -494,16 +537,25 @@ def arbre(c: Carnet) -> dict[str, list[tuple[str, str]]] | None:
     noms_tree = {p["id"]: p.get("nom") or "" for p in d.get("treemich") or []}
     uid_par_tree = {v["treemich"]: u for u, v in c.liaisons().items() if v.get("treemich")}
     fiches = c.fiches()
-    res: dict[str, list[tuple[str, str]]] = {}
+    rels = d.get("relations") or []
+
+    def nom_de(tid_: str) -> str:
+        autre_uid = uid_par_tree.get(tid_)
+        return nom_affiche(fiches[autre_uid]) if autre_uid in fiches else noms_tree.get(tid_, "")
+    res: dict[str, list[tuple]] = {}
     for uid, lien in c.liaisons().items():
         tid = lien.get("treemich")
         if not tid or uid not in fiches:
             continue
         lignes = []
-        for autre, type_ in relations_de(tid, d.get("relations") or [], g):
-            autre_uid = uid_par_tree.get(autre)
-            nom = nom_affiche(fiches[autre_uid]) if autre_uid in fiches else noms_tree.get(autre, "")
-            if nom:
+        for autre, type_ in relations_de(tid, rels, g):
+            nom = nom_de(autre)
+            if not nom:
+                continue
+            if type_ in ("enfant",) + FRATRIE:                   # 3.4 : ses parents, pour le placer sous le bon couple
+                ses = frozenset(x for x in (nom_de(p) for p, t in relations_de(autre, rels, g) if t in PARENTS) if x)
+                lignes.append((type_, nom, ses))
+            else:
                 lignes.append((type_, nom))
         res[uid] = lignes
     return res
@@ -552,7 +604,7 @@ def _contenu_index(c: Carnet, typ: str, ident: str, nom_contact: str, liens_evts
         if not extra:
             return None
         lignes, cibles, lien = extra
-        l = tete + ["", arbre_mermaid(nom_contact, lignes), ""] + [f"- {t} : {_lien_note(n, cibles)}" for t, n in lignes]
+        l = tete + ["", arbre_mermaid(nom_contact, lignes), ""] + [f"- {x[0]} : {_lien_note(x[1], cibles)}" for x in lignes]
         if lien:
             l += ["", f"[Arbre dans Treemich]({lien})"]
         return "\n".join(l)

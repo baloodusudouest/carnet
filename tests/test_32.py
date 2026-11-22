@@ -60,10 +60,13 @@ def test_32_arbre_mermaid_parents_fratrie_conjoint_enfants(c, monkeypatch):  # n
     debut, fin = texte.index("```mermaid"), texte.index("```", texte.index("```mermaid") + 3)
     schema = texte[debut:fin]
     assert coffre.MERMAID_THEME in schema and "flowchart TD" in schema and 'moi["Paul MARTIN"]' in schema
-    assert 'n1["Jean MARTIN<br/><small>père</small>"]' in schema and "n1 --> moi" in schema and "n2 --> moi" in schema
+    assert 'n1["Jean MARTIN<br/><small>père</small>"]' in schema
+    # 3.4 : les deux parents se rejoignent en un point d'union, d'où partent Paul et sa sœur (parents inconnus : sous le couple)
+    assert "n1 --- u1" in schema and "n2 --- u1" in schema and "u1 --> moi" in schema and "u1 --> n3" in schema
     assert "#quot;Rosette#quot;" in schema and "Inès ‹Garnier›" in schema           # libellés sûrs
-    assert "n1 --> n3" in schema                                        # la sœur sous le premier parent
-    assert "moi === n4" in schema and "moi --> n5" in schema
+    # Paul et Inès : point d'union u2, l'enfant en part
+    assert "moi --- u2" in schema and "n4 --- u2" in schema and "u2 --> n5" in schema
+    assert "class u1,u2 union" in schema
     assert "- sœur : [[Claire MARTIN]]" in texte[fin:]                   # la liste des liens reste sous le schéma
     assert coffre._tags(_entete(texte)) == ["fiche"]
 
@@ -71,6 +74,52 @@ def test_32_arbre_mermaid_parents_fratrie_conjoint_enfants(c, monkeypatch):  # n
 def test_32_arbre_sans_parents_fratrie_reliee_a_la_personne():
     s = coffre.arbre_mermaid("Paul MARTIN", [("frère ou sœur", "Claire MARTIN"), ("cousin", "Max MARTIN")])
     assert "moi --- n1" in s and "moi -.- n2" in s and s.startswith("```mermaid") and s.endswith("```")
+
+
+def test_34_demi_soeurs_et_enfant_d_une_autre_union():
+    """3.4 : avec les parents de chacun (Treemich), une demi-sœur part du seul parent commun, un enfant d'une autre union
+    de la personne seule, les enfants du couple du point d'union."""
+    s = coffre.arbre_mermaid("Philippe B", [
+        ("père", "Marc B"), ("mère", "Irène B"),
+        ("sœur", "Hélène C", frozenset({"Irène B", "Pierre C"})),          # demi-sœur : Irène seule en commun
+        ("frère", "Luc B", frozenset({"Marc B", "Irène B"})),               # frère : les deux parents
+        ("conjoint", "Francine B"),
+        ("enfant", "Julien B", frozenset({"Philippe B", "Francine B"})),
+        ("enfant", "Noé B", frozenset({"Philippe B", "Anne D"})),           # autre union
+        ("enfant", "Lou B", frozenset()),                                   # parents inconnus : sous le seul couple
+    ])
+    assert "n1 --- u1" in s and "n2 --- u1" in s and "u1 --> moi" in s
+    assert "n2 --> n3" in s                                                 # Hélène : depuis Irène (n2) seule
+    assert "u1 --> n4" in s                                                 # Luc : depuis le point d'union des parents
+    assert "moi --- u2" in s and "n5 --- u2" in s
+    assert "u2 --> n6" in s and "moi --> n7" in s and "u2 --> n8" in s
+
+
+def test_34_deux_conjoints_un_parent_seul():
+    s = coffre.arbre_mermaid("Paul", [("mère", "Rose"), ("conjoint", "Inès"), ("conjoint", "Ana"),
+                                      ("enfant", "Léo", frozenset({"Paul", "Ana"})), ("enfant", "Max", frozenset())])
+    assert "n1 --> moi" in s and "u1" not in s.split("n1 --> moi")[0].split("flowchart TD")[1]   # un seul parent : flèche directe
+    assert "moi --- u1" in s and "moi --- u2" in s and "u2 --> n4" in s and "moi --> n5" in s   # deux couples : Max sans couple connu
+
+
+def test_34_arbre_lit_les_parents_dans_treemich(c, monkeypatch):  # noqa: F811
+    """arbre() donne, pour chaque enfant et chaque frère ou sœur, les noms de SES parents (relations de Treemich)."""
+    import time
+    from app import liaisons as L
+    liaisons.lier(c, PAUL, "treemich", "t-paul")
+    d = {"treemich_ok": True,
+         "treemich": [{"id": i, "nom": n} for i, n in (("t-paul", "Paul MARTIN"), ("t-ines", "Inès G"), ("t-leo", "Léo M"),
+                                                       ("t-jean", "Jean M"), ("t-rose", "Rose M"), ("t-eve", "Ève M"), ("t-x", "Xavier K"))],
+         "relations": [{"de": "t-paul", "vers": "t-ines", "type": "SPOUSE_OF"},
+                       {"de": "t-paul", "vers": "t-leo", "type": "PARENT_OF"}, {"de": "t-ines", "vers": "t-leo", "type": "PARENT_OF"},
+                       {"de": "t-jean", "vers": "t-paul", "type": "PARENT_OF"}, {"de": "t-rose", "vers": "t-paul", "type": "PARENT_OF"},
+                       {"de": "t-paul", "vers": "t-eve", "type": "SIBLING_OF"},
+                       {"de": "t-rose", "vers": "t-eve", "type": "PARENT_OF"}, {"de": "t-x", "vers": "t-eve", "type": "PARENT_OF"}]}
+    c._memo["liens"] = (time.monotonic() // L.DUREE_CACHE, d)
+    lignes = {x[1]: x for x in coffre.arbre(c)[PAUL]}
+    assert lignes["Léo M"][2] == frozenset({"Paul MARTIN", "Inès G"})
+    assert lignes["Ève M"][2] == frozenset({"Rose M", "Xavier K"})
+    assert len(lignes["Inès G"]) == 2 and len(lignes["Jean M"]) == 2
 
 
 # ================================================================ frise
