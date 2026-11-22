@@ -141,13 +141,13 @@
     max-width: 72rem; margin: 0 auto;
   }
   .haut-securise { position: fixed; z-index: 25; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); background: var(--color-cuir); }
-  /* iPhone : pilule sombre flottante (reliure), l'onglet actif en pastille papier avec son libellé */
+  /* iPhone : barre sombre (reliure) collée au bord bas, sur toute la largeur (3.3.2, 22/11/2026) ;
+     l'onglet actif en pastille papier */
   .onglets {
-    position: fixed; z-index: 20; left: 50%; transform: translateX(-50%);
-    bottom: calc(0.6rem + env(safe-area-inset-bottom)); display: flex; align-items: center; gap: 0.25rem;
-    padding: 0.35rem; border-radius: 9999px;
-    background: color-mix(in srgb, var(--color-cuir) 82%, transparent); border: 1px solid var(--color-couture);
-    box-shadow: 0 10px 30px var(--color-ombre);
+    position: fixed; z-index: 20; left: 0; right: 0; bottom: 0;
+    display: flex; align-items: center; justify-content: space-around; gap: 0.25rem;
+    padding: 0.35rem 0.5rem calc(0.35rem + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--color-cuir) 94%, transparent); border-top: 1px solid var(--color-couture);
     backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   }
   .marque { display: none; }
@@ -182,7 +182,7 @@
   .lecture-seule { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; border: 1px solid var(--color-onglet); border-radius: 8px; color: var(--color-papier); }
   .tache { margin-bottom: 0.75rem; padding: 0.5rem 0.8rem; border-left: 3px solid var(--color-onglet); color: var(--color-mine); }
   .message {
-    position: fixed; z-index: 30; left: 1rem; right: 1rem; bottom: calc(4.9rem + env(safe-area-inset-bottom));
+    position: fixed; z-index: 30; left: 1rem; right: 1rem; bottom: calc(4.6rem + env(safe-area-inset-bottom));
     display: flex; align-items: center; justify-content: space-between; gap: 1rem;
     max-width: 34rem; margin: 0 auto; padding: 0.6rem 0.6rem 0.6rem 1rem; border-radius: 10px;
     background: var(--color-reliure); border: 1px solid var(--color-tranche); box-shadow: 0 8px 24px var(--color-ombre);
@@ -191,7 +191,8 @@
   @media (min-width: 900px) {
     /* PC : rail latéral conservé ; l'onglet actif prend la même pastille papier */
     .onglets {
-      top: 0; bottom: 0; left: 0; transform: none; width: 13rem; flex-direction: column; align-items: stretch; gap: 0.25rem;
+      top: 0; bottom: 0; left: 0; right: auto; transform: none; width: 13rem; flex-direction: column; align-items: stretch;
+      justify-content: flex-start; gap: 0.25rem;
       padding: 1.25rem 0.75rem; border-radius: 0; border: 0; border-right: 1px solid var(--color-couture);
       background: var(--color-cuir); box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
     }

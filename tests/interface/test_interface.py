@@ -110,6 +110,14 @@ def test_contacts_recherche_et_tranche(page):
         assert page.locator(".tranche button").count() >= 5        # PC : onglets de la tranche
     else:
         assert page.locator(".index button").count() == 27         # iPhone : index fin A à Z et #
+        # 3.3.2 : l'index tient entre le haut de la liste (sous les filtres) et la barre d'onglets du bas
+        page.wait_for_timeout(300)
+        index = page.locator(".index").bounding_box()
+        filtres = page.locator(".manques").bounding_box()
+        barre = page.locator("nav.onglets").bounding_box()
+        if filtres:
+            assert index["y"] >= filtres["y"] + filtres["height"]
+        assert index["y"] + index["height"] <= barre["y"] + 1
 
 
 def test_tri_par_prenom_ou_par_nom(page):
@@ -279,6 +287,9 @@ def test_pilule_libelle_de_l_onglet_actif(page):
             assert not libelle.is_visible() or libelle.bounding_box()["width"] < 2
     barre = page.locator("nav.onglets").bounding_box()
     assert barre["x"] >= 0 and barre["x"] + barre["width"] <= page.viewport_size["width"] + 1      # la barre tient dans l'écran
+    if not large:                                               # 3.3.2 : collée au bord bas, sur toute la largeur
+        assert abs(barre["y"] + barre["height"] - page.viewport_size["height"]) <= 1
+        assert barre["x"] <= 1 and barre["width"] >= page.viewport_size["width"] - 1
 
 
 def test_export_vcf_par_le_bouton_a_anneau(page):

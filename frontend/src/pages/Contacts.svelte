@@ -20,6 +20,22 @@
   let menuGroupes = $state(false)
   let hautEntete = $state(0)
   let liste = $state(null)
+  // 3.3.2 : l'index des lettres commence sous l'en-tête ET sous le haut de la liste (titre, recherche, filtres
+  // compris tant qu'on n'a pas défilé), et s'arrête au-dessus de la barre d'onglets du bas.
+  let entete = $state(null)
+  let hautIndex = $state(null)
+  function placerIndex() {
+    if (!liste) return
+    const basEntete = entete?.getBoundingClientRect().bottom ?? 0
+    hautIndex = Math.round(Math.max(basEntete, liste.getBoundingClientRect().top, 0) + 8)
+  }
+  $effect(() => {
+    void liste; void hautEntete; void etat.contacts?.length
+    placerIndex()
+    window.addEventListener('scroll', placerIndex, { passive: true, capture: true })
+    window.addEventListener('resize', placerIndex)
+    return () => { window.removeEventListener('scroll', placerIndex, { capture: true }); window.removeEventListener('resize', placerIndex) }
+  })
 
   const ALPHABET = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', '#']
   const sansAccent = (t) => (t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
@@ -85,7 +101,7 @@
 
 <div class="contacts" class:large={etat.large} style:--haut-entete="{hautEntete}px">
   <section class="volet-liste">
-    <div class="entete" bind:clientHeight={hautEntete}>
+    <div class="entete" bind:this={entete} bind:clientHeight={hautEntete}>
       <div class="ligne-titre">
         <h1 class="titre">Contacts <span class="discret nombre">{filtres.length !== (etat.contacts?.length ?? 0) ? `${filtres.length} / ` : ''}{etat.contacts?.length ?? ''}</span></h1>
         <button class="bouton importer" onclick={() => (importOuvert = true)}>Importer</button>
@@ -159,7 +175,7 @@
           </nav>
         {:else}
           <!-- iPhone : index fin, à parcourir du pouce comme dans Contacts -->
-          <nav class="index" aria-label="Aller à la lettre"
+          <nav class="index" aria-label="Aller à la lettre" style:top={hautIndex === null ? null : `${hautIndex}px`}
                onpointerdown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); parcourir(e) }}
                onpointermove={(e) => e.buttons && parcourir(e)}>
             {#each ALPHABET as l}
@@ -230,11 +246,11 @@
   /* iPhone : index fin, fixé sur le bord droit, sous l'en-tête */
   .index {
     position: fixed; z-index: 7; right: 2px; top: calc(env(safe-area-inset-top) + var(--haut-entete) + 0.5rem);
-    bottom: calc(3.75rem + env(safe-area-inset-bottom)); display: flex; flex-direction: column; justify-content: center;
+    bottom: calc(4.25rem + env(safe-area-inset-bottom)); display: flex; flex-direction: column; justify-content: center;
     touch-action: none; padding: 0 2px;
   }
   .index button {
-    flex: 1; max-height: 1.35rem; width: 1.4rem; font-size: 0.68rem; font-weight: 600; color: var(--color-onglet);
+    flex: 1 1 0; min-height: 0; max-height: 1.35rem; width: 1.4rem; font-size: 0.68rem; font-weight: 600; color: var(--color-onglet);
     display: grid; place-items: center;
   }
   .index button.absente { color: var(--color-tranche); }
