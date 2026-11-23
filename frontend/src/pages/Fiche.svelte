@@ -25,6 +25,8 @@
     requestAnimationFrame(() => dossier?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
   let apercu = $state(null)       // { fiche, champs } avant d'écrire
+  let conjoint = $state('')       // 3.5 : uid du conjoint choisi sous la date de mariage
+  let raisons = $state([])        // 3.5 : pourquoi la date de mariage ne part pas vers Treemich (après l'écriture)
   let attente = $state(false)
   let proches = $state(null)
   let reunir = $state('')
@@ -57,6 +59,8 @@
     // 2.24 : dates libres saisies comme les autres (JJ/MM/AAAA, ou JJ/MM sans année)
     brouillon.dates_autres = (brouillon.dates_autres || []).map((d) => ({ ...d, valeur: d.valeur.startsWith('--') ? `${d.valeur.slice(5, 7)}/${d.valeur.slice(2, 4)}` : dateSaisie(d.valeur) }))
     brouillon.messageries = brouillon.messageries || []
+    conjoint = donnees.famille?.conjoint || ''
+    raisons = []
     apercu = null
   }
   async function verifier() {
@@ -66,8 +70,10 @@
   async function ecrire() {
     attente = true
     try {
-      const res = await api.put(`/api/contacts/${e}`, { fiche: apercu.fiche, etag: donnees.etag })
+      const res = await api.put(`/api/contacts/${e}`, { fiche: apercu.fiche, etag: donnees.etag,
+                                                         conjoint: apercu.fiche.mariage ? conjoint : '' })
       brouillon = apercu = null
+      raisons = res.raisons || []
       await apresEcriture(res, res.famille ? `Fiche écrite dans iCloud. ${res.famille}` : 'Fiche écrite dans iCloud.')
       await charger()
     } catch (err) { erreur(err) } finally { attente = false }
@@ -239,7 +245,7 @@
 
     {#if brouillon}
       <div class="feuille bloc">
-        <Editeur bind:fiche={brouillon} groupesConnus={donnees.groupes_connus} />
+        <Editeur bind:fiche={brouillon} bind:conjoint groupesConnus={donnees.groupes_connus} {uid} />
       </div>
       <div class="barre">
         {#if apercu}
@@ -285,7 +291,9 @@
         <dl>
           {#if f.anniversaire}<dt>Anniversaire</dt><dd>{dateLecture(f.anniversaire)}</dd>{/if}
           {#if donnees.fete?.date && !decede && (donnees.fete.attendue || donnees.fete.origine !== 'calendrier')}<dt>Fête</dt><dd>{dateLecture(donnees.fete.date)}{#if ORIGINE_FETE[donnees.fete.origine]}{' '}<span class="discret">({ORIGINE_FETE[donnees.fete.origine]})</span>{/if}</dd>{/if}
-          {#if f.mariage}<dt>Mariage</dt><dd>{dateLecture(f.mariage)}</dd>{/if}
+          {#if f.mariage}<dt>Mariage</dt><dd>{dateLecture(f.mariage)}
+            <!-- 3.5 : pourquoi la date ne part pas vers Treemich, dit sur la fiche -->
+            {#each (raisons.length ? raisons : donnees.famille?.raisons || []) as r}<span class="raison-famille">{r}</span>{/each}</dd>{/if}
           {#if decede}<dt>Décès</dt><dd>{donnees.deces.date ? dateLecture(donnees.deces.date) : 'date inconnue'}</dd>{/if}
           {#each f.dates_autres || [] as d}<dt>{d.type}</dt><dd>{dateLecture(d.valeur)}</dd>{/each}
           {#if f.surnom}<dt>Surnom</dt><dd>{f.surnom}</dd>{/if}
@@ -457,6 +465,7 @@
 </section>
 
 <style>
+  .raison-famille { display: block; margin-top: 0.25rem; font-size: 0.85rem; color: var(--color-alerte); overflow-wrap: anywhere; }
   .page { max-width: 46rem; display: grid; gap: 1rem; }
   .retour { justify-self: start; min-height: 2.75rem; display: inline-flex; align-items: center; }
   .entete { display: flex; gap: 1rem; align-items: center; }

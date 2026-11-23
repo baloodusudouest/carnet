@@ -157,6 +157,19 @@
     {:else if point.motif === 'lien_genre'}
       <p>{d.valeur} : <span class="avant">{d.de}</span> <span class="apres">{d.vers}</span>
         <span class="discret">({d.genre === 'autre' ? 'genre : autre' : d.genre})</span></p>
+    {:else if point.motif === 'conjoint_treemich'}
+      <!-- 3.5 : date de mariage sur la fiche, mais pas de couple dans l'arbre (le mariage s'y range sur le couple) -->
+      <p>{d.nom} a une date de mariage ({dateLisible(d.mariage)}), mais n'a pas de conjoint dans Treemich.</p>
+      {#if d.possible}
+        <p>Conjoint choisi sur la fiche : <strong>{d.conjoint}</strong>, relié(e) à Treemich. carnet peut créer le couple
+          dans l'arbre, puis y écrire la date.</p>
+      {:else if d.conjoint}
+        <p class="discret">Conjoint choisi sur la fiche : {d.conjoint}, mais sa fiche n'est pas reliée à Treemich. Ajoute
+          cette personne dans Treemich (carnet n'y crée jamais de personne), relie sa fiche (bloc Liaisons), et le couple
+          pourra être créé d'ici.</p>
+      {:else}
+        <p class="discret">Aucun conjoint n'est choisi sur la fiche : modifie-la et choisis le conjoint sous la date de mariage.</p>
+      {/if}
     {:else if point.motif === 'mariage'}
       <p>{d.couple} forment un couple dans Treemich, sans date de mariage.</p>
       <label class="saisie-date"><span class="discret">Date du mariage ou du PACS</span>
@@ -230,6 +243,13 @@
     {:else if point.motif === 'lien_genre'}
       <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('appliquer', null, 'Lien corrigé dans iCloud.')}>Corriger</button>
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Laisser comme ça</button>
+    {:else if point.motif === 'conjoint_treemich'}
+      {#if d.possible}
+        <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('creer', null, 'Couple créé dans Treemich.')}>Créer le couple dans Treemich</button>
+      {:else}
+        <button class="bouton" onclick={() => aller('contacts', point.uid)}>Ouvrir la fiche</button>
+      {/if}
+      <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Ignorer</button>
     {:else if point.motif === 'mariage'}
       <button class="bouton bouton-principal" disabled={attente || !saisie.trim()} onclick={() => faire('ecrire', saisie, 'Date de mariage écrite partout.')}>Écrire la date</button>
       <button class="bouton" disabled={attente} onclick={() => faire('sans', null, 'Noté : la question ne sera plus posée pour ce couple.')}>Pas de mariage ni PACS</button>

@@ -1,14 +1,37 @@
 # Paquet Home Assistant de carnet.
 # À placer dans /config/packages/carnet.yaml (les packages sont déjà activés pour le kit d'urgence).
+#
+# 3.5.0 (23/11/2026) — ALIMENTATION DES INVITÉS VENUE DE CARNET (plan du 17/11/2026, étapes 3 à 5)
+#   • Dès qu'un invité est mis dans une chambre (carte de réservation), carnet donne ses allergies,
+#     intolérances, aliments non aimés, plaisirs coupables et sa note d'hôte. Une copie par place
+#     (invité 1, invité 2) est gardée dans sensor.carnet_aliments_chambre_<cle> (attributs invite_1,
+#     invite_2) : elle reste lisible si carnet ne répond plus, et elle est relue chaque heure.
+#   • Trois états visibles, jamais un champ vide lu comme « rien à signaler » : connue (listes),
+#     aucune connue, non vérifiée (rien de dit, personne absente de carnet, ou carnet injoignable).
+#   • Les champs de séjour de la chambre (input_text.aliments_*_chambre_*, paquet aliments.yaml)
+#     reçoivent la réunion des listes des occupants : récapitulatifs, notifications et archivage des
+#     profils d'habitués continuent de marcher sans changement.
+#   • Une modification faite dans une carte (chambre, « Fiches invités ») repart vers carnet par
+#     ajouts et retraits (script.carnet_aliments_modifier) ; une allergie ou une intolérance n'est
+#     retirée qu'après confirmation dans la carte. Si carnet ne répond pas, la modification attend
+#     dans sensor.carnet_aliments_en_attente et repart toutes les 5 minutes, sans doublon (carnet
+#     reconnaît l'identifiant de chaque opération).
+#   • Séjours : à la réservation et au départ, le séjour de chaque invité est envoyé à carnet
+#     (fiche « Séjours » et frise du coffre Contacts) ; un séjour libéré avant son arrivée est retiré.
+#   • Ces copies sont exclues de l'historique (recorder) : la copie gardée pendant le séjour suffit.
+#     L'historique déjà enregistré n'est pas purgé par cette exclusion.
+#   Le paquet profils_invites.yaml (mémoire des habitués) reste en place, en parallèle, jusqu'à un ou
+#   deux séjours sans écart (décision du 17/11/2026).
+#
 # Dans secrets.yaml :
 #   carnet_status_url: "http://<IP_DU_NAS>:8096/status"
 #   carnet_personnes_url: "http://<IP_DU_NAS>:8096/ha/personnes"
 #   carnet_invite_url: "http://<IP_DU_NAS>:8096/ha/invite?nom={{ nom | urlencode }}"
+#   carnet_ha_url: "http://<IP_DU_NAS>:8096/ha/{{ chemin }}"          # 3.5 : nouveau
 #   carnet_ha_auth: "Bearer <même valeur que CARNET_HA_TOKEN dans la stack>"
 # /status renvoie des compteurs ; depuis carnet 2.31.6, le détail des erreurs n'y figure qu'avec le jeton
 # (sans lui : « Erreur : le détail est dans carnet. ») : le paquet l'envoie donc aussi.
-# /ha/… renvoie des noms et des dates de naissance : jeton obligatoire, et rien n'est gardé
-# dans les états de Home Assistant (réponses lues par les scripts seulement).
+# /ha/… renvoie des noms, des dates de naissance et (3.5) l'alimentation : jeton obligatoire.
 
 rest_command:
   # Noms proposés pendant la saisie d'une réservation (chambre-reservation-card)
@@ -25,6 +48,42 @@ rest_command:
     headers:
       authorization: !secret carnet_ha_auth
     timeout: 20
+  # 3.5 : adresses /ha/… de carnet (chemin donné par le script appelant)
+  carnet_ha_get:
+    url: !secret carnet_ha_url
+    method: get
+    headers:
+      authorization: !secret carnet_ha_auth
+    timeout: 20
+  carnet_ha_post:
+    url: !secret carnet_ha_url
+    method: post
+    headers:
+      authorization: !secret carnet_ha_auth
+    content_type: "application/json"
+    payload: "{{ corps | to_json }}"
+    timeout: 20
+  carnet_ha_put:
+    url: !secret carnet_ha_url
+    method: put
+    headers:
+      authorization: !secret carnet_ha_auth
+    content_type: "application/json"
+    payload: "{{ corps | to_json }}"
+    timeout: 20
+  carnet_ha_delete:
+    url: !secret carnet_ha_url
+    method: delete
+    headers:
+      authorization: !secret carnet_ha_auth
+    timeout: 20
+
+# 3.5 : copies d'alimentation hors de l'historique (elles changent souvent et sont personnelles)
+recorder:
+  exclude:
+    entity_globs:
+      - sensor.carnet_aliments_*
+      - input_text.aliments_*_chambre_*
 
 script:
   carnet_invite_info:
@@ -58,6 +117,447 @@ script:
             {% endif %}
       - stop: "Fiche lue"
         response_variable: resultat
+
+  # ------------------------------------------------------------------ 3.5 : aliments d'une chambre
+  carnet_aliments_actualiser:
+    alias: "Carnet – aliments d'une chambre"
+    description: >-
+      Relit dans carnet l'alimentation des invités d'une chambre (place 1 et 2), garde la copie
+      dans sensor.carnet_aliments_chambre_<chambre>, recopie la réunion dans les champs de séjour
+      de la chambre. Avec envoyer_sejour, envoie aussi le séjour à carnet et signale un invité
+      absent de carnet ou jamais vérifié.
+    icon: mdi:food-apple-outline
+    mode: queued
+    max: 10
+    fields:
+      chambre:
+        description: "Clé de la chambre : ami, ado ou stitch"
+        example: ami
+        required: true
+        selector:
+          select:
+            options: [ami, ado, stitch]
+      envoyer_sejour:
+        description: "Vrai : envoyer aussi le séjour à carnet (à la réservation)"
+        default: false
+        selector:
+          boolean:
+    variables:
+      noms_chambres:
+        ami: "Chambre d'Ami"
+        ado: "Chambre Ado"
+        stitch: "Chambre Stitch"
+      nom_chambre: "{{ noms_chambres.get(chambre, 'Chambre ' ~ chambre) }}"
+      capteur: "sensor.carnet_aliments_chambre_{{ chambre }}"
+      sejour: "{{ envoyer_sejour | default(false) | bool(false) }}"
+    sequence:
+      - repeat:
+          for_each: [1, 2]
+          sequence:
+            - variables:
+                place: "{{ repeat.item }}"
+                brut: "{{ states('input_text.invite_chambre_' ~ chambre ~ '_' ~ repeat.item) }}"
+                vide: "{{ brut in ['', 'unknown', 'unavailable'] }}"
+                nom: "{{ (brut.split(' (')[0]) | trim }}"
+                dates: "{{ brut | regex_findall('[0-9]{4}-[0-9]{2}-[0-9]{2}') }}"
+                precedent: "{{ state_attr(capteur, 'invite_' ~ repeat.item) }}"
+                meme: "{{ precedent is mapping and (precedent.get('nom') or '') | lower == nom | lower }}"
+            - if:
+                - condition: template
+                  value_template: "{{ vide }}"
+              then:
+                - event: carnet_aliments
+                  event_data:
+                    chambre: "{{ chambre }}"
+                    place: "{{ place }}"
+                    effacer: true
+              else:
+                - variables:
+                    pid: "{{ precedent.get('personne_id') or '' if meme else '' }}"
+                - action: rest_command.carnet_ha_get
+                  data:
+                    chemin: >-
+                      aliments?{{ 'personne_id=' ~ (pid | urlencode) if pid else 'nom=' ~ (nom | urlencode) }}
+                  response_variable: reponse
+                  continue_on_error: true
+                - variables:
+                    vides: "{{ {'allergies': [], 'intolerances': [], 'non_aimes': [], 'plaisirs': [], 'note': '', 'aucune': false, 'verifiee_le': none} }}"
+                    lu: "{{ reponse is defined and reponse.status == 200 and reponse.content is mapping }}"
+                    fiche: >-
+                      {% set maintenant_ = now().isoformat() %}
+                      {% if reponse is defined and reponse.status == 200 and reponse.content is mapping %}
+                        {{ reponse.content | combine({'nom': reponse.content.nom or nom, 'nom_reserve': nom,
+                             'etat': 'carnet', 'injoignable': false, 'lu_le': maintenant_}) }}
+                      {% elif reponse is defined and reponse.status in [404, 409] %}
+                        {% set garde = precedent if meme and precedent.get('etat') in ['absent', 'plusieurs'] else vides %}
+                        {{ vides | combine(garde) | combine({'nom': nom, 'nom_reserve': nom, 'personne_id': '',
+                             'statut': 'inconnu', 'etat': 'absent' if reponse.status == 404 else 'plusieurs',
+                             'injoignable': false, 'lu_le': maintenant_}) }}
+                      {% elif meme %}
+                        {{ precedent | combine({'injoignable': true}) }}
+                      {% else %}
+                        {{ vides | combine({'nom': nom, 'nom_reserve': nom, 'personne_id': '', 'statut': 'inconnu',
+                             'etat': 'injoignable', 'injoignable': true, 'lu_le': none}) }}
+                      {% endif %}
+                - event: carnet_aliments
+                  event_data:
+                    chambre: "{{ chambre }}"
+                    place: "{{ place }}"
+                    fiche: "{{ fiche }}"
+                # Séjour envoyé à carnet (à la réservation) ; un invité absent ou jamais vérifié est signalé
+                - if:
+                    - condition: template
+                      value_template: "{{ sejour and dates | count >= 2 and (reponse is defined and reponse.status in [200, 404, 409]) }}"
+                  then:
+                    - action: rest_command.carnet_ha_put
+                      data:
+                        chemin: "evenements/{{ ('sejour-' ~ chambre ~ '-' ~ dates[0] ~ '-' ~ (nom | slugify))[:80] }}"
+                        corps:
+                          type: sejour
+                          date: "{{ dates[0] }}"
+                          titre: "Séjour — {{ nom_chambre }}"
+                          resume: "Du {{ as_datetime(dates[0]).strftime('%d/%m/%Y') }} au {{ as_datetime(dates[1]).strftime('%d/%m/%Y') }}"
+                          personnes: >-
+                            {{ [{'personne_id': fiche.personne_id, 'role': 'invité'}] if fiche.get('personne_id')
+                               else [{'nom': nom, 'role': 'invité'}] }}
+                      continue_on_error: true
+                    - variables:
+                        vieille: >-
+                          {{ fiche.get('verifiee_le') is none
+                             or (now().date() - as_datetime(fiche.verifiee_le).date()).days > 365 }}
+                    - if:
+                        - condition: template
+                          value_template: "{{ fiche.etat != 'carnet' or fiche.statut == 'inconnu' or vieille }}"
+                      then:
+                        - action: persistent_notification.create
+                          data:
+                            notification_id: "carnet_aliments_{{ chambre }}_{{ place }}"
+                            title: "Alimentation à demander — {{ nom_chambre }}"
+                            message: >-
+                              {% if fiche.etat == 'absent' %}{{ nom }} n'est pas dans carnet : crée sa fiche
+                              (ou corrige le nom de la réservation) pour garder ses allergies d'un séjour à l'autre.
+                              {% elif fiche.etat == 'plusieurs' %}Plusieurs fiches de carnet s'appellent {{ nom }} :
+                              choisis le nom exact dans la carte de réservation.
+                              {% elif fiche.statut == 'inconnu' %}Les allergies de {{ nom }} n'ont jamais été demandées :
+                              à faire avant son arrivée (fiche carnet › Alimentation, ou carte de la chambre).
+                              {% else %}Les allergies de {{ nom }} ont été vérifiées
+                              {{ 'il y a plus d\'un an' if fiche.get('verifiee_le') else 'jamais' }} :
+                              à revoir avec elle ou lui avant le séjour.{% endif %}
+      - action: script.carnet_aliments_recopier
+        data:
+          chambre: "{{ chambre }}"
+
+  carnet_aliments_recopier:
+    alias: "Carnet – aliments recopiés dans la chambre"
+    description: >-
+      Écrit dans les champs de séjour de la chambre (aliments.yaml) la réunion des listes des
+      occupants : allergies et intolérances (🚫), non aimés (😐), plaisirs (🍫). Si tous les
+      occupants sont connus de carnet, la réunion remplace les champs ; sinon elle s'ajoute à ce
+      qu'ils contiennent (mémoire des habitués, saisie faite dans la chambre).
+    mode: queued
+    max: 10
+    fields:
+      chambre:
+        required: true
+        example: ami
+        selector:
+          select:
+            options: [ami, ado, stitch]
+    variables:
+      capteur: "sensor.carnet_aliments_chambre_{{ chambre }}"
+      occupees: >-
+        {{ [states('input_text.invite_chambre_' ~ chambre ~ '_1'), states('input_text.invite_chambre_' ~ chambre ~ '_2')]
+           | reject('in', ['', 'unknown', 'unavailable']) | list | count }}
+      invites: "{{ [state_attr(capteur, 'invite_1'), state_attr(capteur, 'invite_2')] | select('mapping') | list }}"
+      connus: "{{ invites | selectattr('etat', 'eq', 'carnet') | list | count }}"
+      remplacer: "{{ occupees > 0 and connus == occupees }}"
+    sequence:
+      - condition: template
+        value_template: "{{ occupees > 0 and invites | count > 0 }}"
+      - repeat:
+          for_each:
+            - { champ: allergies, listes: [allergies, intolerances] }
+            - { champ: naimepas, listes: [non_aimes] }
+            - { champ: plaisirs, listes: [plaisirs] }
+          sequence:
+            - variables:
+                entite: "input_text.aliments_{{ repeat.item.champ }}_chambre_{{ chambre }}"
+                existant: >-
+                  {% set v = states(entite) %}
+                  {{ [] if remplacer or v in ['', 'unknown', 'unavailable']
+                     else v.split(',') | map('trim') | reject('eq', '') | list }}
+                valeur: >-
+                  {% set ns = namespace(l=existant, t='') %}
+                  {% for i in invites %}{% for k in repeat.item.listes %}{% for x in i.get(k) or [] %}
+                    {% if x | lower not in ns.l | map('lower') | list %}{% set ns.l = ns.l + [x] %}{% endif %}
+                  {% endfor %}{% endfor %}{% endfor %}
+                  {% for x in ns.l %}
+                    {% set essai = (ns.t ~ ', ' ~ x) if ns.t else x %}
+                    {% if essai | length <= 255 %}{% set ns.t = essai %}{% endif %}
+                  {% endfor %}
+                  {{ ns.t }}
+            - if:
+                - condition: template
+                  value_template: "{{ states(entite) != valeur }}"
+              then:
+                - action: input_text.set_value
+                  target:
+                    entity_id: "{{ entite }}"
+                  data:
+                    value: "{{ valeur }}"
+
+  carnet_aliments_modifier:
+    alias: "Carnet – modifier l'alimentation d'un invité"
+    description: >-
+      Appelé par les cartes (chambre, Fiches invités). Envoie à carnet les ajouts et retraits d'une
+      personne ; si carnet ne répond pas, la modification attend (sensor.carnet_aliments_en_attente).
+      Avec chambre et place, la copie de la chambre est mise à jour aussitôt. Un retrait d'allergie
+      ou d'intolérance demande confirme: true (la carte le fait confirmer).
+    icon: mdi:food-fork-drink
+    mode: queued
+    max: 10
+    fields:
+      chambre:
+        description: "ami, ado ou stitch (vide depuis la carte Fiches invités)"
+        selector:
+          text:
+      place:
+        description: "1 ou 2"
+        selector:
+          number: { min: 1, max: 2 }
+      personne_id:
+        description: "Identifiant maison (sinon pris dans la copie de la chambre)"
+        selector:
+          text:
+      ajouts:
+        description: "{allergies: [...], intolerances: [...], non_aimes: [...], plaisirs: [...]}"
+        selector:
+          object:
+      retraits:
+        description: "Même forme que ajouts"
+        selector:
+          object:
+      note:
+        description: "Note d'hôte (absente : inchangée)"
+        selector:
+          text:
+            multiline: true
+      confirme:
+        description: "Vrai : retrait d'allergie ou d'intolérance confirmé dans la carte"
+        default: false
+        selector:
+          boolean:
+      notifier:
+        description: "Vrai quand la saisie vient d'un invité (Julien et Yves sont prévenus)"
+        default: false
+        selector:
+          boolean:
+    variables:
+      capteur: "sensor.carnet_aliments_chambre_{{ chambre | default('') }}"
+      cle_place: "invite_{{ place | default(0) | int(0) }}"
+      copie: "{{ state_attr(capteur, cle_place) if chambre | default('') else none }}"
+      pid: "{{ personne_id | default('', true) or (copie.get('personne_id') or '' if copie is mapping else '') }}"
+      a: "{{ ajouts | default({}, true) }}"
+      r: "{{ retraits | default({}, true) }}"
+      operation: "ha-{{ now().timestamp() | int }}-{{ range(100000, 999999) | random }}"
+      corps: >-
+        {% set c = {'operation': operation, 'personne_id': pid, 'ajouts': a, 'retraits': r,
+                    'confirme': confirme | default(false) | bool(false)} %}
+        {{ c | combine({'note': note}) if note is defined and note is not none else c }}
+    sequence:
+      - if:
+          - condition: template
+            value_template: "{{ pid != '' }}"
+        then:
+          - action: rest_command.carnet_ha_post
+            data:
+              chemin: aliments/modifier
+              corps: "{{ corps }}"
+            response_variable: reponse
+            continue_on_error: true
+          - if:
+              - condition: template
+                value_template: "{{ reponse is defined and reponse.status in [400, 404] }}"
+            then:
+              - action: persistent_notification.create
+                data:
+                  notification_id: carnet_aliments_refus
+                  title: "Carnet : modification d'alimentation refusée"
+                  message: "{{ reponse.content.detail if reponse.content is mapping else 'Refus de carnet.' }}"
+              - stop: "carnet a refusé la modification (voir la notification)."
+                error: true
+          - if:
+              - condition: template
+                value_template: "{{ not (reponse is defined and reponse.status == 200) }}"
+            then:
+              - event: carnet_aliments_file
+                event_data:
+                  ajouter: "{{ corps }}"
+      - if:
+          - condition: template
+            value_template: "{{ copie is mapping }}"
+        then:
+          - variables:
+              nouvelle: >-
+                {% if pid and reponse is defined and reponse.status == 200 and reponse.content is mapping %}
+                  {% set c = reponse.content %}
+                  {{ copie | combine({'allergies': c.allergies, 'intolerances': c.intolerances, 'non_aimes': c.non_aimes,
+                       'plaisirs': c.plaisirs, 'note': c.note, 'aucune': c.aucune, 'statut': c.statut,
+                       'verifiee_le': c.verifiee_le, 'injoignable': false, 'lu_le': now().isoformat()}) }}
+                {% else %}
+                  {% set ns = namespace(out={}) %}
+                  {% for k in ['allergies', 'intolerances', 'non_aimes', 'plaisirs'] %}
+                    {% set ret = (r.get(k) or []) | map('lower') | list %}
+                    {% set l = namespace(v=[]) %}
+                    {% for x in copie.get(k) or [] %}{% if x | lower not in ret %}{% set l.v = l.v + [x] %}{% endif %}{% endfor %}
+                    {% for x in a.get(k) or [] %}{% if x | lower not in l.v | map('lower') | list %}{% set l.v = l.v + [x] %}{% endif %}{% endfor %}
+                    {% set ns.out = ns.out | combine({k: l.v}) %}
+                  {% endfor %}
+                  {% set out = copie | combine(ns.out) %}
+                  {{ out | combine({'note': note}) if note is defined and note is not none else out }}
+                {% endif %}
+          - event: carnet_aliments
+            event_data:
+              chambre: "{{ chambre }}"
+              place: "{{ place | int }}"
+              fiche: "{{ nouvelle }}"
+          - action: script.carnet_aliments_recopier
+            data:
+              chambre: "{{ chambre }}"
+      - if:
+          - condition: template
+            value_template: "{{ notifier | default(false) | bool(false) }}"
+        then:
+          - action: notify.hotes
+            data:
+              title: "{{ '⚠️ Allergies' if (a.get('allergies') or a.get('intolerances')) else '😐 Goûts' }} — {{ (copie or {}).get('nom', 'Invité') }}"
+              message: >-
+                {% set l = [] %}
+                {% if a.get('allergies') or a.get('intolerances') %}{% set l = l + ['⚠️ ALLERGIE : ' ~ ((a.get('allergies') or []) + (a.get('intolerances') or [])) | join(', ') ~ ' — vérifier les étiquettes'] %}{% endif %}
+                {% if a.get('non_aimes') %}{% set l = l + ["😐 N'aime pas : " ~ a.get('non_aimes') | join(', ')] %}{% endif %}
+                {% if r.get('allergies') or r.get('intolerances') or r.get('non_aimes') %}{% set l = l + ['Retiré : ' ~ ((r.get('allergies') or []) + (r.get('intolerances') or []) + (r.get('non_aimes') or [])) | join(', ')] %}{% endif %}
+                {{ l | join(' · ') if l else 'Alimentation mise à jour depuis la chambre.' }}
+              data:
+                group: accueil
+                tag: "allergies-{{ chambre | default('') }}-{{ place | default(0) }}"
+                url: /petit-lecussan/aliments
+                push:
+                  interruption-level: "{{ 'passive' if is_state('binary_sensor.invites_endormis', 'on') else 'active' }}"
+
+  carnet_aliments_annuaire:
+    alias: "Carnet – annuaire de l'alimentation"
+    description: "Renvoie les personnes de carnet dont l'alimentation est renseignée (carte Fiches invités)."
+    mode: parallel
+    sequence:
+      - action: rest_command.carnet_ha_get
+        data:
+          chemin: aliments/annuaire
+        response_variable: reponse
+        continue_on_error: true
+      - variables:
+          resultat: >-
+            {% if reponse is defined and reponse.status == 200 and reponse.content is mapping %}
+              {{ {'ok': true, 'personnes': reponse.content.personnes, 'genere_le': reponse.content.genere_le} }}
+            {% else %}
+              {{ {'ok': false, 'personnes': [],
+                  'erreur': (reponse.content.detail if reponse is defined and reponse.content is mapping
+                             else 'carnet ne répond pas') } }}
+            {% endif %}
+      - stop: "Annuaire lu"
+        response_variable: resultat
+
+  carnet_sejour_fin:
+    alias: "Carnet – fin d'un séjour"
+    description: >-
+      Une place se libère : si l'arrivée n'était pas passée, le séjour est retiré de carnet
+      (annulé) ; sinon il est mis à jour avec la date réelle de départ.
+    mode: queued
+    max: 10
+    fields:
+      chambre:
+        required: true
+        selector:
+          text:
+      brut:
+        description: "Contenu du champ invité avant libération"
+        required: true
+        selector:
+          text:
+      place:
+        selector:
+          number: { min: 1, max: 2 }
+    variables:
+      noms_chambres:
+        ami: "Chambre d'Ami"
+        ado: "Chambre Ado"
+        stitch: "Chambre Stitch"
+      nom: "{{ (brut.split(' (')[0]) | trim }}"
+      dates: "{{ brut | regex_findall('[0-9]{4}-[0-9]{2}-[0-9]{2}') }}"
+      copie: "{{ state_attr('sensor.carnet_aliments_chambre_' ~ chambre, 'invite_' ~ (place | default(1) | int(1))) }}"
+      pid: "{{ copie.get('personne_id') or '' if copie is mapping and (copie.get('nom') or '') | lower == nom | lower else '' }}"
+      cle: "{{ ('sejour-' ~ chambre ~ '-' ~ (dates[0] if dates else '') ~ '-' ~ (nom | slugify))[:80] }}"
+    sequence:
+      - condition: template
+        value_template: "{{ nom != '' and dates | count >= 2 }}"
+      - if:
+          - condition: template
+            value_template: "{{ now().date() < as_datetime(dates[0]).date() }}"
+        then:
+          - action: rest_command.carnet_ha_delete
+            data:
+              chemin: "evenements/{{ cle }}"
+            continue_on_error: true
+        else:
+          - variables:
+              fin: >-
+                {% set prevu = as_datetime(dates[1]).date() %}
+                {{ (now().date() if now().date() < prevu else prevu).strftime('%d/%m/%Y') }}
+          - action: rest_command.carnet_ha_put
+            data:
+              chemin: "evenements/{{ cle }}"
+              corps:
+                type: sejour
+                date: "{{ dates[0] }}"
+                titre: "Séjour — {{ noms_chambres.get(chambre, 'Chambre ' ~ chambre) }}"
+                resume: "Du {{ as_datetime(dates[0]).strftime('%d/%m/%Y') }} au {{ fin }}"
+                personnes: "{{ [{'personne_id': pid, 'role': 'invité'}] if pid else [{'nom': nom, 'role': 'invité'}] }}"
+            continue_on_error: true
+
+  carnet_aliments_reessayer:
+    alias: "Carnet – renvoyer les modifications en attente"
+    description: "Renvoie à carnet les modifications d'alimentation qui n'ont pas pu partir."
+    mode: single
+    sequence:
+      - repeat:
+          for_each: "{{ state_attr('sensor.carnet_aliments_en_attente', 'operations') or [] }}"
+          sequence:
+            - action: rest_command.carnet_ha_post
+              data:
+                chemin: aliments/modifier
+                corps: "{{ repeat.item }}"
+              response_variable: reponse
+              continue_on_error: true
+            - if:
+                - condition: template
+                  value_template: "{{ reponse is defined and reponse.status == 200 }}"
+              then:
+                - event: carnet_aliments_file
+                  event_data:
+                    retirer: "{{ repeat.item.operation }}"
+            - if:
+                - condition: template
+                  value_template: "{{ reponse is defined and reponse.status in [400, 404] }}"
+              then:
+                - event: carnet_aliments_file
+                  event_data:
+                    retirer: "{{ repeat.item.operation }}"
+                - action: persistent_notification.create
+                  data:
+                    notification_id: "carnet_aliments_refus_{{ repeat.item.operation }}"
+                    title: "Carnet : modification d'alimentation refusée"
+                    message: >-
+                      {{ reponse.content.detail if reponse.content is mapping else 'Refus de carnet.' }}
+                      Refais-la depuis la fiche carnet › Alimentation.
 
 rest:
   - resource: !secret carnet_status_url
@@ -161,6 +661,85 @@ template:
           mode: "{{ states('sensor.carnet_synchro_icloud') }}"
           suppressions_en_attente: "{{ state_attr('sensor.carnet_synchro_icloud', 'suppressions_en_attente') }}"
 
+  # ------------------------------------------------------------------ 3.5 : copies d'alimentation
+  # Une entité par chambre, mise à jour par l'évènement carnet_aliments (scripts ci-dessus) ;
+  # gardée au redémarrage de Home Assistant. État : heure de la dernière mise à jour.
+  - trigger:
+      - trigger: event
+        event_type: carnet_aliments
+        event_data:
+          chambre: ami
+    sensor:
+      - name: Carnet aliments Chambre d'Ami
+        unique_id: carnet_aliments_chambre_ami
+        icon: mdi:food-apple-outline
+        device_class: timestamp
+        state: "{{ now().isoformat() }}"
+        attributes:
+          invite_1: >-
+            {% set e = trigger.event.data %}
+            {% if e.place | int(0) == 1 %}{{ none if e.get('effacer') else e.get('fiche') }}{% else %}{{ this.attributes.get('invite_1') }}{% endif %}
+          invite_2: >-
+            {% set e = trigger.event.data %}
+            {% if e.place | int(0) == 2 %}{{ none if e.get('effacer') else e.get('fiche') }}{% else %}{{ this.attributes.get('invite_2') }}{% endif %}
+  - trigger:
+      - trigger: event
+        event_type: carnet_aliments
+        event_data:
+          chambre: ado
+    sensor:
+      - name: Carnet aliments Chambre Ado
+        unique_id: carnet_aliments_chambre_ado
+        icon: mdi:food-apple-outline
+        device_class: timestamp
+        state: "{{ now().isoformat() }}"
+        attributes:
+          invite_1: >-
+            {% set e = trigger.event.data %}
+            {% if e.place | int(0) == 1 %}{{ none if e.get('effacer') else e.get('fiche') }}{% else %}{{ this.attributes.get('invite_1') }}{% endif %}
+          invite_2: >-
+            {% set e = trigger.event.data %}
+            {% if e.place | int(0) == 2 %}{{ none if e.get('effacer') else e.get('fiche') }}{% else %}{{ this.attributes.get('invite_2') }}{% endif %}
+  - trigger:
+      - trigger: event
+        event_type: carnet_aliments
+        event_data:
+          chambre: stitch
+    sensor:
+      - name: Carnet aliments Chambre Stitch
+        unique_id: carnet_aliments_chambre_stitch
+        icon: mdi:food-apple-outline
+        device_class: timestamp
+        state: "{{ now().isoformat() }}"
+        attributes:
+          invite_1: >-
+            {% set e = trigger.event.data %}
+            {% if e.place | int(0) == 1 %}{{ none if e.get('effacer') else e.get('fiche') }}{% else %}{{ this.attributes.get('invite_1') }}{% endif %}
+          invite_2: >-
+            {% set e = trigger.event.data %}
+            {% if e.place | int(0) == 2 %}{{ none if e.get('effacer') else e.get('fiche') }}{% else %}{{ this.attributes.get('invite_2') }}{% endif %}
+  # File d'attente des modifications qui n'ont pas pu partir vers carnet
+  - trigger:
+      - trigger: event
+        event_type: carnet_aliments_file
+    sensor:
+      - name: Carnet aliments en attente
+        unique_id: carnet_aliments_en_attente
+        icon: mdi:tray-full
+        state: >-
+          {% set l = this.attributes.get('operations') or [] %}
+          {% set e = trigger.event.data %}
+          {% if e.get('ajouter') %}{% set l = (l | rejectattr('operation', 'eq', e.ajouter.operation) | list) + [e.ajouter] %}
+          {% elif e.get('retirer') %}{% set l = l | rejectattr('operation', 'eq', e.retirer) | list %}{% endif %}
+          {{ l | count }}
+        attributes:
+          operations: >-
+            {% set l = this.attributes.get('operations') or [] %}
+            {% set e = trigger.event.data %}
+            {% if e.get('ajouter') %}{{ (l | rejectattr('operation', 'eq', e.ajouter.operation) | list) + [e.ajouter] }}
+            {% elif e.get('retirer') %}{{ l | rejectattr('operation', 'eq', e.retirer) | list }}
+            {% else %}{{ l }}{% endif %}
+
 automation:
   - id: carnet_synchro_en_echec
     alias: "Carnet – synchro iCloud de nuit bloquée"
@@ -236,3 +815,90 @@ automation:
             supprimés à partir du
             {{ as_timestamp(state_attr(trigger.entity_id, 'prochaine_suppression')) | timestamp_custom('%d/%m/%Y') }}.
             Détail dans l'onglet Archives de carnet ; copie le fichier ailleurs pour le garder.
+
+  # ------------------------------------------------------------------ 3.5 : aliments et séjours
+  # Un invité mis dans une chambre (réservation) ou retiré : fin du séjour précédent, puis relecture
+  # dans carnet. Le délai laisse passer « Changement d'occupant » (profils_invites.yaml), qui remet
+  # la chambre à neuf : la copie de carnet est écrite après lui.
+  - id: carnet_aliments_changement_invite
+    alias: "Carnet – aliments et séjour au changement d'invité"
+    mode: queued
+    max: 20
+    triggers:
+      - trigger: state
+        entity_id:
+          - input_text.invite_chambre_ami_1
+          - input_text.invite_chambre_ami_2
+          - input_text.invite_chambre_ado_1
+          - input_text.invite_chambre_ado_2
+          - input_text.invite_chambre_stitch_1
+          - input_text.invite_chambre_stitch_2
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ trigger.from_state is not none and trigger.to_state is not none
+             and trigger.from_state.state != trigger.to_state.state
+             and trigger.to_state.state not in ['unknown', 'unavailable']
+             and trigger.from_state.state not in ['unknown', 'unavailable'] }}
+    actions:
+      - variables:
+          chambre: "{{ trigger.entity_id | regex_findall_index('invite_chambre_([a-z]+)_') }}"
+          place: "{{ trigger.entity_id[-1] | int }}"
+          avant: "{{ trigger.from_state.state }}"
+      - if:
+          - condition: template
+            value_template: "{{ avant != '' }}"
+        then:
+          - action: script.carnet_sejour_fin
+            data:
+              chambre: "{{ chambre }}"
+              brut: "{{ avant }}"
+              place: "{{ place }}"
+      - delay: "00:00:20"
+      - action: script.carnet_aliments_actualiser
+        data:
+          chambre: "{{ chambre }}"
+          envoyer_sejour: "{{ trigger.to_state.state != '' }}"
+
+  # Relecture chaque heure des chambres occupées (une allergie ajoutée dans carnet arrive dans l'heure)
+  - id: carnet_aliments_relecture
+    alias: "Carnet – relecture des aliments des chambres occupées"
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: 7
+      - trigger: homeassistant
+        event: start
+    actions:
+      - if:
+          - condition: template
+            value_template: "{{ trigger.platform == 'homeassistant' }}"
+        then:
+          - delay: "00:02:00"
+      - repeat:
+          for_each: [ami, ado, stitch]
+          sequence:
+            - if:
+                - condition: template
+                  value_template: >-
+                    {{ (states('input_text.invite_chambre_' ~ repeat.item ~ '_1') not in ['', 'unknown', 'unavailable'])
+                       or (states('input_text.invite_chambre_' ~ repeat.item ~ '_2') not in ['', 'unknown', 'unavailable'])
+                       or state_attr('sensor.carnet_aliments_chambre_' ~ repeat.item, 'invite_1') is mapping
+                       or state_attr('sensor.carnet_aliments_chambre_' ~ repeat.item, 'invite_2') is mapping }}
+              then:
+                - action: script.carnet_aliments_actualiser
+                  data:
+                    chambre: "{{ repeat.item }}"
+
+  # Modifications en attente : renvoyées toutes les 5 minutes
+  - id: carnet_aliments_file_attente
+    alias: "Carnet – renvoi des modifications d'alimentation en attente"
+    mode: single
+    triggers:
+      - trigger: time_pattern
+        minutes: "/5"
+    conditions:
+      - condition: template
+        value_template: "{{ states('sensor.carnet_aliments_en_attente') | int(0) > 0 }}"
+    actions:
+      - action: script.carnet_aliments_reessayer

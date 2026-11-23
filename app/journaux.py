@@ -171,6 +171,9 @@ def paru_lisible(p: dict) -> str:
 LIVRE_LISTE = 10            # mots donnés à Gazette (les plus récents)
 
 
+SUPPRIMES = "livre_or_supprimes"   # 3.5 : clés des mots supprimés dans carnet (table kv)
+
+
 def _livre(c: Carnet) -> list[dict]:
     return c.memo("livre_or", lambda: [dict(l) for l in c.base.tous("SELECT * FROM livre_or ORDER BY le DESC, id DESC")])
 
@@ -220,6 +223,7 @@ def recevoir_livre(c: Carnet, corps: dict) -> dict:
     chambre = " ".join(str(corps.get("chambre") or "").split())[:60]
     noms = _noms(corps) or ["Invité"]
     fiches = contacts_ha(c)
+    supprimes = set(c.base.lire(SUPPRIMES, []) or [])
     rattaches, inconnus, nouveaux = [], [], 0
     for nom in noms:
         cle_n = cle_texte(nom)
@@ -228,7 +232,7 @@ def recevoir_livre(c: Carnet, corps: dict) -> dict:
         (rattaches if ident else inconnus).append(nom)
         cle = hashlib.sha1(f"{cle_n}|{le}|{message}".encode()).hexdigest()[:20]
         avant = c.base.tous("SELECT id FROM livre_or WHERE cle = ?", (cle,))
-        if avant:
+        if avant or cle in supprimes:       # 3.5 : un mot supprimé dans carnet ne revient pas
             continue
         c.base.executer("INSERT INTO livre_or(cle, personne, nom, message, chambre, le, recu) VALUES (?, ?, ?, ?, ?, ?, ?)",
                         (cle, ident, nom, message, chambre, le, iso(maintenant())))
@@ -236,6 +240,26 @@ def recevoir_livre(c: Carnet, corps: dict) -> dict:
     c.base.noter("journaux", "Mot du livre d'or reçu de Home Assistant",
                  {"rattaches": len(rattaches), "a_rattacher": len(inconnus), "nouveaux": nouveaux})
     return {"rattaches": rattaches, "a_rattacher": inconnus, "nouveaux": nouveaux}
+
+
+def supprimer_livre(c: Carnet, mot_id: int) -> dict:
+    """3.5 : supprime un mot du livre d'or (un essai, un mot envoyé par erreur), après confirmation dans l'écran.
+    Il disparaît de la fiche, de ce que lit Gazette et, à la synchronisation suivante, du coffre Contacts. Le mot
+    reste dans la liste « Livre d'or » de Home Assistant : le retirer aussi là-bas, sinon « Renvoyer à carnet » le
+    ferait revenir. Reste dans carnet : permis en lecture seule."""
+    ligne = c.base.un("SELECT id, cle, le FROM livre_or WHERE id = ?", (int(mot_id),))
+    if not ligne:
+        raise ErreurCarnet("Mot du livre d'or introuvable (déjà supprimé ?).")
+    # La clé du mot est gardée : un renvoi de Home Assistant (« Renvoyer à carnet ») ne le fait pas revenir
+    supprimes = list(c.base.lire(SUPPRIMES, []) or [])
+    if ligne["cle"] not in supprimes:
+        supprimes.append(ligne["cle"])
+        c.base.ecrire(SUPPRIMES, supprimes[-500:])
+    c.base.executer("DELETE FROM livre_or WHERE id = ?", (int(mot_id),))
+    c.oublier()
+    c.base.noter("journaux", "Mot du livre d'or supprimé", {"le": ligne["le"]})
+    return {"ok": True, "message": "Mot supprimé de carnet (fiche, Gazette, coffre Contacts à la prochaine synchronisation). "
+                                   "Il reste dans la liste « Livre d'or » de Home Assistant : retire-le aussi là-bas."}
 
 
 def rattacher_livre(c: Carnet, mot_id: int, uid: str) -> dict:

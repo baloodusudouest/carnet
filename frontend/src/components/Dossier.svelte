@@ -48,6 +48,17 @@
       sous: donnees.liaisons?.immich ? 'contact et affiche' : 'pas liée à Immich' },
   ])
 
+  // 3.5 : supprimer un mot du livre d'or (un essai…) : deux touchers, rien ne part sans le second
+  let aSupprimer = $state(null)
+  async function supprimerMot(m) {
+    if (aSupprimer !== m.id) { aSupprimer = m.id; return }
+    try {
+      const res = await api.effacer(`/api/livre-or/${m.id}`)
+      aSupprimer = null
+      dire(res?.message || 'Mot supprimé de carnet.')
+      onchange()
+    } catch (err) { erreur(err) }
+  }
   async function rattacher(m) {
     try {
       await api.put(`/api/livre-or/${m.id}/rattacher`, { uid })
@@ -95,7 +106,10 @@
         <ul class="liste">
           {#each j.livre_or as m (m.id)}
             <li class="carte"><p class="discret petit">{dateLisible(m.le)}{m.chambre ? ` · ${m.chambre}` : ''}{m.nom ? ` · signé ${m.nom}` : ''}</p>
-              <p class="mot">« {m.message} »</p></li>
+              <p class="mot">« {m.message} »</p>
+              <p><button class="bouton petit" class:bouton-danger={aSupprimer === m.id} onclick={() => supprimerMot(m)}>
+                {aSupprimer === m.id ? 'Confirmer : supprimer ce mot' : 'Supprimer…'}</button>
+                {#if aSupprimer === m.id}<button class="bouton petit" onclick={() => (aSupprimer = null)}>Garder</button>{/if}</p></li>
           {/each}
         </ul>
       {:else}<p class="discret">Aucun mot : ceux qu'elle ou il laissera dans le livre d'or de la chambre arriveront ici.</p>{/if}
@@ -106,7 +120,10 @@
             {#each j.orphelins as m (m.id)}
               <li class="carte"><p class="mot">« {m.message} »</p>
                 <p class="discret petit">{dateLisible(m.le)} · signé « {m.nom} »{m.chambre ? ` · ${m.chambre}` : ''}
-                  <button class="bouton petit" onclick={() => rattacher(m)}>C'est cette personne</button></p></li>
+                  <button class="bouton petit" onclick={() => rattacher(m)}>C'est cette personne</button>
+                  <button class="bouton petit" class:bouton-danger={aSupprimer === m.id} onclick={() => supprimerMot(m)}>
+                    {aSupprimer === m.id ? 'Confirmer : supprimer ce mot' : 'Supprimer…'}</button>
+                  {#if aSupprimer === m.id}<button class="bouton petit" onclick={() => (aSupprimer = null)}>Garder</button>{/if}</p></li>
             {/each}
           </ul>
         </details>

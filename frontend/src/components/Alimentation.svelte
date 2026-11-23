@@ -1,7 +1,8 @@
 <script>
   // 2.28 : alimentation d'une personne (allergies, intolérances, « aucune connue », vérifiée le,
   // aliments non aimés, plaisirs coupables). Reste dans carnet : jamais écrite dans iCloud.
-  // Home Assistant n'en reçoit que le statut (inconnu / aucune / à connaître).
+  // 3.5 : note d'hôte ; Home Assistant reçoit les listes et la note pendant un séjour (champs de la chambre) et
+  // renvoie ce qui est modifié dans ses cartes.
   import { api } from '../lib/api.js'
   import { dire, erreur } from '../lib/etat.svelte.js'
 
@@ -21,14 +22,14 @@
     return v ? `${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}` : ''
   }
   function modifier() {
-    brouillon = { ...Object.fromEntries(LISTES.map((k) => [k, a[k].join(', ')])), aucune: a.aucune, verifiee: false }
+    brouillon = { ...Object.fromEntries(LISTES.map((k) => [k, a[k].join(', ')])), note: a.note || '', aucune: a.aucune, verifiee: false }
   }
   const sante = $derived(brouillon && (brouillon.allergies.trim() || brouillon.intolerances.trim()))
   async function enregistrer() {
     attente = true
     try {
       await api.put(`/api/contacts/${encodeURIComponent(uid)}/alimentation`, {
-        ...Object.fromEntries(LISTES.map((k) => [k, brouillon[k]])),
+        ...Object.fromEntries(LISTES.map((k) => [k, brouillon[k]])), note: brouillon.note,
         aucune: brouillon.aucune && !sante, verifiee: brouillon.verifiee,
       })
       brouillon = null
@@ -51,6 +52,10 @@
           <input type="text" bind:value={brouillon[k]} autocomplete="off" />
         </label>
       {/each}
+      <label>
+        <span>{a.libelles.note || "Note d'hôte"} <span class="discret petit">(pour l'hôte seulement : habitudes, « arrive toujours en avance »…)</span></span>
+        <textarea rows="2" maxlength="500" bind:value={brouillon.note}></textarea>
+      </label>
       <label class="case">
         <input type="checkbox" bind:checked={brouillon.aucune} disabled={!!sante} />
         <span>Aucune allergie ni intolérance connue</span>
@@ -59,7 +64,8 @@
         <input type="checkbox" bind:checked={brouillon.verifiee} />
         <span>Vérifié avec la personne aujourd'hui</span>
       </label>
-      <p class="discret petit">Rangé dans carnet seulement : rien n'est écrit dans iCloud. Home Assistant ne reçoit que le statut.</p>
+      <p class="discret petit">Rangé dans carnet seulement : rien n'est écrit dans iCloud. Pendant un séjour, Home Assistant reçoit
+        ces listes et la note pour la chambre (les plaisirs et la note ne sont jamais montrés aux invités) et renvoie ce qui y est modifié.</p>
       <div class="boutons-gauche">
         <button type="submit" class="bouton bouton-principal" disabled={attente}>{attente ? 'Enregistrement…' : 'Enregistrer'}</button>
         <button type="button" class="bouton" disabled={attente} onclick={() => (brouillon = null)}>Abandonner</button>
@@ -68,11 +74,12 @@
   {:else}
     <dl>
       {#each LISTES as k}{#if a[k].length}<dt>{a.libelles[k]}</dt><dd>{a[k].join(', ')}</dd>{/if}{/each}
+      {#if a.note}<dt>{a.libelles.note || "Note d'hôte"}</dt><dd class="note">{a.note}</dd>{/if}
       {#if a.verifiee_le}<dt>Vérifiée le</dt><dd>{dateLisible(a.verifiee_le)}</dd>{/if}
     </dl>
     {#if a.statut === 'inconnu'}<p class="discret">Rien n'est connu : à demander avant un repas ou un séjour.</p>{/if}
     <div class="boutons-gauche">
-      <button class="bouton" onclick={modifier}>{a.statut === 'inconnu' && !a.non_aimes.length && !a.plaisirs.length ? 'Renseigner' : 'Modifier'}</button>
+      <button class="bouton" onclick={modifier}>{a.statut === 'inconnu' && !a.non_aimes.length && !a.plaisirs.length && !a.note ? 'Renseigner' : 'Modifier'}</button>
     </div>
   {/if}
 </div>
@@ -88,5 +95,6 @@
   .formulaire .case { display: flex; align-items: center; gap: 0.6rem; }
   dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.35rem 1rem; margin: 0.8rem 0; }
   dt { color: var(--color-mine); opacity: 0.8; }
+  .note { white-space: pre-line; overflow-wrap: anywhere; }
   .boutons-gauche { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
 </style>

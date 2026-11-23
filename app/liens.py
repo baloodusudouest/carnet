@@ -347,6 +347,15 @@ class Treemich:
         if r.status_code >= 400:
             raise ErreurLien(f"Treemich a refusé la date de mariage ({r.status_code}).")
 
+    def creer_couple(self, a: str, b: str) -> None:
+        """3.5 : crée le lien de conjoint entre deux personnes de l'arbre (la date de mariage s'écrit ensuite sur ce
+        lien par maj_mariage). Forme supposée d'après la modification du lien (même adresse, en POST, avec le type) :
+        jamais vue sur la vraie installation, et relue par l'appelant juste après."""
+        r = self._appel("POST", f"/people/{a}/relationships", json={"toPersonId": b, "type": "SPOUSE_OF"})
+        if r.status_code >= 400:
+            raise ErreurLien(f"Treemich a refusé de créer le couple ({r.status_code}) : crée-le dans Treemich "
+                             "(fiche de la personne › Relatives › ajouter un conjoint).")
+
     def importer_vignette(self, pid: str) -> None:
         """2.11.1 : Treemich recopie le visage de la personne depuis Immich (il en garde sa propre
         copie, qui ne suit pas toute seule). Adresse relevée dans l'interface de Treemich."""

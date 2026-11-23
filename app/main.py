@@ -390,6 +390,8 @@ def contact(uid: str, request: Request):
             "deces": {"date": attentes.decedes(c).get(uid), "decede": uid in attentes.decedes(c),
                       "coche": bool(c.base.un("SELECT 1 FROM deces WHERE uid = ? AND origine = 'main'", (uid,)))},
             "genre": genres.fiche(c, uid),     # 2.22
+            # 3.5 : pourquoi la date de mariage ou de décès ne part pas vers Treemich, et le conjoint nommé sur la fiche
+            "famille": {"raisons": famille.raisons_de(c, uid), "conjoint": famille.conjoint_nomme(c, uid)},
             "personne_id": personnes.de(c, uid),           # 2.28 : identifiant maison stable
             "alimentation": alimentation.fiche(c, uid),     # 2.28 : allergies, intolérances, non aimés, plaisirs
             "journaux": journaux.fiche(c, uid),             # 2.29 : « Pour les journaux » (Gazette)
@@ -474,6 +476,21 @@ def valider(uid: str, corps: dict = Body(...)):
     # 2.8.3 : une date de mariage ou de décès saisie ici part vers Treemich sans attendre la nuit,
     # si l'accord est allumé — après le délai d'« Annuler », pour ne rien propager d'une saisie annulée
     apres = c.fiches().get(uid, {})
+    # 3.5 : conjoint choisi sous la date de mariage : « conjoint » sur les deux cartes, couple dans Treemich, date
+    # accordée — après le délai d'« Annuler », pour ne rien propager d'une saisie annulée
+    conjoint = str(corps.get("conjoint") or "")
+    if conjoint and apres.get("mariage") and conjoint != uid and conjoint in c.fiches() and not c.cfg.lecture_seule:
+        def unir():
+            try:
+                bilan = famille.lier_conjoint(c, uid, conjoint)
+                c.base.noter("automatique", bilan["message"])
+            except Exception as exc:  # noqa: BLE001 — Treemich muet, refus… : dit dans le journal, la fiche le redit
+                c.base.noter("automatique", f"Conjoint de {nom_affiche(apres)} : {exc}")
+        threading.Timer(icloud.DELAI_ANNULER + 2, unir).start()
+        res["famille"] = (f"Conjoint : {nom_affiche(c.fiches()[conjoint])}. « conjoint » est écrit sur les deux fiches, "
+                          "puis le couple et la date partent vers Treemich dans quelques secondes (résultat dans Réglages › Journal).")
+        res["raisons"] = []
+        return res
     if any((apres.get(k) or "") and (apres.get(k) or "") != (avant.get(k) or "") for k in ("mariage", "deces")):
         if famille.actif(c, "famille") and not c.cfg.lecture_seule:
             def accorder():
@@ -488,6 +505,8 @@ def valider(uid: str, corps: dict = Body(...)):
             res["famille"] = ("Date de famille enregistrée dans iCloud seulement : "
                               + ("carnet est en lecture seule." if c.cfg.lecture_seule
                                  else "l'accord avec Treemich est éteint (Connexion › Treemich)."))
+        # 3.5 : la raison d'un blocage, tout de suite sur la fiche (pas de conjoint dans l'arbre, date sans année…)
+        res["raisons"] = famille.raisons_de(c, uid)
     return res
 
 
@@ -1450,6 +1469,13 @@ def ha_livre_or(corps: dict = Body(...)):
     return journaux.recevoir_livre(carnet(), corps)
 
 
+@app.delete("/api/livre-or/{mot_id}")
+def supprimer_livre(mot_id: int):
+    """3.5 : supprime un mot du livre d'or (après confirmation dans l'écran) ; un renvoi de Home Assistant ne le fait pas
+    revenir."""
+    return journaux.supprimer_livre(carnet(), mot_id)
+
+
 @app.put("/api/livre-or/{mot_id}/rattacher")
 def rattacher_livre(mot_id: int, corps: dict = Body(...)):
     """2.31 : rattache un mot du livre d'or (signataire non reconnu) à une fiche."""
@@ -1467,6 +1493,51 @@ def ha_allergies(personne_id: str = "", nom: str = ""):
         raise HTTPException(404, str(exc))
     except ValueError as exc:
         raise HTTPException(409, str(exc))
+
+
+@app.get("/ha/aliments")
+def ha_aliments(personne_id: str = "", nom: str = ""):
+    """3.5 : listes d'alimentation et note d'hôte d'une personne (champs aliments d'une chambre)."""
+    if not personne_id and not nom:
+        raise HTTPException(400, "Donne personne_id ou nom.")
+    try:
+        return sorties.ha_aliments(carnet(), personne_id, nom)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+
+
+@app.get("/ha/aliments/annuaire")
+def ha_aliments_annuaire():
+    """3.5 : toutes les personnes dont l'alimentation est renseignée (carte « Fiches invités »)."""
+    return sorties.ha_aliments_annuaire(carnet())
+
+
+@app.post("/ha/aliments/modifier")
+def ha_aliments_modifier(corps: dict = Body(...)):
+    """3.5 : une modification faite dans une carte de Home Assistant, par ajouts et retraits ; renvoi sans doublon."""
+    try:
+        return alimentation.modifier_par_ha(carnet(), corps)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc))
+
+
+@app.put("/ha/evenements/{cle}")
+def ha_evenement(cle: str, corps: dict = Body(...)):
+    """3.5 : séjour d'une chambre envoyé par Home Assistant (à la réservation et au départ), rangé comme les
+    événements des autres applis (appli « home-assistant », type « sejour »)."""
+    corps = dict(corps or {})
+    if (corps.get("type") or "sejour") != "sejour":
+        raise ErreurCarnet("Home Assistant n'envoie que des séjours.")
+    corps["type"] = "sejour"
+    return evenements.recevoir(carnet(), "home-assistant", cle, corps)
+
+
+@app.delete("/ha/evenements/{cle}")
+def ha_evenement_retire(cle: str):
+    """3.5 : séjour annulé dans Home Assistant."""
+    return evenements.retirer(carnet(), "home-assistant", cle)
 
 
 @app.get("/ha/portraits/candidats")

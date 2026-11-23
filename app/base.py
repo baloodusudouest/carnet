@@ -22,9 +22,10 @@ from typing import Any, Iterator
 
 log = logging.getLogger("carnet")
 
-VERSION = 10  # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
+VERSION = 11  # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
               # 5 : personnes, alimentation (2.28) ; 6 : journaux (2.29) ; 7 : journaux_parus (2.30) ; 8 : livre_or (2.31) ;
-              # 9 : journaux_pepites (2.33) ; 10 : evenements, evenements_personnes, compteurs (3.1)
+              # 9 : journaux_pepites (2.33) ; 10 : evenements, evenements_personnes, compteurs (3.1) ;
+              # 11 : alimentation.note, alimentation_operations (3.5)
 ENTETE_CLAIR = b"SQLite format 3\x00"
 GARDE_CLAIR = timedelta(days=14)     # copie en clair d'avant le chiffrement, pour revenir à la 2.27 : effacée ensuite
 
@@ -310,6 +311,13 @@ CREATE TABLE IF NOT EXISTS evenements_personnes (
 CREATE INDEX IF NOT EXISTS idx_evt_personnes_personne ON evenements_personnes(personne);
 CREATE INDEX IF NOT EXISTS idx_evt_personnes_evt ON evenements_personnes(appli, cle);
 -- compteurs par personne envoyés par une appli (ex. Gazette : photos_scandale)
+-- ---- 3.5 (schéma 11) : modifications d'alimentation venues de Home Assistant, gardées pour qu'un renvoi
+-- (file d'attente de Home Assistant) ne s'applique pas deux fois. La colonne alimentation.note est ajoutée au démarrage.
+CREATE TABLE IF NOT EXISTS alimentation_operations (
+    id       TEXT PRIMARY KEY,       -- identifiant donné par Home Assistant
+    personne TEXT NOT NULL,
+    le       TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS compteurs (
     personne TEXT NOT NULL,
     appli    TEXT NOT NULL,
@@ -433,7 +441,18 @@ class Base:
         self.generation = 0
         with self._verrou:
             self.cx.executescript(SCHEMA)
+            self._completer_colonnes()
             self.cx.execute(f"PRAGMA user_version = {VERSION}")
+
+    # Colonnes ajoutées après coup à une table existante (une base d'une version précédente les reçoit vides)
+    COLONNES = {("alimentation", "note"): "TEXT NOT NULL DEFAULT ''"}     # 3.5 : note d'hôte
+
+    def _completer_colonnes(self) -> None:
+        for (table, colonne), definition in self.COLONNES.items():
+            presentes = {r[1] for r in self.cx.execute(f'PRAGMA table_info("{table}")').fetchall()}
+            if colonne not in presentes:
+                self.cx.execute(f'ALTER TABLE "{table}" ADD COLUMN "{colonne}" {definition}')
+                log.info("Base : colonne %s.%s ajoutée", table, colonne)
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:

@@ -896,6 +896,21 @@ def synchroniser(c: Carnet, ecrire: bool = True) -> dict:
         except OSError as exc:
             bilan["erreurs"].append(f"{chemin.name} : {exc.strerror or exc}")
 
+    # 3.5 : une note d'événement dont l'événement n'est plus dans carnet (mot du livre d'or supprimé, séjour annulé)
+    # garde sa place mais son bloc dit qu'il a été retiré ; ce que Julien a écrit hors du bloc reste.
+    for eid, chemin in inv["evenements"].items():
+        if eid in evts:
+            continue
+        try:
+            avant = bilan["crees"]
+            _poser(chemin, True, [f"evenement_id: {eid}", "type: evenement", "tags:", f"  - {TAG_EVENEMENT}",
+                                  "evenement: retire", "personnes: []", "carnet: retirée", f"maj_carnet: {le}"],
+                   f"# {chemin.stem}\n\nCet événement n'est plus dans carnet (retiré). Rien d'autre n'a été effacé : "
+                   "supprime cette note si elle ne sert plus.", ecrire, bilan, "crees")
+            bilan["crees"] = avant
+        except OSError as exc:
+            bilan["erreurs"].append(f"{chemin.name} : {exc.strerror or exc}")
+
     # 3. Sillage et Arbre (lus une fois pour tout le monde)
     liens = c.liaisons()
     immich = sorted({liens[u]["immich"] for u in gens if liens.get(u, {}).get("immich")})

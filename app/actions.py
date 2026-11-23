@@ -259,6 +259,12 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
             res = famille.ecrire_partout(c, "mariage", str(valeur or ""), [reliees[t] for t in (d["a"], d["b"]) if t in reliees],
                                          a=d["a"], b=d["b"])
             return res
+    if motif == "conjoint_treemich" and action == "creer":
+        # 3.5 : le conjoint choisi sur la fiche est relié à Treemich : créer le couple, puis accorder la date
+        from . import famille
+        if not d.get("conjoint_uid"):
+            raise ErreurCarnet("Aucun conjoint choisi sur la fiche : modifie la fiche et choisis-le sous la date de mariage.")
+        return famille.creer_couple(c, uid, d["conjoint_uid"])
     if motif == "deces_different" and action == "ecrire":
         from . import famille
         return famille.ecrire_partout(c, "deces", str(valeur or ""), [uid], treemich=d["treemich"])

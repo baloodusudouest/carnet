@@ -63,6 +63,11 @@ def preparer(dossier: Path) -> tuple[Carnet, FauxICloud]:
     reseaux.enregistrer(c, "instagram", [{"ext_id": "brunolefevre", "nom": "", "pseudo": "brunolefevre"},
                                          {"ext_id": "camille.garnier", "nom": "", "pseudo": "camille.garnier"}])
     reseaux.proposer(c)
+    # 3.5 : un mot du livre d'or à supprimer, une fiche par taille d'écran (PC : Inès, iPhone : Julien)
+    from app import journaux
+    for nom in ("Inès Lambert", "Julien Moreau"):
+        journaux.recevoir_livre(c, {"invites": nom, "message": "Mot d'essai à supprimer", "chambre": "Chambre d'Ami",
+                                    "le": "2026-11-20"})
     c.transports["logos"] = faux_logos()
     main.LIRE_ANNEAU = faux_anneau()          # 2.26 : sauvegardes simulées pour « Restaurer les réglages »
     return c, ic

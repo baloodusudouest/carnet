@@ -84,7 +84,11 @@ Toutes les adresses `/ha/…` demandent `Authorization: Bearer <CARNET_HA_TOKEN>
 | `/ha/personnes` | Fiches liées à Immich et proches (carte de réservation) — identique à la 1.3 |
 | `/ha/anniversaires` | Calendrier des anniversaires — identique à la 1.3 |
 | `/ha/invite?nom=` | Fiche d'un invité (« Nom (dates) » accepté) ; 404 inconnu, 409 plusieurs. 2.28 : aussi `personne_id`, `allergies` (statut) et `allergies_verifiees_le` |
-| `/ha/allergies?personne_id=` ou `?nom=` | 2.28 : statut d'allergies seulement (`inconnu`, `aucune`, `a_connaitre`) et date de vérification, jamais la liste ; l'identifiant suit les fusions ; identifiant inconnu : `inconnu` |
+| `/ha/allergies?personne_id=` ou `?nom=` | 2.28 : statut d'allergies seulement (`inconnu`, `aucune`, `a_connaitre`) et date de vérification ; l'identifiant suit les fusions ; identifiant inconnu : `inconnu` |
+| `/ha/aliments?personne_id=` ou `?nom=` | 3.5 : listes complètes (allergies, intolérances, non aimés, plaisirs), note d'hôte, statut, date de vérification ; 404 inconnue, 409 plusieurs |
+| `/ha/aliments/annuaire` | 3.5 : toutes les personnes dont l'alimentation est renseignée (carte « Fiches invités ») |
+| `POST /ha/aliments/modifier` | 3.5 : `{operation, personne_id, ajouts, retraits, note, aucune, verifiee, confirme}` ; retrait d'allergie seulement avec `confirme: true` ; opération déjà reçue : `deja: true`, rien n'est refait |
+| `PUT` / `DELETE /ha/evenements/{clé}` | 3.5 : séjour d'une chambre (type `sejour`), appli `home-assistant` |
 | `/ha/portraits/candidats?immich=` et `/ha/portrait?immich=` | Portraits pour les cadres ; en-tête `X-Visage` — identiques à la 1.3 |
 | `/status` | Compteurs (mêmes champs que la 1.3 pour le paquet `homeassistant/carnet.yaml`, plus `a_traiter` et `par_motif`) |
 

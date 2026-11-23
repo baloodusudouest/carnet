@@ -200,6 +200,7 @@ def examiner(c: Carnet, d: dict | None) -> dict:
                 [{"source": f"iCloud ({nom_affiche(fiches[u])})", "date": v} for u, v in cartes.items() if v]
             points.append({"motif": "mariage_different", "uid": uids[0], "cle": f"{cle}|{traiter.empreinte(valeurs)}",
                            "donnees": {"a": x["a"], "b": x["b"], "couple": couple, "valeurs": sources}})
+    points += _points_conjoint(c, d, fiches)          # 3.5 : date de mariage sans conjoint dans l'arbre
     for t, uid in reliees.items():
         arbre = d.get("deces_treemich", {}).get(t, "")
         carte = fiches[uid].get("deces") or ""
@@ -215,9 +216,7 @@ def examiner(c: Carnet, d: dict | None) -> dict:
     return {"actions": actions, "points": points}
 
 
-def pourquoi_rien(c: Carnet, d: dict | None) -> list[str]:
-    """Quand une date de famille est sur une fiche et que rien ne part vers Treemich : la raison,
-    dite en clair (2.8.3). Une ligne par cause."""
+def _raisons_generales(c: Carnet, d: dict | None) -> list[str]:
     raisons = []
     if c.cfg.lecture_seule:
         raisons.append("carnet est en lecture seule (MAISON_LECTURE_SEULE ou CARNET_LECTURE_SEULE) : rien n'est écrit, ni dans iCloud ni dans Treemich.")
@@ -228,26 +227,202 @@ def pourquoi_rien(c: Carnet, d: dict | None) -> list[str]:
     if not _treemich_parle(d):
         return raisons + ["Treemich n'a pas répondu en entier à la dernière lecture"
                           + (f" ({d['erreur_treemich']})" if d.get("erreur_treemich") else "") + " : rien n'est accordé tant qu'il ne répond pas."]
-    fiches, liens = c.fiches(), c.liaisons()
+    return raisons
+
+
+def _raisons_fiche(c: Carnet, d: dict, uid: str, f: dict, liens: dict, en_couple: set, partielles: set,
+                   en_revue: set) -> list[str]:
+    """Pourquoi la date de mariage ou de décès d'une fiche ne part pas vers Treemich (Treemich a répondu)."""
+    raisons = []
+    nom, t = nom_affiche(f), liens.get(uid, {}).get("treemich")
+    if f.get("mariage"):
+        if not t:
+            raisons.append(f"{nom} a une date de mariage, mais sa fiche n'est pas reliée à une personne de Treemich (fiche, bloc Liaisons).")
+        elif t not in en_couple:
+            autre = conjoint_nomme(c, uid)
+            if not autre:
+                raisons.append(f"{nom} a une date de mariage, mais n'a pas de conjoint dans Treemich (le mariage s'y range sur le couple) "
+                               "et aucun conjoint n'est choisi sur la fiche : choisis-le en modifiant la fiche, sous la date de mariage.")
+            elif not liens.get(autre, {}).get("treemich"):
+                raisons.append(f"{nom} a une date de mariage, mais son conjoint ({nom_affiche(c.fiches()[autre])}) n'est pas relié "
+                               "à Treemich : ajoute-le dans Treemich puis relie sa fiche (bloc Liaisons).")
+            else:
+                raisons.append(f"{nom} a une date de mariage, mais n'a pas de conjoint dans Treemich : le couple avec "
+                               f"{nom_affiche(c.fiches()[autre])} est proposé dans « À traiter » (Créer le couple dans Treemich).")
+        elif t in partielles:
+            raisons.append(f"{nom} : Treemich porte déjà une date de mariage incomplète ; carnet n'y touche pas.")
+        elif not _complete(f["mariage"]):
+            raisons.append(f"{nom} : date de mariage sans année ; Treemich ne reçoit que des dates complètes.")
+    if f.get("deces") and not t:
+        raisons.append(f"{nom} a une date de décès, mais sa fiche n'est pas reliée à une personne de Treemich.")
+    if uid in en_revue and (f.get("mariage") or f.get("deces")):
+        raisons.append(f"{nom} attend ta relecture dans « À traiter » (modifiée sur l'iPhone) : carnet n'écrit pas sur sa carte en attendant.")
+    return raisons
+
+
+def _contexte(d: dict) -> tuple[set, set]:
     en_couple = {t for x in couples(d) for t in (x["a"], x["b"])}
     partielles = {t for x in couples(d) if x["mariage"] and not _complete(x["mariage"]) for t in (x["a"], x["b"])}
+    return en_couple, partielles
+
+
+def pourquoi_rien(c: Carnet, d: dict | None) -> list[str]:
+    """Quand une date de famille est sur une fiche et que rien ne part vers Treemich : la raison,
+    dite en clair (2.8.3). Une ligne par cause."""
+    raisons = _raisons_generales(c, d)
+    if d is None or not _treemich_parle(d) or not c.cfg.treemich_email:
+        return raisons
+    fiches, liens = c.fiches(), c.liaisons()
+    en_couple, partielles = _contexte(d)
     en_revue = _en_revue(c)
     for uid, f in sorted(fiches.items(), key=lambda x: nom_affiche(x[1]).casefold()):
-        nom, t = nom_affiche(f), liens.get(uid, {}).get("treemich")
-        if f.get("mariage"):
-            if not t:
-                raisons.append(f"{nom} a une date de mariage, mais sa fiche n'est pas reliée à une personne de Treemich (fiche, bloc Liaisons).")
-            elif t not in en_couple:
-                raisons.append(f"{nom} a une date de mariage, mais n'a pas de conjoint dans Treemich : le mariage s'y range sur le couple.")
-            elif t in partielles:
-                raisons.append(f"{nom} : Treemich porte déjà une date de mariage incomplète ; carnet n'y touche pas.")
-            elif not _complete(f["mariage"]):
-                raisons.append(f"{nom} : date de mariage sans année ; Treemich ne reçoit que des dates complètes.")
-        if f.get("deces") and not t:
-            raisons.append(f"{nom} a une date de décès, mais sa fiche n'est pas reliée à une personne de Treemich.")
-        if uid in en_revue and (f.get("mariage") or f.get("deces")):
-            raisons.append(f"{nom} attend ta relecture dans « À traiter » (modifiée sur l'iPhone) : carnet n'écrit pas sur sa carte en attendant.")
+        raisons += _raisons_fiche(c, d, uid, f, liens, en_couple, partielles, en_revue)
     return raisons[:12]
+
+
+def raisons_de(c: Carnet, uid: str) -> list[str]:
+    """3.5 : pourquoi la date de mariage (ou de décès) de cette fiche ne part pas vers Treemich, d'après la dernière
+    lecture de l'arbre ; vide si rien ne bloque (ou si la fiche n'a pas de telle date). Montré sur la fiche."""
+    from . import liaisons
+    f = c.fiches().get(uid)
+    if not f or not (f.get("mariage") or f.get("deces")):
+        return []
+    d = c.memo_present("liens", liaisons.DUREE_CACHE)
+    raisons = _raisons_generales(c, d)
+    if d is None or not _treemich_parle(d) or not c.cfg.treemich_email:
+        return raisons
+    en_couple, partielles = _contexte(d)
+    raisons += _raisons_fiche(c, d, uid, f, c.liaisons(), en_couple, partielles, _en_revue(c))
+    if not raisons and not actif(c, "famille"):
+        raisons.append("L'accord des dates de famille est éteint (Connexion › Treemich) : la date part à la nuit "
+                       "seulement s'il est allumé, ou tout de suite avec « Synchroniser ».")
+    return raisons
+
+
+# ----------------------------------------------------------------- 3.5 : conjoint et couple dans Treemich
+
+LIENS_CONJOINT = ("conjoint", "partenaire", "mari", "épouse")
+
+
+def conjoint_nomme(c: Carnet, uid: str) -> str | None:
+    """uid du conjoint nommé sur la fiche (nom associé de type conjoint, partenaire, mari ou épouse), quand ce nom est
+    porté par une seule autre fiche ; None sinon."""
+    from .normalisation import cle_texte
+    fiches = c.fiches()
+    f = fiches.get(uid) or {}
+    noms = [n.get("valeur") or "" for n in f.get("noms_associes") or [] if (n.get("type") or "") in LIENS_CONJOINT]
+    if not noms:
+        return None
+    par_nom: dict[str, list[str]] = {}
+    for u, g in fiches.items():
+        if u != uid:
+            par_nom.setdefault(cle_texte(nom_affiche(g)), []).append(u)
+    for n in noms:
+        trouves = par_nom.get(cle_texte(n), [])
+        if len(trouves) == 1:
+            return trouves[0]
+    return None
+
+
+def _points_conjoint(c: Carnet, d: dict, fiches: dict) -> list[dict]:
+    """Une fiche reliée à l'arbre, avec une date de mariage complète, mais sans conjoint dans Treemich : un point
+    « Conjoint manquant dans Treemich ». Si le conjoint choisi sur la fiche est relié lui aussi, le point propose de
+    créer le couple ; sinon il dit quoi faire dans Treemich (carnet n'y crée jamais de personne)."""
+    liens = c.liaisons()
+    presents = {p["id"] for p in d.get("treemich") or []}
+    en_couple, _ = _contexte(d)
+    res, vus = [], set()
+    for uid, f in sorted(fiches.items()):
+        t = liens.get(uid, {}).get("treemich")
+        if not _complete(f.get("mariage") or "") or not t or t not in presents or t in en_couple:
+            continue
+        autre = conjoint_nomme(c, uid)
+        t2 = liens.get(autre, {}).get("treemich") if autre else None
+        t2 = t2 if t2 in presents else None
+        paire = tuple(sorted(x for x in (t, t2) if x))
+        if paire in vus:
+            continue
+        vus.add(paire)
+        res.append({"motif": "conjoint_treemich", "uid": uid, "cle": f"{uid}|{autre or '-'}|{t2 or '-'}",
+                    "donnees": {"nom": nom_affiche(f), "conjoint": nom_affiche(fiches[autre]) if autre else "",
+                                "conjoint_uid": autre or "", "a": t, "b": t2 or "", "possible": bool(t2),
+                                "mariage": f["mariage"]}})
+    return res
+
+
+def _ajouter_nom_conjoint(c: Carnet, uid: str, autre_nom: str) -> bool:
+    """Nom associé « conjoint » sur la carte iCloud de `uid`, s'il n'y est pas déjà. Vrai si la carte a été écrite."""
+    from .normalisation import cle_texte
+    f = c.fiche(uid)
+    noms = list(f.get("noms_associes") or [])
+    if any(cle_texte(n.get("valeur") or "") == cle_texte(autre_nom) for n in noms):
+        return False
+    fiche = {k: v for k, v in f.items() if k != "a_photo"}
+    fiche["noms_associes"] = noms + [{"valeur": autre_nom, "type": "conjoint"}]
+    icloud.ecrire(c, uid, fiche, origine="carnet", motif="conjoint")
+    return True
+
+
+def creer_couple(c: Carnet, uid: str, autre: str) -> dict:
+    """Crée dans Treemich le couple des personnes reliées aux deux fiches, s'il n'existe pas (relu juste après).
+    Ne crée jamais de personne. Puis accorde la date de mariage (Treemich et la carte de l'autre conjoint)."""
+    from . import liaisons
+    fiches, liens = c.fiches(), c.liaisons()
+    if uid not in fiches or autre not in fiches:
+        raise ErreurCarnet("Fiche inconnue.")
+    n1, n2 = nom_affiche(fiches[uid]), nom_affiche(fiches[autre])
+    a, b = liens.get(uid, {}).get("treemich"), liens.get(autre, {}).get("treemich")
+    if not a or not b:
+        manque = n1 if not a else n2
+        raise ErreurCarnet(f"{manque} n'est pas relié(e) à une personne de Treemich : ajoute-la dans Treemich "
+                           "(carnet n'y crée jamais de personne), puis relie la fiche (bloc Liaisons).")
+    c.exiger_ecriture("Treemich")
+    cree = False
+    try:
+        tm = c.treemich()
+        paires = {(x["a"], x["b"]) for x in couples({"relations": tm.relations()})}
+        cle = tuple(sorted((a, b)))
+        if cle not in paires:
+            tm.creer_couple(a, b)
+            relues = {(x["a"], x["b"]) for x in couples({"relations": tm.relations()})}
+            if cle not in relues:
+                raise ErreurCarnet(f"Treemich n'a pas gardé le couple {n1} et {n2} : crée-le dans Treemich "
+                                   "(fiche de la personne › Relatives), puis « Synchroniser ».")
+            cree = True
+    except ErreurLien as exc:
+        raise ErreurCarnet(str(exc))
+    d = c.memo_present("liens", liaisons.DUREE_CACHE)
+    if cree and d is not None:
+        d.setdefault("relations", []).append({"de": a, "vers": b, "type": "SPOUSE_OF", "mariage": "", "divorce": ""})
+        memoriser(c, d)
+    if cree:
+        c.base.noter("automatique", f"Couple créé dans Treemich : {n1} et {n2}")
+    c.oublier()
+    bilan = accorder_maintenant(c, forcer=True)
+    debut = f"Couple {n1} et {n2} créé dans Treemich" if cree else f"{n1} et {n2} sont déjà en couple dans Treemich"
+    return {"ok": True, "cree": cree, "message": f"{debut}. {bilan['message']}"}
+
+
+def lier_conjoint(c: Carnet, uid: str, autre: str) -> dict:
+    """Après une date de mariage saisie avec son conjoint (fiche › Modifier) : « conjoint » écrit sur les deux cartes
+    iCloud s'il manque, couple créé dans Treemich si les deux fiches y sont reliées, puis date accordée. Ce qui ne
+    peut pas se faire est dit (et reste dans « À traiter »)."""
+    fiches = c.fiches()
+    if uid not in fiches or autre not in fiches or uid == autre:
+        raise ErreurCarnet("Conjoint inconnu.")
+    c.exiger_ecriture("iCloud")
+    n1, n2 = nom_affiche(fiches[uid]), nom_affiche(fiches[autre])
+    with c.ecriture(attendre=5):
+        ecrites = int(_ajouter_nom_conjoint(c, uid, n2)) + int(_ajouter_nom_conjoint(c, autre, n1))
+    c.oublier()
+    liens = c.liaisons()
+    debut = f"« conjoint » écrit sur {ecrites} carte(s) iCloud. " if ecrites else ""
+    if not liens.get(uid, {}).get("treemich") or not liens.get(autre, {}).get("treemich"):
+        manque = n1 if not liens.get(uid, {}).get("treemich") else n2
+        return {"ok": True, "message": f"{debut}Rien dans Treemich : {manque} n'y est pas relié(e) ; le point "
+                                       "« Conjoint manquant dans Treemich » le rappelle dans « À traiter »."}
+    res = creer_couple(c, uid, autre)
+    return {"ok": True, "message": debut + res["message"]}
 
 
 def apercu(c: Carnet) -> dict:
@@ -638,4 +813,5 @@ def defaire(c: Carnet, ident: int) -> dict:
 
 
 __all__ = ["INTERRUPTEURS", "actif", "regler", "apercu", "appliquer", "examiner", "memoriser", "fetes_a_ecrire",
+           "raisons_de", "conjoint_nomme", "creer_couple", "lier_conjoint",
            "ecrire_partout", "verifier", "sans_union", "sans_union_declaree", "divorces", "marquer_decede", "journal", "defaire"]

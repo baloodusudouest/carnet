@@ -28,6 +28,7 @@ TITRES = {
     "portables": "Plusieurs portables : lequel est travail, lequel mobile ?",
     "genre": "Femme ou homme ?", "lien_genre": "Lien à accorder au genre",
     "genre_treemich": "Genre différent dans Treemich",
+    "conjoint_treemich": "Conjoint manquant dans Treemich",      # 3.5
 }
 ORDRE = list(TITRES)
 ENREGISTRES = {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit", "import", "linkedin", "reseau"}
@@ -39,7 +40,8 @@ TUILES = [
     ("icloud", "Changé sur l'iPhone", {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit"}),
     ("sans_groupe", "Pas de groupe", set()),
     ("immich", "Immich non synchronisé", {"liaison"}),
-    ("treemich", "Treemich non synchronisé", {"relations", "mariage", "mariage_different", "deces_different"}),
+    ("treemich", "Treemich non synchronisé", {"relations", "mariage", "mariage_different", "deces_different",
+                                                  "conjoint_treemich"}),
     ("doublons", "Doublons", {"doublon"}),
     ("societes", "Sociétés", {"societe"}),
     ("forme", "Mise en forme", {"forme", "emoji", "portables"}),

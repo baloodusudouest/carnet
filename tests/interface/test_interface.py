@@ -922,3 +922,36 @@ def test_33_fiches_connexion_communes(page):
     assert page.locator("#fiche-ouverte button").count() == 0
     assert page.locator("nav[aria-label='Outils'] .tuile").count() >= 10
 
+
+
+# ------------------------------------------------------------------ 3.5 : livre d'or, note d'hôte, conjoint
+
+def test_35_supprimer_un_mot_note_d_hote_et_conjoint(page):
+    """Un mot du livre d'or se supprime en deux touchers ; la note d'hôte s'enregistre ; une date de mariage fait
+    apparaître le choix du conjoint."""
+    uid = "F-08" if page.viewport_size["width"] > 500 else "F-09"
+    page.goto(page.url.split("#")[0] + f"#/contacts/{uid}")
+    onglets = page.get_by_role("tablist", name="Dossier de la personne")
+    onglets.wait_for()
+    # Livre d'or : Supprimer… puis Confirmer
+    onglets.get_by_role("tab", name=re.compile("Livre d'or")).click()
+    panneau = page.locator("#dossier-panneau")
+    panneau.get_by_text("Mot d'essai à supprimer").wait_for()
+    panneau.get_by_role("button", name="Supprimer…").click()
+    panneau.get_by_role("button", name="Confirmer : supprimer ce mot").click()
+    panneau.get_by_text("Aucun mot").wait_for()
+    # Note d'hôte
+    onglets.get_by_role("tab", name=re.compile("Alimentation")).click()
+    panneau.get_by_role("button", name="Renseigner").click()
+    panneau.locator("textarea").fill("Arrive toujours en avance")
+    panneau.get_by_role("button", name="Enregistrer").click()
+    panneau.get_by_text("Arrive toujours en avance").wait_for()
+    # Mariage : le champ « Conjoint » apparaît sous la date
+    page.get_by_role("button", name="Modifier les informations").click()
+    page.get_by_label("Mariage ou PACS").fill("12/06/2010")
+    page.get_by_text("Conjoint (fiche du carnet)").wait_for()
+    assert "Sans conjoint" in page.locator("#aide-conjoint").inner_text()
+    page.get_by_label("Conjoint (fiche du carnet)").fill("Karine Faure")
+    page.get_by_label("Conjoint (fiche du carnet)").blur()
+    page.locator("#aide-conjoint", has_text="partiront vers Treemich").wait_for()
+    assert page.evaluate("document.documentElement.scrollWidth") <= page.viewport_size["width"]

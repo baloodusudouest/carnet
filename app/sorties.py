@@ -381,6 +381,33 @@ def ha_allergies(c: Carnet, personne_id: str = "", nom: str = "") -> dict:
     return {"personne_id": fiche["personne_id"], "connue": True, **alimentation.indicateur(c, fiche["personne_id"])}
 
 
+def ha_aliments(c: Carnet, personne_id: str = "", nom: str = "") -> dict:
+    """3.5 : listes d'alimentation et note d'hôte d'une personne pour les champs aliments d'une chambre de Home
+    Assistant (plan du 17/11/2026, étape 3). Par identifiant maison (fusions suivies) ou par nom (même recherche que
+    /ha/invite, « Nom (dates) » accepté). 404 inconnue, 409 plusieurs personnes du même nom."""
+    from . import alimentation, personnes
+    if personne_id:
+        uid = personnes.uid_de(c, personne_id.strip())
+        ident = personnes.ids(c).get(uid) if uid else None
+        if not ident:
+            raise LookupError("Identifiant maison inconnu de carnet.")
+        f = c.fiches().get(uid) or {}
+        nom_ = next((p["nom"] for p in contacts_ha(c) if p["personne_id"] == ident), nom_affiche(f))
+    else:
+        fiche = ha_invite(c, nom)
+        ident, nom_ = fiche["personne_id"], fiche["nom"]
+    log.info("HA aliments : fiche demandée par %s", "identifiant" if personne_id else "nom")
+    return {"personne_id": ident, "nom": nom_, "connue": True, **alimentation.pour_ha(c, ident)}
+
+
+def ha_aliments_annuaire(c: Carnet) -> dict:
+    """3.5 : annuaire de l'alimentation (carte « Fiches invités » de Home Assistant)."""
+    from . import alimentation
+    liste = alimentation.annuaire(c)
+    log.info("HA aliments : annuaire de %d personne(s)", len(liste))
+    return {"genere_le": iso(maintenant()), "personnes": liste}
+
+
 def _uid_immich(c: Carnet, immich_id: str) -> str | None:
     return next((u for u, v in c.liaisons().items() if v.get("immich") == immich_id), None)
 

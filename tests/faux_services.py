@@ -85,6 +85,8 @@ class FauxTreemich:
         self.type_lien = "SPOUSE_OF"                       # 2.22 : SIBLING_OF pour des essais de fratrie
         self.oublie = False                                # vrai : accepte l'écriture mais ne la garde pas
         self.muet = False                                  # vrai : ne répond plus (503)
+        self.couple = True                                 # 3.5 : faux = Claire et Paul ne sont pas en couple dans l'arbre
+        self.refuse_couple = False                         # 3.5 : vrai = la création du couple est refusée (400)
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self)
@@ -98,6 +100,14 @@ class FauxTreemich:
         if r.method == "POST" and chemin.endswith("/thumbnail/import/immich"):
             self.ecrits.append((chemin, None))
             return httpx.Response(200, json={})
+        if r.method == "POST" and chemin.endswith("/relationships"):
+            corps = json.loads(r.content)
+            self.ecrits.append((chemin, corps))
+            if self.refuse_couple:
+                return httpx.Response(400, json={"message": "refusé"})
+            if corps.get("type") == "SPOUSE_OF" and not self.oublie:
+                self.couple = True
+            return httpx.Response(201, json={})
         if r.method == "PATCH":
             corps = json.loads(r.content)
             self.ecrits.append((chemin, corps))
@@ -127,8 +137,8 @@ class FauxTreemich:
             cle = ("t-claire", "t-paul")
             return httpx.Response(200, json={"relationships": [
                 {"fromPersonId": "t-claire", "toPersonId": "t-paul", "type": self.type_lien,
-                 "marriageAnniversaryDate": self.mariages.get(cle), "divorceDate": self.divorces.get(cle)}],
-                "nextCursor": None})
+                 "marriageAnniversaryDate": self.mariages.get(cle), "divorceDate": self.divorces.get(cle)}]
+                if self.couple else [], "nextCursor": None})
         if chemin.endswith("/life-events"):
             pid = chemin.split("/")[2]
             naissance = {"eventType": "BIRTH", "year": 1985, "month": 3, "day": 14} if pid == "t-claire" \

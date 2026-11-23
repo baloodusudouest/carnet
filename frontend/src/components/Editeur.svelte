@@ -4,12 +4,31 @@
   // 2.11.2 : un nom associé se choisit parmi les contacts du carnet, ou s'écrit à la main.
   import { onMount } from 'svelte'
   import { api } from '../lib/api.js'
-  let { fiche = $bindable(), groupesConnus = [] } = $props()
+  // 3.5 : `conjoint` = uid de la fiche du conjoint, choisi sous la date de mariage (couple et date partent vers Treemich)
+  let { fiche = $bindable(), conjoint = $bindable(''), groupesConnus = [], uid = '' } = $props()
 
   let connus = $state([])            // noms du carnet, proposés pendant la saisie d'un nom associé
+  let contacts = $state([])          // 3.5 : { uid, nom } pour choisir le conjoint
   onMount(async () => {
-    try { connus = [...new Set((await api.get('/api/contacts')).map((c) => c.nom).filter(Boolean))] } catch { connus = [] }
+    try {
+      contacts = (await api.get('/api/contacts')).filter((c) => c.nom)
+      connus = [...new Set(contacts.map((c) => c.nom))]
+    } catch { connus = []; contacts = [] }
+    nomConjoint = contacts.find((c) => c.uid === conjoint)?.nom || ''
   })
+  // 3.5 : conjoint tapé ou choisi dans la liste ; un nom porté par une seule autre fiche la désigne
+  let nomConjoint = $state('')
+  const LIENS_CONJOINT = ['conjoint', 'partenaire', 'mari', 'épouse']
+  const cleNom = (s) => (s || '').toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+  const trouves = $derived(nomConjoint.trim() ? contacts.filter((c) => c.uid !== uid && cleNom(c.nom) === cleNom(nomConjoint)) : [])
+  function choisirConjoint() {
+    conjoint = trouves.length === 1 ? trouves[0].uid : ''
+    if (conjoint) {
+      const deja = (fiche.noms_associes || []).some((n) => cleNom(n.valeur) === cleNom(trouves[0].nom))
+      if (!deja) fiche.noms_associes = [...(fiche.noms_associes || []), { valeur: trouves[0].nom, type: 'conjoint' }]
+    }
+  }
+  const aConjointNomme = $derived((fiche.noms_associes || []).some((n) => LIENS_CONJOINT.includes(n.type) && n.valeur))
   const soi = $derived([fiche.prenom, fiche.nom].filter(Boolean).join(' ').toLocaleLowerCase('fr'))
   const proposes = $derived(connus.filter((n) => n.toLocaleLowerCase('fr') !== soi))
 
@@ -65,12 +84,27 @@
 
 <div class="editeur">
   <div class="simples">
-    {#each simples as [cle, nom] (cle)}
-      <label class:large={cle === 'societe' || cle === 'fonction'}>
+    {#each simples as [champ, nom] (champ)}
+      <label class:large={champ === 'societe' || champ === 'fonction'}>
         <span class="discret">{nom}</span>
-        <input bind:value={fiche[cle]} placeholder={AIDES[cle] || ''}
-               autocomplete="off" autocapitalize={['prenom', 'nom', 'second_prenom', 'nom_naissance'].includes(cle) ? 'words' : 'sentences'} />
+        <input bind:value={fiche[champ]} placeholder={AIDES[champ] || ''}
+               autocomplete="off" autocapitalize={['prenom', 'nom', 'second_prenom', 'nom_naissance'].includes(champ) ? 'words' : 'sentences'} />
       </label>
+      {#if champ === 'mariage' && (fiche.mariage || '').trim()}
+        <!-- 3.5 : le mariage se range sur le couple dans Treemich : choisir le conjoint -->
+        <label class="conjoint">
+          <span class="discret">Conjoint (fiche du carnet)</span>
+          <input bind:value={nomConjoint} list="noms-du-carnet" placeholder="Choisir dans le carnet" autocomplete="off"
+                 autocapitalize="words" onchange={choisirConjoint} onblur={choisirConjoint} aria-describedby="aide-conjoint" />
+          <span id="aide-conjoint" class="discret petit">
+            {#if conjoint}« conjoint » sera écrit sur les deux fiches, puis le couple et la date partiront vers Treemich.
+            {:else if nomConjoint.trim() && trouves.length > 1}Plusieurs fiches portent ce nom : choisis-en une dans la liste.
+            {:else if nomConjoint.trim()}Aucune fiche de ce nom : la date reste sur cette fiche seulement.
+            {:else if aConjointNomme}Un conjoint est déjà noté plus bas (noms associés) ; choisis-le ici pour créer le couple dans Treemich.
+            {:else}Sans conjoint, Treemich ne peut pas recevoir la date (elle s'y range sur le couple).{/if}
+          </span>
+        </label>
+      {/if}
     {/each}
     {#if aAjouter.length}
       <label class="ajout-champ">
@@ -155,6 +189,7 @@
   .adresse { display: grid; gap: 0.4rem; padding: 0.6rem; border: 1px solid var(--color-couture); border-radius: 8px; }
   .ville { display: grid; grid-template-columns: 7rem 1fr; gap: 0.4rem; }
   .groupes { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .conjoint { grid-column: 1 / -1; }
   @media (max-width: 30rem) {
     .simples { grid-template-columns: 1fr; }
     .rangee { grid-template-columns: 7.5rem 1fr auto; }
