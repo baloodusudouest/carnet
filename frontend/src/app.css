@@ -57,6 +57,12 @@
   input[type="checkbox"], input[type="radio"] { width: auto; }
   input:focus, select:focus, textarea:focus { border-color: var(--color-onglet); outline: none; }
   button { cursor: pointer; }
+  /* Listes déroulantes (socle 0.12.2) : la liste ouverte est dessinée par le navigateur et, sur PC (Windows),
+     garde un fond clair malgré color-scheme: dark tout en reprenant le texte clair de l'appli : illisible.
+     On donne aux choix le fond et le texte des menus. */
+  select option, select optgroup { background-color: var(--popover); color: var(--popover-foreground); }
+  select optgroup { font-weight: 600; }
+  select option:disabled { color: var(--muted-foreground); }
   /* 3.3 : « border » sans couleur dans les fichiers communs = le filet de carnet (comme shadcn dans le socle) */
   .services-communs *, .services-communs ::before, .services-communs ::after { border-color: var(--color-border); }
   .services-communs h1.titre { font-size: 1.9rem; line-height: 1.15; }

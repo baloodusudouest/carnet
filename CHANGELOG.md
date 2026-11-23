@@ -1,5 +1,10 @@
 # Journal des versions
 
+## 3.5.1 — 23 novembre 2026 (listes déroulantes lisibles en sombre)
+
+- **Listes déroulantes illisibles sur PC** (constaté par Julien dans Dîme, 23/11/2026) : la liste ouverte d'un `<select>` gardait un fond blanc tout en reprenant le texte crème de l'appli. `frontend/src/app.css` reprend le bloc du socle 0.12.2 (« Listes déroulantes (socle 0.12.2) ») : choix aux couleurs des menus, titres de groupe en gras, choix désactivés en gris.
+- Jamais essayé sur la vraie installation.
+
 ## 3.5.0 — 23 novembre 2026 (alimentation vers Home Assistant, conjoint et couple dans Treemich, livre d'or)
 - **Mariage et conjoint** (demande de Julien : « les mariages que je mets dans carnet ne se synchronisent pas avec Treemich ») : sous la date de mariage, la fiche propose de choisir le **conjoint** parmi les fiches du carnet. À l'écriture, « conjoint » est écrit sur les deux cartes iCloud s'il manque, puis, si les deux fiches sont reliées à Treemich, le **couple est créé dans Treemich** (relu juste après) et la date y part. carnet ne crée jamais de personne dans Treemich.
 - **La raison d'un blocage est dite sur la fiche** (sous « Mariage ») et tout de suite après l'écriture : pas de conjoint dans l'arbre, conjoint non relié, date sans année, date différente déjà dans Treemich, fiche en relecture, accord éteint.
