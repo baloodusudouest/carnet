@@ -1,5 +1,6 @@
 # Paquet Home Assistant de carnet.
-# À placer dans /config/packages/carnet.yaml (les packages sont déjà activés pour le kit d'urgence).
+# À placer dans /config/packages/systeme/carnet.yaml (sous-dossier chargé par !include_dir_named) : une seule copie,
+# jamais une seconde dans /config/packages/.
 #
 # 3.5.0 (23/11/2026) — ALIMENTATION DES INVITÉS VENUE DE CARNET (plan du 17/11/2026, étapes 3 à 5)
 #   • Dès qu'un invité est mis dans une chambre (carte de réservation), carnet donne ses allergies,
