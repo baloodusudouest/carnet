@@ -68,6 +68,14 @@ def preparer(dossier: Path) -> tuple[Carnet, FauxICloud]:
     for nom in ("Inès Lambert", "Julien Moreau"):
         journaux.recevoir_livre(c, {"invites": nom, "message": "Mot d'essai à supprimer", "chambre": "Chambre d'Ami",
                                     "le": "2026-11-20"})
+    # 3.6 : propositions d'invités venues de l'arbre de Sillage (une par taille d'écran, plus un lien)
+    from app import arbre
+    for i in (1, 2):
+        arbre.recevoir(c, {"id": f"demo-prop-date-{i}", "personne": "t-claire", "nom": "Claire MARTIN", "type": "date",
+                           "champ": "naissance", "valeur": "1985-03-15", "invites": ["Marc"],
+                           "sejour": {"du": "2026-12-01", "au": "2026-12-03"}})
+    arbre.recevoir(c, {"id": "demo-prop-lien-1", "personne": "t-paul", "nom": "Paul MARTIN", "type": "lien",
+                       "lien": "enfant", "mot": "Il manque Hugo, son fils né en 1990", "invites": ["Léa"]})
     c.transports["logos"] = faux_logos()
     main.LIRE_ANNEAU = faux_anneau()          # 2.26 : sauvegardes simulées pour « Restaurer les réglages »
     return c, ic

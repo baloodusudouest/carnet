@@ -955,3 +955,26 @@ def test_35_supprimer_un_mot_note_d_hote_et_conjoint(page):
     page.get_by_label("Conjoint (fiche du carnet)").blur()
     page.locator("#aide-conjoint", has_text="partiront vers Treemich").wait_for()
     assert page.evaluate("document.documentElement.scrollWidth") <= page.viewport_size["width"]
+
+
+def test_36_propositions_d_invites(page):
+    """Une proposition de date venue de l'arbre de Sillage s'écrit dans Treemich (valeur modifiable) ; un lien proposé
+    ne peut que se faire à la main (« C'est fait ») ou se rejeter."""
+    assert ouvrir_tuile(page, "Propositions d'invités")
+    page.get_by_text("Corrections proposées par des invités").wait_for()
+    if page.viewport_size["width"] > 500:          # PC : un point à la fois, choisi dans le sommaire
+        page.locator(".sommaire button", has_text="Claire MARTIN").first.click()
+    point = page.locator("article.point", has_text="Proposé par Marc").first
+    point.get_by_text("Date de naissance").wait_for()
+    champ = point.get_by_label("Date à écrire dans Treemich (AAAA, AAAA-MM ou AAAA-MM-JJ)")
+    assert champ.input_value() == "1985-03-15"
+    point.get_by_role("button", name="Écrire dans Treemich").click()
+    page.get_by_text("Date écrite dans Treemich.").wait_for()
+    if page.viewport_size["width"] > 500:
+        page.locator(".sommaire button", has_text="Paul MARTIN").click()
+    lien = page.locator("article.point", has_text="Il manque Hugo")
+    lien.get_by_text("Il manque un enfant").wait_for()
+    assert lien.get_by_role("button", name="C'est fait").count() == 1
+    assert lien.get_by_role("button", name="Écrire dans Treemich").count() == 0
+    assert page.evaluate("document.documentElement.scrollWidth") <= page.viewport_size["width"]
+    assert not page.erreurs

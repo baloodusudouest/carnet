@@ -392,6 +392,9 @@ def contact(uid: str, request: Request):
             "genre": genres.fiche(c, uid),     # 2.22
             # 3.5 : pourquoi la date de mariage ou de décès ne part pas vers Treemich, et le conjoint nommé sur la fiche
             "famille": {"raisons": famille.raisons_de(c, uid), "conjoint": famille.conjoint_nomme(c, uid)},
+            # 3.6 : case « jamais aux invités » de l'arbre de Sillage (seulement si la fiche est reliée à Treemich)
+            "arbre": ({"treemich": lien["treemich"], "masque": lien["treemich"] in arbre_masques(c)}
+                      if lien.get("treemich") else None),
             "personne_id": personnes.de(c, uid),           # 2.28 : identifiant maison stable
             "alimentation": alimentation.fiche(c, uid),     # 2.28 : allergies, intolérances, non aimés, plaisirs
             "journaux": journaux.fiche(c, uid),             # 2.29 : « Pour les journaux » (Gazette)
@@ -404,6 +407,11 @@ def contact(uid: str, request: Request):
             "sillage": (f"{sillage}/#/chemin/{c.liaisons().get(uid, {}).get('immich')}"
                         if (sillage := adresse_de("Sillage", request))
                         and c.liaisons().get(uid, {}).get("immich") else "")}
+
+
+def arbre_masques(c) -> set[str]:
+    from . import arbre
+    return arbre.masques(c)
 
 
 @app.get("/api/completude")
@@ -1342,6 +1350,32 @@ def linkedin_rattacher(corps: dict = Body(...)):
 @app.get("/sillage/personnes")
 def sillage_personnes():
     return sorties.sillage_personnes(carnet())
+
+
+@app.get("/sillage/arbre")
+def sillage_arbre():
+    """3.6 : l'arbre de famille complet pour la vue 3D de Sillage (jeton commun, lecture seule, contrat 1)."""
+    from . import arbre
+    return arbre.graphe(carnet())
+
+
+@app.post("/sillage/propositions")
+async def sillage_propositions(request: Request):
+    """3.6 : une proposition d'invité (date, nom, lien, personne) envoyée par Sillage → « À traiter »."""
+    from . import arbre
+    try:
+        corps = await request.json()
+    except ValueError:
+        corps = None
+    return arbre.recevoir(carnet(), corps)
+
+
+@app.put("/api/arbre/masques/{tid}")
+async def arbre_masque(tid: str, request: Request):
+    """3.6 : case « jamais aux invités » d'une personne de l'arbre (arbre de Sillage)."""
+    from . import arbre
+    corps = await request.json()
+    return arbre.masquer(carnet(), tid, bool((corps or {}).get("masque")))
 
 
 # ================================================================ Gazette (Bearer)

@@ -166,6 +166,14 @@
       await charger()
     } catch (err) { erreur(err) } finally { genreEnCours = false }
   }
+  // 3.6 : arbre de Sillage : cette personne n'est jamais montrée aux invités (visage, nom et dates masqués)
+  async function masquerArbre(oui) {
+    try {
+      await api.put(`/api/arbre/masques/${encodeURIComponent(donnees.arbre.treemich)}`, { masque: oui })
+      dire(oui ? 'Noté : jamais montrée aux invités dans l\'arbre de Sillage.' : 'De nouveau montrée aux invités (selon les règles).')
+      await charger()
+    } catch (err) { erreur(err) }
+  }
   onMount(charger)
 </script>
 
@@ -438,6 +446,10 @@
                 <button class="bouton" onclick={() => lier(p.service, p.id)}>Lier</button></p>
             {/each}
           {/if}
+        {/if}
+        {#if donnees.arbre}
+          <label class="liaison masque-arbre"><span>Jamais montrée aux invités dans l'arbre de Sillage</span>
+            <input type="checkbox" checked={donnees.arbre.masque} onchange={(ev) => masquerArbre(ev.currentTarget.checked)} /></label>
         {/if}
         {#if donnees.sillage}<p class="liaison"><span>Son chemin de vie en photos</span>
           <a class="bouton" href={donnees.sillage} target="_blank" rel="noopener">Ouvrir dans Sillage</a></p>{/if}

@@ -1,5 +1,13 @@
 # Journal des versions
 
+## 3.6.0 — 27 novembre 2026 (arbre de famille pour Sillage, propositions des invités)
+
+- **`GET /sillage/arbre`** (jeton commun, contrat 1) : toutes les personnes de Treemich et leurs liens (parent, conjoint avec divorce, fratrie), tels que carnet les garde déjà en mémoire ; liens en double retirés. Dates seulement pour les personnes reliées à une fiche (choix du conseil du 27/11/2026 : rien de plus n'est lu dans Treemich). Pour la vue 3D de Sillage (constellation et hélice).
+- **Case « Jamais montrée aux invités dans l'arbre de Sillage »** sur la fiche (bloc Liaisons, fiches reliées à Treemich) ; table `arbre_masques` (schéma 12).
+- **`POST /sillage/propositions`** : une correction proposée par un invité depuis l'arbre de Sillage (date, nom, lien, personne manquante, avec un mot) devient un point d'« À traiter » (nouvelle tuile « Propositions d'invités »), signé des prénoms et des dates du séjour. Idempotent, 300 propositions en attente au plus.
+- **Traitement** (arbitrage de Julien du 27/11/2026) : une date (naissance, décès, mariage d'un couple existant) ou un nom s'écrit dans Treemich après accord, valeur modifiable, relue juste après (un écart garde le point) ; une personne ou un lien ne s'écrit jamais : « C'est fait » après l'avoir créé à la main dans Treemich. Mode lecture seule respecté.
+- Tests : `tests/test_36.py`, `test_36_propositions_d_invites` (écran). Jamais essayé sur la vraie installation.
+
 ## 3.5.1 — 23 novembre 2026 (listes déroulantes lisibles en sombre)
 
 - **Listes déroulantes illisibles sur PC** (constaté par Julien dans Dîme, 23/11/2026) : la liste ouverte d'un `<select>` gardait un fond blanc tout en reprenant le texte crème de l'appli. `frontend/src/app.css` reprend le bloc du socle 0.12.2 (« Listes déroulantes (socle 0.12.2) ») : choix aux couleurs des menus, titres de groupe en gras, choix désactivés en gris.

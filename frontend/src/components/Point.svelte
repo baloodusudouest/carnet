@@ -20,6 +20,15 @@
   const aChanger = $derived(point.motif === 'societe'
     ? d.fiches - (d.variantes.find((v) => v.nom === retenue)?.nombre || 0) : 0)
   const d = point.donnees
+  // 3.6 : proposition d'un invité (arbre de Sillage) : date ou nom repris tel quel, modifiable avant d'écrire
+  const CHAMP_PROP = { naissance: 'Date de naissance', deces: 'Date de décès', mariage: 'Date de mariage', prenom: 'Prénom', nom: 'Nom' }
+  const LIEN_PROP = { parent: 'un parent', enfant: 'un enfant', conjoint: 'un conjoint', frere_soeur: 'un frère ou une sœur', autre: 'un autre lien' }
+  const morceaux = (d.nom || '').trim().split(/\s+/)
+  let propDate = $state(point.motif === 'proposition_invite' && d.type === 'date' ? d.valeur || '' : '')
+  let propPrenom = $state(point.motif === 'proposition_invite' && d.type === 'nom'
+    ? (d.champ === 'prenom' ? d.valeur : morceaux[0] || '') : '')
+  let propNom = $state(point.motif === 'proposition_invite' && d.type === 'nom'
+    ? (d.champ === 'nom' ? d.valeur : morceaux.slice(1).join(' ')) : '')
 
   const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
   // « 1985-03-14 » → « 14 mars 1985 » ; « --03-14 » (année inconnue) → « 14 mars »
@@ -170,6 +179,24 @@
       {:else}
         <p class="discret">Aucun conjoint n'est choisi sur la fiche : modifie-la et choisis le conjoint sous la date de mariage.</p>
       {/if}
+    {:else if point.motif === 'proposition_invite'}
+      <p class="discret">Proposé par {d.invites?.length ? d.invites.join(', ') : 'un invité'}{d.sejour?.du ? ` (séjour du ${dateLisible(d.sejour.du)})` : ''}, depuis l'arbre de Sillage.</p>
+      {#if d.type === 'date'}
+        <p>{CHAMP_PROP[d.champ]}{d.champ === 'mariage' && d.autre_nom ? ` avec ${d.autre_nom}` : ''} :
+          <span class="apres">{d.valeur ? dateLisible(d.valeur) : '(à retirer : date fausse)'}</span></p>
+        <label class="saisie-date"><span class="discret">Date à écrire dans Treemich (AAAA, AAAA-MM ou AAAA-MM-JJ)</span>
+          <input bind:value={propDate} placeholder="1952-04-18" inputmode="numeric" autocomplete="off" /></label>
+      {:else if d.type === 'nom'}
+        <p>{CHAMP_PROP[d.champ]} : <span class="apres">{d.valeur}</span></p>
+        <div class="saisie-nom">
+          <label><span class="discret">Prénom</span><input bind:value={propPrenom} autocomplete="off" /></label>
+          <label><span class="discret">Nom</span><input bind:value={propNom} autocomplete="off" /></label>
+        </div>
+      {:else}
+        <p>Il manque {d.type === 'personne' ? 'une personne' : LIEN_PROP[d.lien] || 'un lien'}{d.autre_nom ? ` : ${d.autre_nom}` : ''}{d.valeur ? ` (${d.valeur})` : ''}.</p>
+        <p class="discret">carnet ne crée jamais de personne ni de lien : fais-le dans Treemich, puis « C'est fait ».</p>
+      {/if}
+      {#if d.mot}<blockquote class="mot">« {d.mot} »</blockquote>{/if}
     {:else if point.motif === 'mariage'}
       <p>{d.couple} forment un couple dans Treemich, sans date de mariage.</p>
       <label class="saisie-date"><span class="discret">Date du mariage ou du PACS</span>
@@ -250,6 +277,15 @@
         <button class="bouton" onclick={() => aller('contacts', point.uid)}>Ouvrir la fiche</button>
       {/if}
       <button class="bouton" disabled={attente} onclick={() => faire('ignorer')}>Ignorer</button>
+    {:else if point.motif === 'proposition_invite'}
+      {#if d.type === 'date'}
+        <button class="bouton bouton-principal" disabled={attente || !propDate.trim()} onclick={() => faire('accepter', propDate.trim(), 'Date écrite dans Treemich.')}>Écrire dans Treemich</button>
+      {:else if d.type === 'nom'}
+        <button class="bouton bouton-principal" disabled={attente || !(propPrenom.trim() || propNom.trim())} onclick={() => faire('accepter', { prenom: propPrenom.trim(), nom: propNom.trim() }, 'Nom écrit dans Treemich.')}>Écrire dans Treemich</button>
+      {:else}
+        <button class="bouton bouton-principal" disabled={attente} onclick={() => faire('fait', null, 'Noté.')}>C'est fait</button>
+      {/if}
+      <button class="bouton" disabled={attente} onclick={() => faire('ignorer', null, 'Proposition rejetée.')}>Rejeter</button>
     {:else if point.motif === 'mariage'}
       <button class="bouton bouton-principal" disabled={attente || !saisie.trim()} onclick={() => faire('ecrire', saisie, 'Date de mariage écrite partout.')}>Écrire la date</button>
       <button class="bouton" disabled={attente} onclick={() => faire('sans', null, 'Noté : la question ne sera plus posée pour ce couple.')}>Pas de mariage ni PACS</button>
@@ -268,6 +304,9 @@
   .propose { color: var(--genre); font-weight: 600; }
   .autre { display: inline-block; width: 14rem; max-width: 100%; margin-left: 0.4rem; }
   .saisie-date { display: grid; gap: 0.2rem; max-width: 16rem; }
+  .saisie-nom { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .saisie-nom label { display: grid; gap: 0.2rem; flex: 1 1 10rem; }
+  .mot { margin: 0.5rem 0 0; padding-left: 0.8rem; border-left: 2px solid var(--color-tranche, rgba(255,255,255,.2)); font-style: italic; }
   .point { padding: 1rem 1.1rem; display: grid; gap: 0.75rem; }
   header { display: flex; gap: 0.7rem; align-items: center; }
   .qui { display: grid; min-width: 0; }

@@ -94,6 +94,17 @@ Toutes les adresses `/ha/…` demandent `Authorization: Bearer <CARNET_HA_TOKEN>
 
 Le paquet `homeassistant/carnet.yaml` de la 1.3 fonctionne sans changement.
 
+## Sillage : arbre de famille (3.6)
+
+Jeton commun (`Authorization: Bearer <MAISON_JETON>`), contrat 1.
+
+| Adresse | Contenu |
+|---|---|
+| `GET /sillage/arbre` | `{contrat, ok, genere_le, personnes, liens}`. Personne : `id` (Treemich), `nom`, `genre` (femme, homme, autre, vide), `immich`, `naissance` et `deces` (« AAAA », « AAAA-MM-JJ », `inconnue` pour un décès sans date, vide si inconnus : seules les personnes reliées à une fiche sont datées), `decede`, `fiche`, `carnet_uid`, `personne_id`, `masque_invites` (case « jamais aux invités » de la fiche). Lien : `{de, vers, type}` avec `parent` (de = parent, vers = enfant), `conjoint` (+ `divorce`) ou `fratrie`. Lecture seule. |
+| `POST /sillage/propositions` | Proposition d'un invité : `{id, personne, nom, type (date, nom, lien, personne), champ (naissance, deces, mariage, prenom, nom), valeur, autre, autre_nom, lien, mot, invites, sejour: {du, au}}`. Devient un point « Proposition d'un invité » (tuile « Propositions d'invités ») ; même `id` reçu deux fois : `deja: true`. Au-delà de 300 propositions en attente : refus. |
+
+Après l'accord de Julien, seules les **dates** (naissance, décès, mariage sur un couple existant) et les **noms** s'écrivent dans Treemich, relus juste après. Une personne ou un lien proposé ne s'écrit jamais (« C'est fait » une fois créé à la main dans Treemich).
+
 ## Installation (Portainer, stack homelab.yml)
 
 Le service est décrit dans `docker-compose.yml` ; les variables sont dans `.env.example`. Variables communes de la maison : `MAISON_PASSWORD` (12 caractères au moins, sinon carnet ne démarre pas), `MAISON_JETON` (Sillage, Gazette, Douze points, Millésime, kit d'urgence, sauvegardes de l'Anneau), `MAISON_LECTURE_SEULE`. Volumes :

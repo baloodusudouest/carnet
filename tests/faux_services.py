@@ -87,6 +87,11 @@ class FauxTreemich:
         self.muet = False                                  # vrai : ne répond plus (503)
         self.couple = True                                 # 3.5 : faux = Claire et Paul ne sont pas en couple dans l'arbre
         self.refuse_couple = False                         # 3.5 : vrai = la création du couple est refusée (400)
+        # 3.6 : personnes et liens en plus (arbre de Sillage), naissances et noms écrits
+        self.autres: list[dict] = []                       # [{id, name, gender, immich}]
+        self.autres_liens: list[dict] = []                 # [{fromPersonId, toPersonId, type}]
+        self.naissances: dict[str, str] = {}
+        self.noms: dict[str, dict] = {}
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self)
@@ -120,6 +125,10 @@ class FauxTreemich:
                         self.mariages.pop(cle, None)
                 elif "gender" in corps:
                     self.genres[chemin.split("/")[2]] = corps["gender"]
+                elif "birthDate" in corps:
+                    self.naissances[chemin.split("/")[2]] = corps["birthDate"]
+                elif "givenName" in corps:
+                    self.noms[chemin.split("/")[2]] = corps
                 elif "deathDate" in corps:
                     pid = chemin.split("/")[2]
                     if corps["deathDate"]:
@@ -132,17 +141,24 @@ class FauxTreemich:
                 {"id": "t-claire", "name": "Claire MARTIN", "profile": {"gender": self.genres["t-claire"]},
                  "externalIdentities": [{"provider": "IMMICH", "providerPersonId": "im-claire"}]},
                 {"id": "t-paul", "name": "Paul MARTIN", "profile": {"gender": self.genres["t-paul"]},
-                 "externalIdentities": [{"provider": "IMMICH", "providerPersonId": "im-paul"}]}]})
+                 "externalIdentities": [{"provider": "IMMICH", "providerPersonId": "im-paul"}]}] + [
+                {"id": a["id"], "name": a["name"], "profile": {"gender": a.get("gender", "UNKNOWN")},
+                 "externalIdentities": [{"provider": "IMMICH", "providerPersonId": a["immich"]}] if a.get("immich") else []}
+                for a in self.autres]})
         if chemin == "/relationships":
             cle = ("t-claire", "t-paul")
-            return httpx.Response(200, json={"relationships": [
+            return httpx.Response(200, json={"relationships": ([
                 {"fromPersonId": "t-claire", "toPersonId": "t-paul", "type": self.type_lien,
                  "marriageAnniversaryDate": self.mariages.get(cle), "divorceDate": self.divorces.get(cle)}]
-                if self.couple else [], "nextCursor": None})
+                if self.couple else []) + list(self.autres_liens), "nextCursor": None})
         if chemin.endswith("/life-events"):
             pid = chemin.split("/")[2]
             naissance = {"eventType": "BIRTH", "year": 1985, "month": 3, "day": 14} if pid == "t-claire" \
                 else {"eventType": "BIRTH", "year": 1983, "month": 1, "day": 9}
+            if pid in self.naissances:
+                morceaux = [int(x) for x in self.naissances[pid].split("-")]
+                naissance = {"eventType": "BIRTH", "year": morceaux[0], "month": morceaux[1] if len(morceaux) > 1 else None,
+                             "day": morceaux[2] if len(morceaux) > 2 else None}
             evenements = [naissance]
             if pid in self.deces:
                 a, m, j = (int(x) for x in self.deces[pid].split("-"))

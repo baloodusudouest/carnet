@@ -237,7 +237,7 @@ def test_schema_9_ajoute_sans_rien_perdre_sur_base_chiffree(tmp_path):
     b.executer("INSERT INTO journaux(personne, texte, le, par) VALUES ('p-0123456789', 'aime le jazz', 'x', 'carnet')")
     b.fermer()
     b = Base(chemin, "clé d'essai")
-    assert b.un("PRAGMA user_version")[0] == base_.VERSION == 11
+    assert b.un("PRAGMA user_version")[0] == base_.VERSION == 12
     assert b.un("SELECT texte FROM journaux")["texte"] == "aime le jazz"
     colonnes = [l[1] for l in b.tous("PRAGMA table_info(journaux_pepites)")]
     assert colonnes == ["id", "personne", "rubrique", "texte", "interdit", "source", "parue_le", "le", "par"]

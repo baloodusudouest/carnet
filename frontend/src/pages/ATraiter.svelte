@@ -50,6 +50,7 @@
     treemich: 'Mariages, décès, noms, naissances et liens familiaux qui diffèrent de l\'arbre.',
     liens: 'Liens à accorder au genre de la personne (frère, sœur, père, mère).',
     evenements: 'Personnes envoyées par Gazette, Douze points ou une autre appli que carnet n\'a pas reconnues sans doute possible. Rattache-les à leur fiche, ou écarte un invité de passage.',
+    propositions: 'Corrections proposées par des invités depuis l\'arbre de Sillage. Une date ou un nom s\'écrit dans Treemich après ton accord ; une personne ou un lien se crée à la main dans Treemich.',
     genre: 'Personnes dont carnet ne connaît pas le genre. Il reste dans carnet et rejoint Treemich s\'il y manque. Cette tuile ne compte pas dans le chiffre de l\'onglet.',
   }
   function ouvrir(t) {

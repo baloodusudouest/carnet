@@ -125,6 +125,13 @@ def repondre(c: Carnet, ident: str, action: str, valeur=None) -> dict:
     if action == "ignorer":
         traiter.ignorer(c, motif, cle)
         return {"ok": True}
+    if motif == "proposition_invite":     # 3.6 : proposition d'un invité sur l'arbre de Sillage
+        from . import arbre
+        if action == "accepter":
+            return arbre.accepter(c, p, valeur)
+        if action == "fait":              # lien ou personne créés à la main dans Treemich
+            traiter.retirer(c, motif, cle)
+            return {"ok": True}
 
     if motif in ("iphone_modifiee", "iphone_nouvelle"):
         if action == "garder":

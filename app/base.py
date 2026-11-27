@@ -22,10 +22,10 @@ from typing import Any, Iterator
 
 log = logging.getLogger("carnet")
 
-VERSION = 11  # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
+VERSION = 12  # 2 : validations, personnes_externes (2.1) ; 3 : attentes, exceptions, unions, décès (2.8) ; 4 : genres (2.22) ;
               # 5 : personnes, alimentation (2.28) ; 6 : journaux (2.29) ; 7 : journaux_parus (2.30) ; 8 : livre_or (2.31) ;
               # 9 : journaux_pepites (2.33) ; 10 : evenements, evenements_personnes, compteurs (3.1) ;
-              # 11 : alimentation.note, alimentation_operations (3.5)
+              # 11 : alimentation.note, alimentation_operations (3.5) ; 12 : arbre_masques (3.6)
 ENTETE_CLAIR = b"SQLite format 3\x00"
 GARDE_CLAIR = timedelta(days=14)     # copie en clair d'avant le chiffrement, pour revenir à la 2.27 : effacée ensuite
 
@@ -325,6 +325,11 @@ CREATE TABLE IF NOT EXISTS compteurs (
     valeur   INTEGER NOT NULL,
     maj      TEXT NOT NULL,
     PRIMARY KEY (personne, appli, nom)
+);
+-- ---- 3.6 (schéma 12) : personnes de l'arbre (identifiant Treemich) jamais montrées aux invités dans l'arbre de Sillage
+CREATE TABLE IF NOT EXISTS arbre_masques (
+    treemich TEXT PRIMARY KEY,
+    le       TEXT NOT NULL
 );
 """
 

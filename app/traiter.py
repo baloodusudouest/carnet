@@ -29,9 +29,11 @@ TITRES = {
     "genre": "Femme ou homme ?", "lien_genre": "Lien à accorder au genre",
     "genre_treemich": "Genre différent dans Treemich",
     "conjoint_treemich": "Conjoint manquant dans Treemich",      # 3.5
+    "proposition_invite": "Proposition d'un invité",              # 3.6 : arbre de Sillage
 }
 ORDRE = list(TITRES)
-ENREGISTRES = {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit", "import", "linkedin", "reseau"}
+ENREGISTRES = {"iphone_modifiee", "iphone_nouvelle", "iphone_supprimee", "conflit", "import", "linkedin", "reseau",
+               "proposition_invite"}
 
 
 # 2.9 : une tuile par type de chose à traiter. « incomplet » et « sans_groupe » ne sont pas des points
@@ -52,6 +54,7 @@ TUILES = [
     ("incomplet", "Contact incomplet", set()),
     ("sans_anniversaire", "Sans anniversaire", set()),   # 2.21 : personnes des scans de Millésime sans date de naissance
     ("evenements", "Événements à rattacher", set()),     # 3.1 : personnes envoyées par une appli et non reconnues
+    ("propositions", "Propositions d'invités", {"proposition_invite"}),   # 3.6 : arbre de Sillage
 ]
 
 
@@ -170,6 +173,8 @@ def liste(c) -> list[dict]:
         p["nom"] = nom_affiche(f) if f else "(contact inconnu)"
         if p["motif"] == "societe":
             p["nom"] = p["donnees"]["variantes"][0]["nom"]     # le point porte le nom de la société, pas d'une fiche
+        if p["motif"] == "proposition_invite" and not f:
+            p["nom"] = p["donnees"].get("nom") or "(personne de l'arbre)"     # 3.6 : personne de Treemich sans fiche
         p["titre"] = TITRES.get(p["motif"], p["motif"])
         p["id"] = f"{p['motif']}:{p['cle']}"
         p["tuile"] = tuile_de(p)
