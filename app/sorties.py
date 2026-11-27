@@ -412,14 +412,35 @@ def _uid_immich(c: Carnet, immich_id: str) -> str | None:
     return next((u for u, v in c.liaisons().items() if v.get("immich") == immich_id), None)
 
 
+def _sans_disparues(c: Carnet, uid: str, cands: list[dict]) -> list[dict]:
+    """3.6.1 : les candidats dont la photo n'est plus dans Immich (supprimée, doublon fusionné) sont retirés, et la
+    ligne de la base est corrigée (ils ne reviennent pas). Vérification gardée une heure par photo ; Immich muet :
+    on garde tout."""
+    if not cands:
+        return cands
+    im = c.immich()
+    try:
+        gardes = [x for x in cands if c.memo(f"existe:{x['asset']}", lambda a=x["asset"]: im.existe(a), duree=3600)]
+    except Exception as exc:                                # Immich muet : rien n'est retiré
+        log.info("Candidats de portrait non vérifiés : %s", exc)
+        return cands
+    finally:
+        im.fermer()
+    if len(gardes) != len(cands):
+        log.info("Portraits : %d photo(s) disparue(s) d'Immich retirée(s) des candidats", len(cands) - len(gardes))
+        c.base.executer("UPDATE portraits SET candidats = ? WHERE uid = ?", (json.dumps(gardes), uid))
+    return gardes
+
+
 def ha_candidats(c: Carnet, immich_id: str, nombre: int = 3) -> dict:
     uid = _uid_immich(c, (immich_id or "").strip().lower())
     if not uid:
         return {"candidats": [], "actuel": None}
     ligne = c.base.un("SELECT candidats, asset FROM portraits WHERE uid = ?", (uid,))
-    cands = json.loads(ligne["candidats"]) if ligne else []
+    cands = _sans_disparues(c, uid, json.loads(ligne["candidats"]) if ligne else [])
+    actuel = ligne["asset"] if ligne and any(x["asset"] == ligne["asset"] for x in cands) else None
     return {"candidats": [{"asset": x["asset"], "score": x["taille"], "le": x.get("le")} for x in cands[:max(1, min(nombre, 6))]],
-            "actuel": ligne["asset"] if ligne else None}
+            "actuel": actuel}
 
 
 def ha_portrait(c: Carnet, immich_id: str, cadre: str | None, asset: str | None) -> tuple[bytes, str, tuple | None] | None:
@@ -449,8 +470,13 @@ def ha_portrait(c: Carnet, immich_id: str, cadre: str | None, asset: str | None)
             return images.portrait_centre(contenu, boite)
         ratio = cand.get("ratio") or images.ratio_image(contenu)
         return images.portrait(contenu, boite)[0], images.visage_dans_portrait(boite, ratio)
-    trouve = c.memo(f"portrait:{cand['asset']}:{centre}", calcul, duree=86400)
-    return (trouve[0], "image/jpeg", trouve[1]) if trouve else None
+    cle = f"portrait:{cand['asset']}:{centre}"
+    trouve = c.memo(cle, calcul, duree=86400)
+    if not trouve:                              # 3.6.1 : un échec n'est pas gardé un jour (nouvel essai au prochain appel)
+        c._memo.pop(cle, None)
+        _sans_disparues(c, uid, cands)          # photo disparue d'Immich : retirée des candidats
+        return None
+    return (trouve[0], "image/jpeg", trouve[1])
 
 
 # ================================================================ /status (compteurs seulement)

@@ -24,6 +24,7 @@ class FauxImmich:
         self.photos = {"im-claire": ["a1", "a2"], "im-paul": ["p1"], "im-jp": []}
         self.ecrits: list[tuple[str, str, object]] = []
         self.envoyees: list[str] = []
+        self.disparues: set[str] = set()      # 3.6.1 : photos supprimées d'Immich (400 comme le vrai)
 
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self)
@@ -58,6 +59,11 @@ class FauxImmich:
                                               "boundingBoxX1": 400, "boundingBoxY1": 500,
                                               "boundingBoxX2": 400 + taille, "boundingBoxY2": 500 + taille}])
         if chemin.startswith("/api/assets/") and r.method == "GET":
+            asset = chemin.split("/")[3]
+            if asset in self.disparues:
+                return httpx.Response(400, json={"message": "Not found or no asset.read access"})
+            if chemin.count("/") == 3:                     # informations de la photo
+                return httpx.Response(200, json={"id": asset, "isTrashed": False})
             return httpx.Response(200, content=jpeg(), headers={"content-type": "image/jpeg"})
         if chemin == "/api/assets" and r.method == "POST":
             ident = f"aff-{len(self.envoyees) + 1}"

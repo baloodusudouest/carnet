@@ -415,6 +415,21 @@ def test_portrait_choisi_et_affiche(c, services):
     assert photos.affiches(c)[0]["posee"]
 
 
+def test_portraits_photo_disparue_d_immich(c, services):
+    """3.6.1 (constaté le 27/11/2026) : un candidat dont la photo a été supprimée d'Immich n'est plus proposé à Home
+    Assistant (simulations du cadre de porte cassées) et sort de la base ; un échec de portrait n'est pas gardé."""
+    from app import sorties
+    liaisons.lier(c, "BBBB-2222", "immich", "im-claire")
+    assert [x["asset"] for x in photos.candidats(c, "BBBB-2222")] == ["a1", "a2"]
+    assert [x["asset"] for x in sorties.ha_candidats(c, "im-claire", 3)["candidats"]] == ["a1", "a2"]
+    services["immich"].disparues.add("a1")
+    c.oublier("existe:")
+    assert sorties.ha_portrait(c, "im-claire", "centre", "a1") is None
+    assert [x["asset"] for x in sorties.ha_candidats(c, "im-claire", 3)["candidats"]] == ["a2"]
+    assert [x["asset"] for x in json.loads(c.base.un("SELECT candidats FROM portraits WHERE uid = 'BBBB-2222'")["candidats"])] == ["a2"]
+    assert sorties.ha_portrait(c, "im-claire", "centre", "a2") is not None
+
+
 # ================================================================ LinkedIn
 
 CSV = ("Notes:\nx\n\nFirst Name,Last Name,URL,Email Address,Company,Position,Connected On\n"

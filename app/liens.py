@@ -135,6 +135,24 @@ class Immich:
         self._refus_photos(r, "la lecture des visages")
         return r.json() or []
 
+    def existe(self, asset_id: str) -> bool:
+        """3.6.1 : la photo est-elle encore dans Immich (pas supprimée) ? Immich répond 400 ou 404 pour une photo
+        disparue. Immich injoignable : ErreurLien."""
+        try:
+            r = self.client.get(f"{self.api}/assets/{asset_id}")
+        except httpx.HTTPError as exc:
+            raise ErreurLien(f"Immich injoignable ({exc.__class__.__name__}).") from exc
+        if r.status_code in (401, 403):
+            self._refus_photos(r, "la lecture d'une photo")
+        if r.status_code in (400, 404):
+            return False
+        if r.status_code != 200:
+            raise ErreurLien(f"Immich a répondu {r.status_code} pour une photo.")
+        try:
+            return not bool(r.json().get("isTrashed"))
+        except ValueError:
+            return True
+
     def image(self, asset_id: str, taille: str = "preview") -> bytes | None:
         """taille : preview (≈1 440 px), fullsize, ou original (fichier tel qu'importé)."""
         chemin = f"/assets/{asset_id}/original" if taille == "original" else f"/assets/{asset_id}/thumbnail"

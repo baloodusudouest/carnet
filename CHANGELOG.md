@@ -1,5 +1,12 @@
 # Journal des versions
 
+## 3.6.1 — 27 novembre 2026 (portraits : photos disparues d'Immich)
+
+- **Constaté le 27/11/2026** (carte de réservation de Home Assistant, étape « Photo du cadre de porte ») : les simulations du cadre de porte restaient vides. Les candidats « Photos HD » gardés par carnet pointaient vers des photos **supprimées d'Immich** depuis (Immich répond 400) : `/ha/portrait` ne trouvait pas l'image.
+- **`/ha/portraits/candidats`** vérifie que chaque photo proposée est encore dans Immich (vérification gardée une heure par photo ; Immich muet : rien n'est retiré) ; une photo disparue est retirée des candidats dans la base. Le portrait actuel n'est plus annoncé s'il a disparu.
+- **`/ha/portrait`** : un échec n'est plus gardé un jour en mémoire ; une photo disparue est retirée des candidats.
+- `liens.Immich.existe`. Test `test_portraits_photo_disparue_d_immich`. Si une personne n'a plus aucun candidat, relancer « Photos HD » pour elle (onglet Photos). Jamais essayé sur la vraie installation.
+
 ## 3.6.0 — 27 novembre 2026 (arbre de famille pour Sillage, propositions des invités)
 
 - **`GET /sillage/arbre`** (jeton commun, contrat 1) : toutes les personnes de Treemich et leurs liens (parent, conjoint avec divorce, fratrie), tels que carnet les garde déjà en mémoire ; liens en double retirés. Dates seulement pour les personnes reliées à une fiche (choix du conseil du 27/11/2026 : rien de plus n'est lu dans Treemich). Pour la vue 3D de Sillage (constellation et hélice).
